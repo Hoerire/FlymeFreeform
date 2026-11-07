@@ -264,6 +264,7 @@ private fun ZoomLaunchCard(
             state.settings.zoomAllowAnyApp,
             state.settings.zoomLaunchNotification,
             state.settings.zoomLaunchControlCenter,
+            state.settings.zoomLaunchInterApp,
         ).count { it }
     Card(modifier = Modifier.fillMaxWidth()) {
         ArrowPreference(

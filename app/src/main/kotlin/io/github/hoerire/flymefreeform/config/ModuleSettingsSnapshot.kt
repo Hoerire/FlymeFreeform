@@ -28,6 +28,8 @@ internal data class ModuleSettingsSnapshot(
     /** 小窗优化·控制中心：磁贴、应用快捷方式启动时以自由浮窗打开。 */
     val zoomLaunchControlCenter: Boolean =
         ModulePreferences.DEFAULT_ZOOM_LAUNCH_CONTROL_CENTER,
+    /** 小窗优化·应用跳转：应用之间互相打开时以自由浮窗启动。 */
+    val zoomLaunchInterApp: Boolean = ModulePreferences.DEFAULT_ZOOM_LAUNCH_INTER_APP,
     /** 扇形呼出后未选择任何条目时保持显示，不自动收起。 */
     val radialKeepOpen: Boolean = ModulePreferences.DEFAULT_RADIAL_KEEP_OPEN,
     val radialMaxItems: Int = ModulePreferences.DEFAULT_RADIAL_MAX_ITEMS,
@@ -56,6 +58,10 @@ internal data class ModuleSettingsSnapshot(
             .putBoolean(
                 ModulePreferences.KEY_ZOOM_LAUNCH_CONTROL_CENTER,
                 zoomLaunchControlCenter,
+            )
+            .putBoolean(
+                ModulePreferences.KEY_ZOOM_LAUNCH_INTER_APP,
+                zoomLaunchInterApp,
             )
             .putBoolean(ModulePreferences.KEY_RADIAL_KEEP_OPEN, radialKeepOpen)
             .putInt(
@@ -188,6 +194,10 @@ internal data class ModuleSettingsSnapshot(
                 zoomLaunchControlCenter = preferences.getBoolean(
                     ModulePreferences.KEY_ZOOM_LAUNCH_CONTROL_CENTER,
                     ModulePreferences.DEFAULT_ZOOM_LAUNCH_CONTROL_CENTER,
+                ),
+                zoomLaunchInterApp = preferences.getBoolean(
+                    ModulePreferences.KEY_ZOOM_LAUNCH_INTER_APP,
+                    ModulePreferences.DEFAULT_ZOOM_LAUNCH_INTER_APP,
                 ),
                 radialKeepOpen = preferences.getBoolean(
                     ModulePreferences.KEY_RADIAL_KEEP_OPEN,

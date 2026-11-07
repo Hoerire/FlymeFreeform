@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
                     onZoomAllowAnyAppChange = repository::setZoomAllowAnyApp,
                     onZoomLaunchNotificationChange = repository::setZoomLaunchNotification,
                     onZoomLaunchControlCenterChange = repository::setZoomLaunchControlCenter,
+                    onZoomLaunchInterAppChange = repository::setZoomLaunchInterApp,
                     onRadialKeepOpenChange = repository::setRadialKeepOpen,
                     onRadialMaxItemsChange = repository::setRadialMaxItems,
                     onRequestScopes = repository::requestMissingScopes,

@@ -12,6 +12,7 @@ internal class SystemServerHookInstaller(
     private val configuration: ProcessConfiguration,
 ) {
     private val bound = AtomicBoolean(false)
+    private val interAppTracker = io.github.hoerire.flymefreeform.hook.launch.InterAppLaunchTracker()
     private val environment = ModuleEnvironmentState(configuration) { code, exception ->
         module.log(Log.WARN, TAG, code, exception)
     }
@@ -27,6 +28,7 @@ internal class SystemServerHookInstaller(
             module,
             configuration,
             environment,
+            interAppTracker,
         ).install(classLoader)
         io.github.hoerire.flymefreeform.hook.launch.FlexibleWindowLimitHook(module, configuration)
             .install(classLoader)
@@ -66,6 +68,7 @@ internal class SystemServerHookInstaller(
 
     private companion object {
         const val TAG = "FlymeFreeform"
+        const val ACTIVITY_TASK_MANAGER_CLASS = "com.android.server.wm.ActivityTaskManagerService"
         const val FLEXIBLE_TASK_CONTROLLER_CLASS = "com.android.server.wm.FlexibleTaskController"
     }
 }

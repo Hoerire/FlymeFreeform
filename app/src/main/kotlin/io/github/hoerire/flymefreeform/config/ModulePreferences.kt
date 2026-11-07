@@ -25,6 +25,7 @@ internal object ModulePreferences {
     const val KEY_ZOOM_ALLOW_ANY_APP = "zoom_allow_any_app"
     const val KEY_ZOOM_LAUNCH_NOTIFICATION = "zoom_launch_notification"
     const val KEY_ZOOM_LAUNCH_CONTROL_CENTER = "zoom_launch_control_center"
+    const val KEY_ZOOM_LAUNCH_INTER_APP = "zoom_launch_inter_app"
     const val KEY_RADIAL_KEEP_OPEN = "radial_keep_open"
     const val KEY_RADIAL_MAX_ITEMS = "radial_max_items"
     const val DEFAULT_ENABLED = false
@@ -42,6 +43,7 @@ internal object ModulePreferences {
     const val DEFAULT_ZOOM_ALLOW_ANY_APP = false
     const val DEFAULT_ZOOM_LAUNCH_NOTIFICATION = false
     const val DEFAULT_ZOOM_LAUNCH_CONTROL_CENTER = false
+    const val DEFAULT_ZOOM_LAUNCH_INTER_APP = false
     const val DEFAULT_RADIAL_KEEP_OPEN = false
     /** 扇形最多能放几个应用（收藏上限同值）。须定义在引用它的常量之前。 */
     const val MAX_PINNED_APPS = 6

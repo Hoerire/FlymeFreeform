@@ -72,6 +72,8 @@
     <string name="zoom_launch_notification_summary">通知中心和通知横幅的应用支持以自由浮窗启动</string>
     <string name="zoom_launch_control_center_title">控制中心</string>
     <string name="zoom_launch_control_center_summary">长按控制中心磁贴支持以自由浮窗启动，需要先解除应用限制</string>
+    <string name="zoom_launch_inter_app_title">应用跳转</string>
+    <string name="zoom_launch_inter_app_summary">应用之间互相打开时以自由浮窗启动；系统授权、文件选择等界面仍保持全屏</string>
     <string name="handle_swipe_up_to_mini_title">快速上滑</string>
     <string name="handle_swipe_up_to_mini_summary">在普通小窗底部横条快速上滑，切换为迷你小窗</string>
 

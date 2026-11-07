@@ -51,6 +51,7 @@ internal fun FlymeFreeformNavHost(
     onZoomAllowAnyAppChange: (Boolean) -> Unit,
     onZoomLaunchNotificationChange: (Boolean) -> Unit,
     onZoomLaunchControlCenterChange: (Boolean) -> Unit,
+    onZoomLaunchInterAppChange: (Boolean) -> Unit,
     onRadialKeepOpenChange: (Boolean) -> Unit,
     onRadialMaxItemsChange: (Int) -> Unit,
     onRequestScopes: () -> Unit,
@@ -127,6 +128,7 @@ internal fun FlymeFreeformNavHost(
                 onZoomAllowAnyAppChange = onZoomAllowAnyAppChange,
                 onZoomLaunchNotificationChange = onZoomLaunchNotificationChange,
                 onZoomLaunchControlCenterChange = onZoomLaunchControlCenterChange,
+                onZoomLaunchInterAppChange = onZoomLaunchInterAppChange,
             )
         }
         entry<AppRoute.Blacklist> {

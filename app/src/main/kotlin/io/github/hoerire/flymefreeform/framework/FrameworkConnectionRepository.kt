@@ -114,6 +114,9 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setZoomLaunchControlCenter(enabled: Boolean) =
         updateSettings { it.copy(zoomLaunchControlCenter = enabled) }
 
+    fun setZoomLaunchInterApp(enabled: Boolean) =
+        updateSettings { it.copy(zoomLaunchInterApp = enabled) }
+
     fun setBlacklistPackages(packages: List<String>) =
         updateSettings { it.copy(blacklistPackages = ModulePreferences.decodePackages(ModulePreferences.encodePackages(packages))) }
 

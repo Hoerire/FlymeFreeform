@@ -73,6 +73,7 @@ class ModuleMain : XposedModule() {
                     "_zapp" + settings.zoomAllowAnyApp +
                     "_znotify" + settings.zoomLaunchNotification +
                     "_zcc" + settings.zoomLaunchControlCenter +
+                    "_zinter" + settings.zoomLaunchInterApp +
                     "_keep" + settings.radialKeepOpen +
                     "_tap" + settings.outsideTapCloseMode.storedValue +
                     "_vlog" + settings.verboseLogEnabled +

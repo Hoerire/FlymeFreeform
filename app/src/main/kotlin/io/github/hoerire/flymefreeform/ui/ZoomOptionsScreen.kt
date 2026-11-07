@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -38,6 +39,7 @@ internal fun ZoomOptionsScreen(
     onZoomAllowAnyAppChange: (Boolean) -> Unit,
     onZoomLaunchNotificationChange: (Boolean) -> Unit,
     onZoomLaunchControlCenterChange: (Boolean) -> Unit,
+    onZoomLaunchInterAppChange: (Boolean) -> Unit,
 ) {
     val enabled = state.settingsEditable && state.settings.enabled
     ScreenScaffold(
@@ -106,6 +108,18 @@ internal fun ZoomOptionsScreen(
                         summary = stringResource(R.string.zoom_launch_control_center_summary),
                         enabled = enabled,
                         startAction = { PreferenceIcon(Icons.Rounded.OpenInNew, enabled) },
+                    )
+                }
+            }
+            item(key = "launch_inter_app") {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    SwitchPreference(
+                        checked = state.settings.zoomLaunchInterApp,
+                        onCheckedChange = onZoomLaunchInterAppChange,
+                        title = stringResource(R.string.zoom_launch_inter_app_title),
+                        summary = stringResource(R.string.zoom_launch_inter_app_summary),
+                        enabled = enabled,
+                        startAction = { PreferenceIcon(Icons.Rounded.SwapHoriz, enabled) },
                     )
                 }
             }

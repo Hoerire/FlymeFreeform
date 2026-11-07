@@ -18,6 +18,7 @@ internal class ActivityStarterZoomInjector(
     private val module: XposedModule,
     private val configuration: ProcessConfiguration,
     private val environment: ModuleEnvironmentState? = null,
+    private val interAppTracker: InterAppLaunchTracker? = null,
 ) {
     private var installedHooks = 0
     private val preempting = ThreadLocal<Boolean>()
@@ -233,6 +234,7 @@ internal class ActivityStarterZoomInjector(
         val requestRealUid = request?.let { intField(it, "realCallingUid") } ?: -1
         val pendingIntent = request?.let { readField(it, "originatingPendingIntent") }
         val callingPackage = request?.let { readField(it, "callingPackage") as? String }
+        val hasResultTo = request?.let { readField(it, "resultTo") } != null
         val systemUiUid = systemUiUid()
         if (io.github.hoerire.flymefreeform.log.VerboseLog.enabled) {
             io.github.hoerire.flymefreeform.log.ModuleLog.debug(
@@ -254,6 +256,7 @@ internal class ActivityStarterZoomInjector(
                 pendingIntent,
                 systemUiUid,
                 callingPackage,
+                hasResultTo,
             ) ?: return
         intent.putExtra(ZoomLaunchSpec.EXTRA_APPLIED, 1)
 
@@ -273,6 +276,32 @@ internal class ActivityStarterZoomInjector(
         }
         io.github.hoerire.flymefreeform.log.ModuleLog.debug(TAG, "ZOOM_INJECTED_" + reason)
         if (reason == "notification") collapseShade()
+        // 记录本次跨应用跳转，供发起方回到前台时关闭目标浮窗。
+        if (reason == "inter_app" && callingPackage != null) {
+            val destination = intent.component?.packageName ?: intent.getPackage()
+            if (destination != null) interAppTracker?.record(callingPackage, destination)
+        }
+    }
+
+    /** 是否为非系统应用；无法判定时按系统应用处理，保持全屏。 */
+    private fun isThirdPartyApplication(packageName: String): Boolean =
+        runCatching {
+            val info = systemContext()?.packageManager?.getApplicationInfo(packageName, 0)
+            info != null && (info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0
+        }.getOrDefault(false)
+
+    /**
+     * 是否属于用户主动发起的系统选择类界面（分享面板、文件选择、权限授权）。
+     *
+     * 这类界面由系统包承载，若一律按包名排除会漏掉用户常用的跳转场景；
+     * 按组件精确匹配，避免整套系统界面被小窗化。
+     */
+    private fun isSystemPickerOrResolver(intent: Intent): Boolean {
+        val component = intent.component ?: return false
+        val name = component.className ?: return false
+        return SYSTEM_DIALOG_COMPONENTS.any { (pkg, simpleName) ->
+            component.packageName == pkg && name.contains(simpleName)
+        }
     }
 
     /** 目标包名：显式组件优先，其次系统解析结果，最后才是 Intent 自带的包名。 */
@@ -292,6 +321,7 @@ internal class ActivityStarterZoomInjector(
         pendingIntent: Any?,
         systemUiUid: Int,
         callingPackage: String?,
+        hasResultTo: Boolean,
     ): String? {
         if (intent.getIntExtra(ZoomLaunchSpec.EXTRA_SOURCE, 0) == ZoomLaunchSpec.SOURCE_NOTIFICATION) {
             return "notification"
@@ -300,11 +330,55 @@ internal class ActivityStarterZoomInjector(
         // 通知点击由 SystemUI 浮窗通道接管，其内部同样经 PendingIntent.send 下发，
         // realCallingUid 亦为 SystemUI。此处再次注入会覆盖系统已写入的参数，
         // 导致窗口无法创建或触摸区域异常，因此该判定必须位于 systemui 判据之前。
-        if (pendingIntent != null) {
+        if (pendingIntent != null && callingPackage == SYSTEM_UI_PACKAGE) {
             io.github.hoerire.flymefreeform.log.ModuleLog.debug(TAG, "ZOOM_LEFT_TO_NATIVE_CHANNEL")
             return null
         }
         val target = intent.component?.packageName ?: intent.getPackage() ?: return null
+
+        // 目标应用完成操作后重新唤起发起方，特征与主动跳转相同（跨包、携带 resultTo），
+        // 但这次启动用于回到原应用，不参与浮窗化。关闭浮窗交由系统的返回入口处理。
+        if (interAppTracker?.consumeIfReturning(callingPackage, target) == true) {
+            io.github.hoerire.flymefreeform.log.ModuleLog.debug(TAG, "ZOOM_INTER_APP_RETURN")
+            return null
+        }
+
+        // 应用之间互相打开：调用方通过 resultTo 等待结果。
+        // 本方法只补 ActivityOptions，不另起一次启动，结果回传链路保持完整。
+        //
+        // 桌面同样以 startActivityForResult 启动应用，若不做区分会把每一次图标点击
+        // 都当成应用间跳转；系统界面自身的启动由后续分支处理。两者一律保持全屏。
+        // 应用内部页面之间的跳转同样携带 resultTo，因此还要求目标与发起方不同包，
+        // 仅跨包启动才视为应用间跳转。
+        //
+        // 该判定必须先于 SKIP_TARGETS：分享面板、文件选择、权限授权由系统包承载，
+        // 但同属用户主动发起的跨应用跳转，按组件精确放行，其余系统组件维持全屏。
+        if (hasResultTo &&
+            configuration.snapshot.zoomLaunchInterApp &&
+            callingPackage != null &&
+            callingPackage != LAUNCHER_PACKAGE &&
+            callingPackage != SYSTEM_UI_PACKAGE &&
+            callingPackage != target &&
+            (target !in SKIP_TARGETS || isSystemPickerOrResolver(intent))
+        ) {
+            return "inter_app"
+        }
+        // 跨应用启动：发起方与目标均为第三方应用且不同包。
+        //
+        // 登录、分享、深链等场景的递交方式各不相同——有的带 resultTo，有的经
+        // PendingIntent，有的两者皆无，仅凭这些标志无法覆盖全部入口。
+        // 这里以「双方都是用户安装的应用」为准，系统组件与桌面图标点击均已在前置
+        // 分支或条件中排除。
+        if (configuration.snapshot.zoomLaunchInterApp &&
+            callingPackage != null &&
+            callingPackage != target &&
+            callingPackage != LAUNCHER_PACKAGE &&
+            intent.action != Intent.ACTION_MAIN &&
+            isThirdPartyApplication(callingPackage) &&
+            isThirdPartyApplication(target)
+        ) {
+            return "inter_app"
+        }
         if (target in SKIP_TARGETS) return null
         // 部分系统通知的点击由 system_server 直接发起，不经过 SystemUI 的通知启动入口，
         // 因此既不携带来源标记，也没有 PendingIntent。这里按发起包与目标包精确匹配，
@@ -492,6 +566,21 @@ internal class ActivityStarterZoomInjector(
         const val EXTRA_QUICK_SETTINGS = "start_from_systemui_qs"
 
         const val SYSTEM_UI_PACKAGE = "com.android.systemui"
+
+        /** 桌面进程：其发起的启动属于图标点击，不计入应用间跳转。 */
+        const val LAUNCHER_PACKAGE = "com.android.launcher"
+
+        /** 系统选择类界面的组件：包名与类名片段。 */
+        val SYSTEM_DIALOG_COMPONENTS =
+            listOf(
+                "android" to "com.android.internal.app.ResolverActivity",
+                "com.android.intentresolver" to "ChooserActivity",
+                "com.android.permissioncontroller" to "GrantPermissionsActivity",
+                "com.google.android.permissioncontroller" to "GrantPermissionsActivity",
+                "com.android.providers.media.module" to "PhotoPicker",
+                "com.android.documentsui" to "DocumentsActivity",
+                "com.coloros.filemanager" to "PickerActivity",
+            )
 
         /** system_server 代发通知点击时的发起包名。 */
         const val SYSTEM_SERVER_PACKAGE = "android"
