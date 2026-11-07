@@ -112,6 +112,12 @@ internal class ActivityStarterZoomInjector(
                 // 锁屏与息屏状态下不接管任何启动：此时系统正在显示锁屏界面或恢复桌面，
                 // 抢占会使窗口创建在锁屏之下，解锁前不可见，表现为点击无响应。
                 environment?.isDeviceUnlocked(refreshKeyguard = true) == false -> false
+                // 第三方应用把 Intent 交给系统分发服务代发（酷安点链接 → 浏览器就属这类）：
+                // 该启动由后台发起，往 options 里注入小窗参数会被柔性任务控制器拒绝
+                // （adjustOptionsForFlexibleTask reason:9），窗口创建不出来，表现为点击无反应。
+                // 只能改走系统 zoom 入口重发；重发失败会返回 false，原启动照常进行，退化为全屏。
+                pendingDispatchOwner(callingPackage, realCallingUid, requestRealUid) != null &&
+                    settings.zoomLaunch && target !in SKIP_TARGETS -> true
                 // 通知与横幅由 SystemUI 处理：该进程把 isSupportZoonByIntent 判定为 true 后，
                 // 会先播 hideBanner 收起动画再以小窗启动，此处不参与。
                 pendingIntent != null -> false
@@ -579,6 +585,24 @@ internal class ActivityStarterZoomInjector(
         return uid
     }
 
+    /**
+     * 经系统分发服务转交的启动，返回其真实发起者；不属于该情形时返回 null。
+     *
+     * 分发服务自己不是发起方，只是替原应用把 Intent 交出去，发起方身份需回查 uid。
+     */
+    private fun pendingDispatchOwner(callingPackage: String?, realCallingUid: Int, requestRealUid: Int): String? {
+        if (callingPackage == null || callingPackage !in PENDING_DISPATCH_PACKAGES) return null
+        val owner = owningPackageOf(realCallingUid) ?: owningPackageOf(requestRealUid) ?: return null
+        return owner.takeIf { isThirdPartyApplication(it) }
+    }
+
+    /** 由 uid 反查所属包名；一个 uid 对应多个包时取第一个。 */
+    private fun owningPackageOf(uid: Int): String? =
+        runCatching {
+            if (uid <= 0) null
+            else systemContext()?.packageManager?.getPackagesForUid(uid)?.firstOrNull()
+        }.getOrNull()
+
     /** 桌面 uid：用于识别经 LauncherApps 代发的桌面快捷方式。 */
     private fun launcherUid(): Int {
         cachedLauncherUid?.let { return it }
@@ -708,6 +732,9 @@ internal class ActivityStarterZoomInjector(
          */
         val SYSTEM_NOTIFICATION_TARGETS = setOf("org.lsposed.manager", "com.android.shell")
 
+
+        /** 代表其它应用转交启动的系统服务。 */
+        val PENDING_DISPATCH_PACKAGES = setOf("android.ext.services")
 
         /** 桌面快捷菜单可进入的系统设置包：仅「应用详情」这类入口按小窗打开。 */
         val LAUNCHER_SETTINGS_TARGETS = setOf("com.android.settings", "com.coloros.settings")
