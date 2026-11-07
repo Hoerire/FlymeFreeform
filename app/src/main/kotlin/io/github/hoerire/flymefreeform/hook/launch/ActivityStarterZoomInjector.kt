@@ -79,6 +79,13 @@ internal class ActivityStarterZoomInjector(
      * 只补 options 会出现窗口延迟出现且无动画。此处直接调用系统 zoom 入口，
      * 与扇形菜单使用同一启动路径，获得完整过渡效果。
      */
+    /** 上一次注入的目标与时刻，用于识别「目标应用用中转页二次发起同一目标」的退化情形。 */
+    @Volatile
+    private var lastInjectTarget: String? = null
+
+    @Volatile
+    private var lastInjectAt = 0L
+
     private fun preemptWithZoomWindow(starter: Any?, stage: String): Boolean {
         if (starter == null) return false
         if (preempting.get() == true) return false
@@ -106,12 +113,29 @@ internal class ActivityStarterZoomInjector(
         // startActivityForResult 的跨应用启动（登录、授权、选图、分享回传）需要目标
         // 把结果回传并自行 finish；改由 zoom 入口另起一次启动会打断回传链路，
         // 表现为授权窗口不关闭、或直接提示用户取消。这类启动一律放行。
-        if (request?.let { readField(it, "resultTo") } != null) return false
+        //
+        // 例外只有一个：目标应用自己的「中转页」二次发起同一目标。Via 用
+        // mark.via/.Trampoline 接链接，它同样带 resultTo，但它的结果只是给自己用，
+        // 放行就等于必然退化成全屏（实测 reason:9）。判据限定得极窄：Activity 名含
+        // Trampoline、由目标自己发起、action 为 VIEW、距上次注入 3 秒内。
+        val hasResultTo = request?.let { readField(it, "resultTo") } != null
+        val trampolineRelay = hasResultTo && isTrampolineRelay(intent, target, callingPackage)
+        if (hasResultTo && !trampolineRelay) return false
         val eligible =
             when {
                 // 锁屏与息屏状态下不接管任何启动：此时系统正在显示锁屏界面或恢复桌面，
                 // 抢占会使窗口创建在锁屏之下，解锁前不可见，表现为点击无响应。
                 environment?.isDeviceUnlocked(refreshKeyguard = true) == false -> false
+                // 第三方应用把 Intent 交给系统分发服务代发（酷安点链接 → 浏览器就属这类）：
+                // 该启动由后台发起，往 options 里注入小窗参数会被柔性任务控制器拒绝
+                // （adjustOptionsForFlexibleTask reason:9），窗口创建不出来，表现为点击无反应。
+                // 只能改走系统 zoom 入口重发；重发失败会返回 false，原启动照常进行，退化为全屏。
+                pendingDispatchOwner(callingPackage, realCallingUid, requestRealUid) != null &&
+                    settings.zoomLaunch && target !in SKIP_TARGETS -> true
+                // 目标应用自己用中转页（Via 的 .Trampoline 就属这类）二次发起同一目标的 VIEW：
+                // 第一次注入的 options 会在第二次启动时被 adjustOptionsForFlexibleTask 以 reason:9 拒绝，
+                // 结果退化成全屏。判据是「目标自己发起 + 目标与前一次注入相同 + 3 秒内」。
+                settings.zoomLaunch && target !in SKIP_TARGETS && trampolineRelay -> true
                 // 通知与横幅由 SystemUI 处理：该进程把 isSupportZoonByIntent 判定为 true 后，
                 // 会先播 hideBanner 收起动画再以小窗启动，此处不参与。
                 pendingIntent != null -> false
@@ -178,6 +202,16 @@ internal class ActivityStarterZoomInjector(
                 "fl=" + (intent?.let { "0x" + Integer.toHexString(it.flags) }.orEmpty()),
             )
         ModuleLog.debug(TAG) { "ZOOM_TRACE " + parts.joinToString(" ") }
+    }
+
+    /** 判定「目标应用自己的中转页二次发起同一目标」：判据尽量窄，避免误伤授权与回传链路。 */
+    private fun isTrampolineRelay(intent: Intent, target: String, callingPackage: String?): Boolean {
+        if (callingPackage != target) return false
+        if (intent.action != Intent.ACTION_VIEW) return false
+        if (lastInjectTarget != target) return false
+        if (android.os.SystemClock.uptimeMillis() - lastInjectAt >= TRAMPOLINE_WINDOW_MS) return false
+        val activity = intent.component?.className.orEmpty()
+        return activity.contains("Trampoline", ignoreCase = true)
     }
 
     private fun startZoomWindow(intent: Intent, targetPackage: String): Boolean =
@@ -266,6 +300,10 @@ internal class ActivityStarterZoomInjector(
                 .onFailure { module.log(Log.WARN, TAG, "ZOOM_OPTIONS_WRITE_FAILED", it) }
         }
         ModuleLog.debug(TAG) { "ZOOM_INJECTED_" + reason }
+        // 记录本次注入的目标与时刻：目标应用若用中转页二次发起同一目标（Via 的 .Trampoline），
+        // 第二次启动的 options 会被 reason:9 拒绝，届时据此抢占重发。
+        lastInjectTarget = intent.component?.packageName ?: intent.getPackage()
+        lastInjectAt = android.os.SystemClock.uptimeMillis()
         if (reason == "notification") collapseShade()
         // 记录本次跨应用跳转，供发起方回到前台时关闭目标浮窗。
         if (reason == "inter_app" && callingPackage != null) {
@@ -579,6 +617,24 @@ internal class ActivityStarterZoomInjector(
         return uid
     }
 
+    /**
+     * 经系统分发服务转交的启动，返回其真实发起者；不属于该情形时返回 null。
+     *
+     * 分发服务自己不是发起方，只是替原应用把 Intent 交出去，发起方身份需回查 uid。
+     */
+    private fun pendingDispatchOwner(callingPackage: String?, realCallingUid: Int, requestRealUid: Int): String? {
+        if (callingPackage == null || callingPackage !in PENDING_DISPATCH_PACKAGES) return null
+        val owner = owningPackageOf(realCallingUid) ?: owningPackageOf(requestRealUid) ?: return null
+        return owner.takeIf { isThirdPartyApplication(it) }
+    }
+
+    /** 由 uid 反查所属包名；一个 uid 对应多个包时取第一个。 */
+    private fun owningPackageOf(uid: Int): String? =
+        runCatching {
+            if (uid <= 0) null
+            else systemContext()?.packageManager?.getPackagesForUid(uid)?.firstOrNull()
+        }.getOrNull()
+
     /** 桌面 uid：用于识别经 LauncherApps 代发的桌面快捷方式。 */
     private fun launcherUid(): Int {
         cachedLauncherUid?.let { return it }
@@ -709,11 +765,17 @@ internal class ActivityStarterZoomInjector(
         val SYSTEM_NOTIFICATION_TARGETS = setOf("org.lsposed.manager", "com.android.shell")
 
 
+        /** 代表其它应用转交启动的系统服务。 */
+        val PENDING_DISPATCH_PACKAGES = setOf("android.ext.services")
+
         /** 桌面快捷菜单可进入的系统设置包：仅「应用详情」这类入口按小窗打开。 */
         val LAUNCHER_SETTINGS_TARGETS = setOf("com.android.settings", "com.coloros.settings")
         const val OPLUS_LIST_MANAGER = "com.android.server.OplusListManagerImpl"
         const val ZOOM_MANAGER_CLASS = "com.oplus.zoomwindow.OplusZoomWindowManager"
         const val LAUNCH_AT_RIGHT = 14
+
+        /** 中转页二次启动的时间窗：超过这个时间就不再视为同一次点击的后续启动。 */
+        const val TRAMPOLINE_WINDOW_MS = 3000L
 
         /** 收起面板的延迟：过早执行会被启动流程重新展开。 */
         const val SHADE_COLLAPSE_DELAY_MS = 60L
