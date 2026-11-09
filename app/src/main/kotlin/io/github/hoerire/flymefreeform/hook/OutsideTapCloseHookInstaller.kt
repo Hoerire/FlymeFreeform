@@ -989,6 +989,44 @@ internal object FloatingTaskRestorer {
             area > 0 && area * 2 < screen
         }.getOrDefault(false)
 
+    /**
+     * 指定包的窗口当前是否可见。
+     *
+     * 负一屏是 com.coloros.assistantscreen 的独立窗口，不在桌面进程内部，
+     * 桌面也不会为它触发任何回调，因此只能由 system_server 直接看窗口。
+     */
+    fun isPackageWindowVisible(packageName: String): Boolean {
+        val target = controller ?: resolveController() ?: return false
+        return runCatching {
+            val atms = findField(target.javaClass, "mAtms")?.get(target) ?: return false
+            val root = findField(atms.javaClass, "mRootWindowContainer")?.get(atms) ?: return false
+            val display = root.javaClass.getMethod("getDefaultDisplay").invoke(root) ?: return false
+            // 从 DisplayContent 逐层收集窗口（DisplayArea 树）。
+            val pending = ArrayDeque<Any>()
+            pending.add(display)
+            var guard = 0
+            while (pending.isNotEmpty() && guard++ < 512) {
+                val node = pending.removeFirst()
+                val children = findField(node.javaClass, "mChildren")?.get(node) as? Collection<*> ?: continue
+                for (child in children) {
+                    if (child == null) continue
+                    val windowName = child.javaClass.name
+                    if (windowName.contains("WindowState")) {
+                        val attrs = findField(child.javaClass, "mAttrs")?.get(child)
+                        val pkg = attrs?.javaClass?.getField("packageName")?.get(attrs) as? String
+                        if (pkg == packageName) {
+                            val visible = child.javaClass.getMethod("isVisible").invoke(child) as? Boolean
+                            if (visible == true) return true
+                        }
+                    } else {
+                        pending.add(child)
+                    }
+                }
+            }
+            false
+        }.getOrDefault(false)
+    }
+
     private fun packageOf(task: Any): String? =
         runCatching {
             val baseIntent = task.javaClass.getMethod("getBaseIntent").invoke(task) as? android.content.Intent

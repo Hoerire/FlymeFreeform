@@ -143,6 +143,20 @@ internal class ColorOsFreeformCoordinator(
     /** 浮层显示时刻与待执行的延迟移除标记：低于最小可见时长时不许拆除。 */
     private var overlayShownAt = 0L
     private var overlayRemovePending = false
+    /** 负一屏可见性缓存：避免每次手势都遍历窗口。 */
+    private var minusOneVisibleAt = 0L
+    private var minusOneVisibleCached = false
+
+    private fun isMinusOneScreenVisible(): Boolean {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - minusOneVisibleAt < MINUS_ONE_CACHE_MS) return minusOneVisibleCached
+        minusOneVisibleAt = now
+        minusOneVisibleCached =
+            io.github.hoerire.flymefreeform.hook.FloatingTaskRestorer
+                .isPackageWindowVisible("com.coloros.assistantscreen")
+        return minusOneVisibleCached
+    }
+
     /** 最近任务校验的节流时间戳。 */
     private var lastRecentsCheckAt = 0L
     /** 本次 overlay 实际用的窗口类型；决定它压不压在输入法上面。 */
@@ -374,6 +388,12 @@ internal class ColorOsFreeformCoordinator(
 
     private fun handlePointerEvent(event: MotionEvent) {
         val settings = lastSettings
+        // 负一屏是独立窗口，桌面不会为它上报状态，这里直接看窗口可见性（带 500 ms 缓存）。
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && isMinusOneScreenVisible()) {
+            debug("SYSTEM_GESTURE_SKIP_MINUS_ONE")
+            cancelActiveGesture()
+            return
+        }
         if (!pointerRegistered || !environmentState.isGestureAllowed()) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 debug("SYSTEM_GESTURE_SKIPPED_ENV_" + environmentRejectionReason())
@@ -890,6 +910,9 @@ internal class ColorOsFreeformCoordinator(
 
         /** 最近任务校验的最小间隔。 */
         const val RECENTS_CHECK_INTERVAL_MS = 2_000L
+
+        /** 负一屏可见性的缓存时长。 */
+        const val MINUS_ONE_CACHE_MS = 500L
         val CRITICAL_PACKAGES =
             setOf(
                 "com.android.systemui",
