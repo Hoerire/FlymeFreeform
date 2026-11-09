@@ -896,6 +896,7 @@ internal class ColorOsFreeformCoordinator(
                         tasks.joinToString("|") { each ->
                             (packageOfTask(each) ?: "?") +
                                 ":v" + (if (isTaskVisible(each)) 1 else 0) +
+                                ":s" + zoomStateOf(each) +
                                 ":" + boundsOf(each)
                         },
                 )
@@ -962,6 +963,23 @@ internal class ColorOsFreeformCoordinator(
             collectTasks(child, out, depth + 1)
         }
     }
+
+    /**
+     * 任务的小窗状态值（厂商 `getFlexibleZoomState()`）。
+     *
+     * 三条形态共用这一个 int：普通小窗 / 迷你窗 / 贴边浮标。数值不靠猜，先打进探针，
+     * 由实测三次点击确定映射后再据此分流。
+     */
+    private fun zoomStateOf(task: Any): String =
+        try {
+            val wrapper = findMethod(task.javaClass, "getWrapper", 0).invoke(task) ?: return "?"
+            val ext = findMethod(wrapper.javaClass, "getExtImpl", 0).invoke(wrapper) ?: return "?"
+            (findMethod(ext.javaClass, "getFlexibleZoomState", 0).invoke(ext) as? Int)?.toString() ?: "?"
+        } catch (_: ReflectiveOperationException) {
+            "?"
+        } catch (_: RuntimeException) {
+            "?"
+        }
 
     /** 探针用：任务的边界尺寸，取不到返回 "?"。 */
     private fun boundsOf(task: Any): String =
