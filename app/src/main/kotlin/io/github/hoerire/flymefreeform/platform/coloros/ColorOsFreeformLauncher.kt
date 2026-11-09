@@ -38,6 +38,14 @@ internal class ColorOsFreeformLauncher(
      * 因此直接拦掉，什么都不做。
      */
     private val isForeground: (String) -> Boolean = { false },
+    /**
+     * 该包是否已经有一个正常形态的小窗开着。
+     *
+     * 重复点同一个应用只会把已有窗口再走一遍启动链路，没有「再打开一个」的语义；
+     * 只有贴边浮标（迷你窗）不算，那种情况仍走 [io.github.hoerire.flymefreeform.hook.FloatingTaskRestorer]
+     * 恢复成小窗。
+     */
+    private val hasOpenWindow: (String) -> Boolean = { false },
 ) {
     /** 详细日志：仅在「详细日志」开启时输出，与其他模块日志同一出口。 */
     private fun debug(code: String) {
@@ -48,6 +56,10 @@ internal class ColorOsFreeformLauncher(
         if (isForeground(requested.packageName)) {
             debug("SYSTEM_LAUNCH_SKIP_FOREGROUND_" + requested.packageName)
             return FreeformLaunchResult.AlreadyForeground
+        }
+        if (hasOpenWindow(requested.packageName)) {
+            debug("SYSTEM_LAUNCH_SKIP_ALREADY_OPEN_" + requested.packageName)
+            return FreeformLaunchResult.AlreadyOpen
         }
         var component = requested
         var reason = unavailableReason(component)
@@ -241,6 +253,9 @@ internal sealed interface FreeformLaunchResult {
 
     /** 目标已经是顶层应用，不再重新启动。 */
     data object AlreadyForeground : FreeformLaunchResult
+
+    /** 目标已经有一个小窗开着，不再重新启动。 */
+    data object AlreadyOpen : FreeformLaunchResult
 
     data class TargetUnavailable(
         val component: ComponentName,

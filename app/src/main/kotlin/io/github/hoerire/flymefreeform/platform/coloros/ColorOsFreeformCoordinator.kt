@@ -77,6 +77,8 @@ internal class ColorOsFreeformCoordinator(
         },
         // 顶层应用不再以小窗重新打开自己：系统会把现有任务原地改成小窗，且没有过渡动画。
         isForeground = { packageName -> topRunningPackage() == packageName },
+        // 已经有一个正常形态小窗的应用，重复点击不再启动；贴边浮标不在此列。
+        hasOpenWindow = { packageName -> hasOrdinaryZoomWindow(packageName) },
     )
     private val sidebar = ColorOsSidebarClient(context, handler, logger)
     private val appCatalog =
@@ -649,6 +651,8 @@ internal class ColorOsFreeformCoordinator(
             FreeformLaunchResult.Started -> debug("SYSTEM_LAUNCH_APP_OK_" + target.packageName)
             FreeformLaunchResult.AlreadyForeground ->
                 debug("SYSTEM_LAUNCH_APP_ALREADY_FOREGROUND_" + target.packageName)
+            FreeformLaunchResult.AlreadyOpen ->
+                debug("SYSTEM_LAUNCH_APP_ALREADY_OPEN_" + target.packageName)
             is FreeformLaunchResult.TargetUnavailable -> {
                 // WARN 常开：目标不可用时必须能定位到具体组件与原因。
                 val code = "FREEFORM_LAUNCH_TARGET_UNAVAILABLE_" +
@@ -866,6 +870,44 @@ internal class ColorOsFreeformCoordinator(
     } catch (_: ReflectiveOperationException) { null }
       catch (_: RuntimeException) { null }
 
+    /**
+     * 该包是否已经有一个正常形态的小窗。
+     *
+     * 只认柔性状态 1（普通小窗）。贴边浮标 / 迷你窗是别的状态，仍允许从扇形重新打开，
+     * 由 FloatingTaskRestorer 恢复成小窗。读不到控制器或状态时返回 false，保持原行为。
+     */
+    private fun hasOrdinaryZoomWindow(packageName: String): Boolean {
+        return try {
+            val containers = readField(controller, "mFlexibleTasks") as? Iterable<*> ?: return false
+            val flexibleTasks = synchronized(containers) { containers.toList() }
+            val isInFlexibleState = findMethod(controller.javaClass, "isTaskInFlexibleState", 2)
+            flexibleTasks.any { flexibleTask ->
+                flexibleTask != null &&
+                    packageOfTask(flexibleTask) == packageName &&
+                    (isInFlexibleState.invoke(controller, flexibleTask, ORDINARY_ZOOM_STATE) as? Boolean) == true
+            }
+        } catch (_: ReflectiveOperationException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
+    }
+
+    /** 任务所属包：优先取 baseIntent 的组件，退化取 realActivity。 */
+    private fun packageOfTask(task: Any): String? =
+        try {
+            val intent = findMethod(task.javaClass, "getBaseIntent", 0).invoke(task) as? android.content.Intent
+            intent?.component?.packageName ?: run {
+                val component = findMethod(task.javaClass, "getRealActivity", 0).invoke(task)
+                    as? android.content.ComponentName
+                component?.packageName
+            }
+        } catch (_: ReflectiveOperationException) {
+            null
+        } catch (_: RuntimeException) {
+            null
+        }
+
     private fun readWindowManagerService(): Any {
         val atms = readField(controller, "mAtms") ?: throw NoSuchFieldException("mAtms")
         return readField(atms, "mWindowManager") ?: throw NoSuchFieldException("mWindowManager")
@@ -913,6 +955,9 @@ internal class ColorOsFreeformCoordinator(
 
         /** 最近任务校验的最小间隔。 */
         const val RECENTS_CHECK_INTERVAL_MS = 2_000L
+
+        /** 厂商柔性状态里的「普通小窗」；迷你窗/贴边浮标是别的取值。 */
+        const val ORDINARY_ZOOM_STATE = 1
 
         val CRITICAL_PACKAGES =
             setOf(
