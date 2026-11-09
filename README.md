@@ -2,7 +2,7 @@
   <img src="app/src/main/res/drawable-nodpi/ic_launcher_mark.png" width="112" alt="Flyme 小窗" />
 </p>
 
-<h1 align="center">Flyme 小窗</h1>
+<h1 align="center">Flyme 小窗（FlymeFreeform）</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/ROM-ColorOS-00A862" alt="面向 ColorOS" />
@@ -35,6 +35,7 @@
 - **命中范围**：手指与图标的判定半径，40–140 dp，默认 100 dp
 - **图标大小**：扇形与「更多」面板的基准直径，32–56 dp，默认 44 dp；拖动时屏幕实时预览，主题图标的透明边会被归一化，「更多」圆盘按同一可见直径对齐
 - **横屏模式**：横屏时仅暂停呼出，恢复竖屏自动恢复
+- **多任务屏蔽**：进入最近任务界面后不再响应呼出，避免上滑进入多任务时误触
 - **游戏模式**：同上，退出游戏模式自动恢复
 
 拖动命中滑条时，屏幕按当前数值画出每一格判定圈，松手保存。
