@@ -180,6 +180,27 @@ internal class LauncherHookInstaller(
                 }
                 module.log(Log.INFO, TAG, "LAUNCHER_SWIPE_HOOK_INSTALLED", null)
             }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_SWIPE_HOOK_FAILED", it) }
+            // 探针 + 置位：createOverviewInputConsumer 只在"手势被判成多任务"时创建，
+            // 比状态提交早得多；同时打印调用栈，作为入口成立的证据。
+            runCatching {
+                val loader = target.inputMethod.declaringClass.classLoader
+                val serviceClass = loader.loadClass("com.android.quickstep.TouchInteractionService")
+                val create = serviceClass.declaredMethods.firstOrNull { it.name == "createOverviewInputConsumer" }
+                    ?: run {
+                        module.log(Log.WARN, TAG, "LAUNCHER_OVERVIEW_CONSUMER_MISSING", null)
+                        return@runCatching
+                    }
+                module.hook(create)
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .setId("flymefreeform.launcher.overview_consumer")
+                    .intercept { chain ->
+                        val stack = Throwable().stackTrace.take(6).joinToString("<") { it.methodName }
+                        module.log(Log.DEBUG, TAG, "LAUNCHER_OVERVIEW_CONSUMER_" + stack, null)
+                        appContext()?.let { publishBlocked(it, true) }
+                        chain.proceed()
+                    }
+                module.log(Log.INFO, TAG, "LAUNCHER_OVERVIEW_CONSUMER_HOOKED", null)
+            }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_OVERVIEW_CONSUMER_FAILED", it) }
             // 桌面内上滑进入多任务：状态切换是「请求」出去的，完成要到 600 ms 之后，
             // 所以要挂在 goToState(BaseState) 上，目标为 OVERVIEW 时立刻置位。
             runCatching {
