@@ -196,6 +196,7 @@ internal class CornerRadialOverlayView(
         this.radialHitRangeDp = ModulePreferences.coerceRadialHitRangeDp(hitRangeDp)
         this.radialIconSizeDp = ModulePreferences.coerceRadialIconSizeDp(iconSizeDp)
         shownAtUptime = android.os.SystemClock.uptimeMillis()
+        entrySettled = false
         this.catalog = catalog
         latestX = x
         latestY = y
@@ -231,9 +232,11 @@ internal class CornerRadialOverlayView(
         return selectedIndex
     }
 
+    /** 入场动画结束标志：由渲染层的动画完成回调置位，抬手只读它。 */
+    @Volatile private var entrySettled = false
+
     /** 入场动画是否已经播完；没播完就抬手说明是误触，不该启动应用。 */
-    fun isSettled(): Boolean =
-        android.os.SystemClock.uptimeMillis() - shownAtUptime >= RadialEntryMotion.DURATION_MILLIS
+    fun isSettled(): Boolean = entrySettled
 
     fun finishGesture() {
         val selection = selectedIndex
@@ -337,6 +340,8 @@ internal class CornerRadialOverlayView(
                     animationSpec = tween(RadialEntryMotion.DURATION_MILLIS.toInt(), easing = LinearEasing),
                 )
             }
+            // 入场动画结束事件：抬手判定只读这个标志，不做任何时间计算。
+            entrySettled = true
         }
         LaunchedEffect(selectedIndexState.intValue, itemRings) {
             val selected = selectedIndexState.intValue
