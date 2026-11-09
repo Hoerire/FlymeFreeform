@@ -20,13 +20,15 @@ internal class ProcessConfiguration(
 
     private val listeners = CopyOnWriteArrayList<(ModuleSettingsSnapshot) -> Unit>()
     private var preferences: SharedPreferences? = null
-    private val preferenceListener =
-        SharedPreferences.OnSharedPreferenceChangeListener { changed, _ -> refresh(changed, false) }
 
+    /**
+     * 记录配置来源并读一次快照。
+     *
+     * 不再注册跨进程的 OnSharedPreferenceChangeListener：它在 hook 进程里并不可靠，
+     * 设置变化的实时同步改由模块应用广播 → 接收方 forceReload + override 完成。
+     */
     fun start(remotePreferences: SharedPreferences) {
-        preferences?.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         preferences = remotePreferences
-        remotePreferences.registerOnSharedPreferenceChangeListener(preferenceListener)
         refresh(remotePreferences, true)
     }
 
@@ -42,8 +44,7 @@ internal class ProcessConfiguration(
     /**
      * 强制重读一次磁盘配置。
      *
-     * 跨进程的 SharedPreferences 监听不一定及时触发，开关刚切换时 snapshot 可能还是旧值；
-     * 拦截路径用它做一次兜底，保证"打开开关就立刻生效"。
+     * 两个调用点：设置广播的接收方（实时同步），以及拦截路径上"开关看起来还是旧值"时的兜底。
      */
     fun forceReload() {
         val current = preferences ?: return
