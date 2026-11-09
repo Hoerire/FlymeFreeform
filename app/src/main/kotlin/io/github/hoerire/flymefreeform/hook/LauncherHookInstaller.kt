@@ -132,7 +132,30 @@ internal class LauncherHookInstaller(
         }
     }
 
+    /**
+     * 桌面是否处于系统页面（多任务 / 负一屏）。
+     *
+     * 这两者在 ColorOS 上都不是独立 Activity，而是桌面内部的页面状态，
+     * 只能从桌面进程里读：多任务对应 LauncherState.OVERVIEW，
+     * 负一屏对应 Workspace 的负页码。命中时我们完全不接管手势，交回桌面自己处理。
+     */
+    private fun isLauncherSystemPage(launcher: Context): Boolean =
+        runCatching {
+            val stateManager = launcher.javaClass.getMethod("getStateManager").invoke(launcher)
+            val state = stateManager?.javaClass?.getMethod("getState")?.invoke(stateManager)
+            val overview = launcher.javaClass.classLoader
+                ?.loadClass("com.android.launcher3.LauncherState")
+                ?.getField("OVERVIEW")
+                ?.get(null)
+            if (state != null && overview != null && state === overview) return true
+            val workspace = launcher.javaClass.getMethod("getWorkspace").invoke(launcher)
+            val page = workspace?.javaClass?.getMethod("getCurrentPage")?.invoke(workspace) as? Int
+            page != null && page < 0
+        }.getOrDefault(false)
+
     private fun shouldSuppress(owner: Context, event: MotionEvent): Boolean {
+        // 多任务界面与负一屏不响应扇形手势。
+        if (isLauncherSystemPage(owner)) return false
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             resetStream()
             val config = createEligibleConfig(owner, event) ?: return false
