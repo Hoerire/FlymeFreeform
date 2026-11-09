@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/ROM-ColorOS-00A862" alt="面向 ColorOS" />
   <img src="https://img.shields.io/badge/Android-16%2B-3DDC84?logo=android" alt="最低 Android 16" />
   <img src="https://img.shields.io/badge/libxposed-API_102-4285F4" alt="libxposed API 102" />
-  <img src="https://img.shields.io/badge/version-2.0-blue" alt="版本 1.3.8" />
+  <img src="https://img.shields.io/badge/version-2.1-blue" alt="版本 2.1" />
 </p>
 
 把魅族的 Flyme 小窗交互搬到 ColorOS：从屏幕底角斜向内上滑呼出扇形菜单，滑到目标松手，当即以自由浮窗打开；点击浮窗外侧即可收起。窗口数量超过限制时，可选择直接关闭旧窗口，而不是收成贴边浮标。
