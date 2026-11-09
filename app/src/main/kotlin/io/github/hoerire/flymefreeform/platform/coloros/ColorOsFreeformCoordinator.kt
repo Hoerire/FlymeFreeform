@@ -143,66 +143,11 @@ internal class ColorOsFreeformCoordinator(
     /** 浮层显示时刻与待执行的延迟移除标记：低于最小可见时长时不许拆除。 */
     private var overlayShownAt = 0L
     private var overlayRemovePending = false
-    /**
-     * 负一屏是否正在显示。
-     *
-     * 不做缓存、不看任何标志：每次按下时直接看那个窗口"是否被请求可见"。
-     * 缓存或标志一旦和真实状态错位，就会出现"识别不到"或"回到桌面仍失效"。
-     */
-    /**
-     * 记录"从底部开始的纯上滑"：这是进入多任务/回桌面的手势。
-     *
-     * 底部整条都能上滑，所以起点不设水平限制；区分靠方向——纯向上（垂直为主）算上滑，
-     * 斜向内上滑是扇形手势，不算。
-     */
-    private fun trackBottomSwipe(event: MotionEvent) {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                swipePointerId = event.getPointerId(0)
-                swipeStartX = event.rawX
-                swipeStartY = event.rawY
-                val height = context.resources.displayMetrics.heightPixels.toFloat()
-                swipeFromBottom = swipeStartY >= height * BOTTOM_SWIPE_ZONE
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (!swipeFromBottom) return
-                val index = event.findPointerIndex(swipePointerId)
-                if (index < 0) return
-                val dx = event.getRawX(index) - swipeStartX
-                val dy = event.getRawY(index) - swipeStartY
-                val slop = touchSlop
-                // 证据：底部按下后是否真的收到了 MOVE，以及位移方向。
-                val now = android.os.SystemClock.uptimeMillis()
-                if (now - bottomSwipeLogAt > 500L) {
-                    bottomSwipeLogAt = now
-                    debug("SYSTEM_BOTTOM_SWIPE_MOVE_dx" + dx.toInt() + "_dy" + dy.toInt())
-                }
-                // 垂直向上为主才认定为上滑；斜向内上滑（dx 占比大）交给扇形。
-                if (dy < -slop && kotlin.math.abs(dx) < kotlin.math.abs(dy) * BOTTOM_SWIPE_VERTICAL_RATIO) {
-                    bottomSwipeAt = android.os.SystemClock.uptimeMillis()
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                swipeFromBottom = false
-                swipePointerId = -1
-            }
-        }
-    }
 
-    private fun isMinusOneScreenVisible(): Boolean =
-        io.github.hoerire.flymefreeform.hook.FloatingTaskRestorer
-            .isPackageWindowVisible("com.coloros.assistantscreen")
 
     /** 最近任务校验的节流时间戳。 */
     private var lastRecentsCheckAt = 0L
 
-    /** 最近一次"底部上滑"的时间；用于屏蔽多任务切换期间的角区手势。 */
-    private var bottomSwipeAt = 0L
-    private var swipeFromBottom = false
-    private var swipePointerId = -1
-    private var swipeStartX = 0f
-    private var swipeStartY = 0f
-    private var bottomSwipeLogAt = 0L
     /** 本次 overlay 实际用的窗口类型；决定它压不压在输入法上面。 */
     private var overlayWindowType = OVERLAY_WINDOW_TYPE
     private val pointerQueueLock = Any()
@@ -432,22 +377,6 @@ internal class ColorOsFreeformCoordinator(
 
     private fun handlePointerEvent(event: MotionEvent) {
         val settings = lastSettings
-        // 底部中间区域的一根手指在上滑 = 正在进多任务/回桌面。此时角区不许呼出，
-        // 否则"边上滑边斜滑"会直接把扇形拉出来。
-        trackBottomSwipe(event)
-        if (android.os.SystemClock.uptimeMillis() - bottomSwipeAt < BOTTOM_SWIPE_GUARD_MS &&
-            event.actionMasked == MotionEvent.ACTION_DOWN
-        ) {
-            debug("SYSTEM_GESTURE_SKIP_BOTTOM_SWIPE")
-            cancelActiveGesture()
-            return
-        }
-        // 负一屏是独立窗口，桌面不会为它上报状态，这里直接看窗口可见性（带 500 ms 缓存）。
-        if (event.actionMasked == MotionEvent.ACTION_DOWN && isMinusOneScreenVisible()) {
-            debug("SYSTEM_GESTURE_SKIP_MINUS_ONE")
-            cancelActiveGesture()
-            return
-        }
         if (!pointerRegistered || !environmentState.isGestureAllowed()) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 debug("SYSTEM_GESTURE_SKIPPED_ENV_" + environmentRejectionReason())
@@ -972,11 +901,6 @@ internal class ColorOsFreeformCoordinator(
         /** 最近任务校验的最小间隔。 */
         const val RECENTS_CHECK_INTERVAL_MS = 2_000L
 
-        /** 底部上滑后的屏蔽窗口。 */
-        const val BOTTOM_SWIPE_GUARD_MS = 1_000L
-        const val BOTTOM_SWIPE_ZONE = 0.92f
-        /** 垂直位移占比下限：越大越"必须竖着滑"才算上滑。 */
-        const val BOTTOM_SWIPE_VERTICAL_RATIO = 1.5f
         val CRITICAL_PACKAGES =
             setOf(
                 "com.android.systemui",
