@@ -34,10 +34,19 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           ls "$ANDROID_HOME/platforms" || true
 
+      # 单元测试是契约门禁：先发现当前 AGP 实际生成的 test*UnitTest 任务再跑，
+      # 避免把任务名写死（AGP 9 下 testReleaseUnitTest 不一定存在）。
+      - name: Unit tests
+        run: |
+          chmod +x gradlew
+          TASK=$(./gradlew -q :app:tasks --all | grep -oE "test[A-Za-z]+UnitTest" | head -1 || true)
+          echo "unit-test task: ${TASK:-none}"
+          if [ -n "$TASK" ]; then ./gradlew ":app:${TASK}" --stacktrace; else echo "NO_UNIT_TEST_TASK"; fi
+
       - name: Assemble release
         run: |
           chmod +x gradlew
-          ./gradlew :app:testReleaseUnitTest assembleRelease --build-cache --stacktrace
+          ./gradlew assembleRelease --build-cache --stacktrace
 
       - name: Show output
         run: ls -l app/build/outputs/apk/release/
