@@ -146,7 +146,10 @@ internal class LauncherHookInstaller(
             runCatching {
                 val handlerClass = target.inputMethod.declaringClass.classLoader
                     .loadClass("com.android.quickstep.AbsSwipeUpHandler")
-                module.hook(handlerClass.getMethod("onGestureStarted"))
+                val started = handlerClass.declaredMethods.firstOrNull {
+                    it.name == "onGestureStarted" && it.parameterTypes.size == 2
+                } ?: return@runCatching
+                module.hook(started)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .setId("flymefreeform.launcher.swipe_start")
                     .intercept { chain ->
