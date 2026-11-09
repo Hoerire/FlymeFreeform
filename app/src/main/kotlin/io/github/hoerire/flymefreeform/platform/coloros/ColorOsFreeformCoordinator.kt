@@ -143,19 +143,15 @@ internal class ColorOsFreeformCoordinator(
     /** 浮层显示时刻与待执行的延迟移除标记：低于最小可见时长时不许拆除。 */
     private var overlayShownAt = 0L
     private var overlayRemovePending = false
-    /** 负一屏可见性缓存：避免每次手势都遍历窗口。 */
-    private var minusOneVisibleAt = 0L
-    private var minusOneVisibleCached = false
-
-    private fun isMinusOneScreenVisible(): Boolean {
-        val now = android.os.SystemClock.uptimeMillis()
-        if (now - minusOneVisibleAt < MINUS_ONE_CACHE_MS) return minusOneVisibleCached
-        minusOneVisibleAt = now
-        minusOneVisibleCached =
-            io.github.hoerire.flymefreeform.hook.FloatingTaskRestorer
-                .isPackageWindowVisible("com.coloros.assistantscreen")
-        return minusOneVisibleCached
-    }
+    /**
+     * 负一屏是否正在显示。
+     *
+     * 不做缓存、不看任何标志：每次按下时直接看那个窗口"是否被请求可见"。
+     * 缓存或标志一旦和真实状态错位，就会出现"识别不到"或"回到桌面仍失效"。
+     */
+    private fun isMinusOneScreenVisible(): Boolean =
+        io.github.hoerire.flymefreeform.hook.FloatingTaskRestorer
+            .isPackageWindowVisible("com.coloros.assistantscreen")
 
     /** 最近任务校验的节流时间戳。 */
     private var lastRecentsCheckAt = 0L
@@ -910,9 +906,6 @@ internal class ColorOsFreeformCoordinator(
 
         /** 最近任务校验的最小间隔。 */
         const val RECENTS_CHECK_INTERVAL_MS = 2_000L
-
-        /** 负一屏可见性的缓存时长。 */
-        const val MINUS_ONE_CACHE_MS = 500L
         val CRITICAL_PACKAGES =
             setOf(
                 "com.android.systemui",
