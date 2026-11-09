@@ -249,17 +249,34 @@ internal class OutsideTapCloseHookInstaller(
                 }
                 if (isFloatExit && configuration.snapshot.autoCloseWindow) {
                     val frames = Throwable().stackTrace
+                    // 系统的「谁该退出」判定有两条入口：超出数量上限（updateTaskMaxNum* /
+                    // handleFlexibleExChange）与统一裁决（determineFlexibleTaskToExit /
+                    // setLastFlexibleTaskToExit*）。冷启动新窗口走的是后者——
+                    // 实测 23:30:00 那次只出现 determineFlexibleTaskToExit:2376，
+                    // 早先只认前者，于是判据不成立、原样放行，旧窗被收成浮标。
                     val fromLimit = frames.any { frame ->
-                        frame.methodName.contains("updateTaskMaxNum") ||
-                            frame.methodName.contains("handleFlexibleExChange")
+                        val name = frame.methodName
+                        name.contains("updateTaskMaxNum") ||
+                            name.contains("handleFlexibleExChange") ||
+                            name.contains("determineFlexibleTaskToExit") ||
+                            name.contains("setLastFlexibleTaskToExit")
                     }
-                    // 必须同时是「新启动应用」引起的超限：单纯在小窗之间切换焦点也会走上面两处，
+                    // 必须同时是「新启动应用」引起的退出：单纯在小窗之间切换焦点也会走上面几处，
                     // 那种情况下关窗会让人切不回原窗口，所以只认启动链路。
                     val fromLaunch = frames.any { frame ->
-                        frame.methodName.contains("executeRequest") ||
-                            frame.methodName.contains("ActivityStarter") ||
-                            frame.methodName.contains("startActivity")
+                        val name = frame.methodName
+                        name.contains("executeRequest") ||
+                            name.contains("ActivityStarter") ||
+                            name.contains("startActivity")
                     }
+                    // 探针：每次「变浮标」退出都留下两个判据的取值，复现一次即可定位。
+                    module.log(
+                        Log.DEBUG,
+                        TAG,
+                        "ZOOM_REPLACE_PROBE_limit" + (if (fromLimit) 1 else 0) +
+                            "_launch" + (if (fromLaunch) 1 else 0),
+                        null,
+                    )
                     if (fromLimit && fromLaunch) {
                         val current = strategy ?: return@intercept chain.proceed()
                         val task = runCatching {

@@ -77,8 +77,8 @@ internal class ColorOsFreeformCoordinator(
         },
         // 顶层应用不再以小窗重新打开自己：系统会把现有任务原地改成小窗，且没有过渡动画。
         isForeground = { packageName -> topRunningPackage() == packageName },
-        // 已经有一个正常形态小窗的应用，重复点击不再启动；贴边浮标不在此列。
-        hasOpenWindow = { packageName -> hasOrdinaryZoomWindow(packageName) },
+        // 已经有窗口的应用（前台、后台全屏任务、已开的小窗）不再启动；贴边浮标仍可恢复。
+        existingTask = { packageName -> existingTaskOf(packageName) },
     )
     private val sidebar = ColorOsSidebarClient(context, handler, logger)
     private val appCatalog =
@@ -871,27 +871,84 @@ internal class ColorOsFreeformCoordinator(
       catch (_: RuntimeException) { null }
 
     /**
-     * 该包是否已经有一个正常形态的小窗。
+     * 目标包当前的任务形态，用来决定扇形要不要真的启动它。
      *
-     * 只认柔性状态 1（普通小窗）。贴边浮标 / 迷你窗是别的状态，仍允许从扇形重新打开，
-     * 由 FloatingTaskRestorer 恢复成小窗。读不到控制器或状态时返回 false，保持原行为。
+     * 已有任务的包再走小窗启动，命中的是 getReusableOptionsForFreeForm：复用那个任务、
+     * 原地改写窗口参数，没有启动动画。所以「已有窗口」直接不响应；贴边浮标 / 迷你窗
+     * 例外，仍交给 FloatingTaskRestorer 恢复成小窗。
+     *
+     * 判据取自焦点显示内容的真实任务树，不依赖任何缓存；读不到时按「没有任务」处理，
+     * 保持原行为。
      */
-    private fun hasOrdinaryZoomWindow(packageName: String): Boolean {
-        return try {
-            val containers = readField(controller, "mFlexibleTasks") as? Iterable<*> ?: return false
-            val flexibleTasks = synchronized(containers) { containers.toList() }
+    private fun existingTaskOf(packageName: String): ExistingTask {
+        val tasks = tasksOfFocusedDisplay() ?: return ExistingTask.None
+        var bubble = false
+        for (task in tasks) {
+            if (packageOfTask(task) != packageName) continue
+            if (isOrdinaryZoomWindow(task) || !isBubbleTask(task)) return ExistingTask.Window
+            bubble = true
+        }
+        return if (bubble) ExistingTask.Bubble else ExistingTask.None
+    }
+
+    /** 焦点显示内容下的全部任务；取不到返回 null。 */
+    private fun tasksOfFocusedDisplay(): List<Any>? =
+        try {
+            val atms = readField(controller, "mAtms") ?: return null
+            val root = readField(atms, "mRootWindowContainer") ?: return null
+            val display = findMethod(root.javaClass, "getTopFocusedDisplayContent", 0).invoke(root)
+                ?: return null
+            val collected = ArrayList<Any>(8)
+            collectTasks(display, collected, 0)
+            collected
+        } catch (_: ReflectiveOperationException) {
+            null
+        } catch (_: RuntimeException) {
+            null
+        }
+
+    /** 容器树里收集 Task；非任务节点按子节点下钻。 */
+    private fun collectTasks(container: Any, out: MutableList<Any>, depth: Int) {
+        if (depth > MAX_TASK_WALK_DEPTH) return
+        val self = findMethod(container.javaClass, "asTask", 0).invoke(container)
+        if (self != null) {
+            out.add(self)
+            return
+        }
+        val count = findMethod(container.javaClass, "getChildCount", 0).invoke(container) as? Int ?: 0
+        if (count <= 0) return
+        val childAt = findMethod(container.javaClass, "getChildAt", 1)
+        for (index in 0 until count) {
+            val child = childAt.invoke(container, index) ?: continue
+            collectTasks(child, out, depth + 1)
+        }
+    }
+
+    /** 是否仍是普通小窗（柔性状态 1）。 */
+    private fun isOrdinaryZoomWindow(task: Any): Boolean =
+        try {
             val isInFlexibleState = findMethod(controller.javaClass, "isTaskInFlexibleState", 2)
-            flexibleTasks.any { flexibleTask ->
-                flexibleTask != null &&
-                    packageOfTask(flexibleTask) == packageName &&
-                    (isInFlexibleState.invoke(controller, flexibleTask, ORDINARY_ZOOM_STATE) as? Boolean) == true
-            }
+            (isInFlexibleState.invoke(controller, task, ORDINARY_ZOOM_STATE) as? Boolean) == true
         } catch (_: ReflectiveOperationException) {
             false
         } catch (_: RuntimeException) {
             false
         }
-    }
+
+    /** 贴边浮标 / 迷你窗：面积不到屏幕一半。 */
+    private fun isBubbleTask(task: Any): Boolean =
+        try {
+            val bounds = findMethod(task.javaClass, "getBounds", 0).invoke(task)
+                as? android.graphics.Rect ?: return false
+            val metrics = context.resources.displayMetrics
+            val screen = metrics.widthPixels.toLong() * metrics.heightPixels
+            val area = bounds.width().toLong() * bounds.height()
+            area > 0 && area * 2 < screen
+        } catch (_: ReflectiveOperationException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
 
     /** 任务所属包：优先取 baseIntent 的组件，退化取 realActivity。 */
     private fun packageOfTask(task: Any): String? =
@@ -958,6 +1015,9 @@ internal class ColorOsFreeformCoordinator(
 
         /** 厂商柔性状态里的「普通小窗」；迷你窗/贴边浮标是别的取值。 */
         const val ORDINARY_ZOOM_STATE = 1
+
+        /** 任务树下钻层级：RootWindowContainer → DisplayContent → TaskDisplayArea → Task。 */
+        const val MAX_TASK_WALK_DEPTH = 4
 
         val CRITICAL_PACKAGES =
             setOf(

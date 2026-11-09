@@ -39,13 +39,14 @@ internal class ColorOsFreeformLauncher(
      */
     private val isForeground: (String) -> Boolean = { false },
     /**
-     * 该包是否已经有一个正常形态的小窗开着。
+     * 目标包当前的任务形态。
      *
-     * 重复点同一个应用只会把已有窗口再走一遍启动链路，没有「再打开一个」的语义；
-     * 只有贴边浮标（迷你窗）不算，那种情况仍走 [io.github.hoerire.flymefreeform.hook.FloatingTaskRestorer]
-     * 恢复成小窗。
+     * 已有任务的包再走一次小窗启动，命中的是系统的 getReusableOptionsForFreeForm：
+     * 复用那个任务、原地改写窗口参数，没有启动动画（实测是瞬间缩小）。
+     * 因此「已有窗口」一律不响应；贴边浮标例外，仍走
+     * [io.github.hoerire.flymefreeform.hook.FloatingTaskRestorer] 恢复成小窗。
      */
-    private val hasOpenWindow: (String) -> Boolean = { false },
+    private val existingTask: (String) -> ExistingTask = { ExistingTask.None },
 ) {
     /** 详细日志：仅在「详细日志」开启时输出，与其他模块日志同一出口。 */
     private fun debug(code: String) {
@@ -57,9 +58,13 @@ internal class ColorOsFreeformLauncher(
             debug("SYSTEM_LAUNCH_SKIP_FOREGROUND_" + requested.packageName)
             return FreeformLaunchResult.AlreadyForeground
         }
-        if (hasOpenWindow(requested.packageName)) {
-            debug("SYSTEM_LAUNCH_SKIP_ALREADY_OPEN_" + requested.packageName)
-            return FreeformLaunchResult.AlreadyOpen
+        when (existingTask(requested.packageName)) {
+            ExistingTask.Window -> {
+                debug("SYSTEM_LAUNCH_SKIP_HAS_WINDOW_" + requested.packageName)
+                return FreeformLaunchResult.AlreadyOpen
+            }
+            // 浮标交给下面的 FloatingTaskRestorer 恢复；没有任务就是真正的冷启动。
+            ExistingTask.Bubble, ExistingTask.None -> Unit
         }
         var component = requested
         var reason = unavailableReason(component)
@@ -248,13 +253,25 @@ internal class ColorOsFreeformLauncher(
     }
 }
 
+/** 目标包当前已有的任务形态。 */
+internal enum class ExistingTask {
+    /** 没有任务：真正的冷启动，会走完整的小窗启动动画。 */
+    None,
+
+    /** 已被收成贴边浮标 / 迷你窗：仍允许用扇形恢复成小窗。 */
+    Bubble,
+
+    /** 已有正常形态的窗口：前台任务、后台全屏任务，或已经开着的小窗。 */
+    Window,
+}
+
 internal sealed interface FreeformLaunchResult {
     data object Started : FreeformLaunchResult
 
     /** 目标已经是顶层应用，不再重新启动。 */
     data object AlreadyForeground : FreeformLaunchResult
 
-    /** 目标已经有一个小窗开着，不再重新启动。 */
+    /** 目标已经有一个窗口（全屏任务或小窗），不再重新启动。 */
     data object AlreadyOpen : FreeformLaunchResult
 
     data class TargetUnavailable(
