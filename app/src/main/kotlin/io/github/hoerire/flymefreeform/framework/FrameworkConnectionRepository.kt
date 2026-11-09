@@ -211,9 +211,12 @@ internal class FrameworkConnectionRepository(private val context: Context) {
             putExtra(ModulePreferences.EXTRA_PINS_SAVED, settings.pinsSaved)
             putExtra(ModulePreferences.EXTRA_MODULE_ENABLED, settings.enabled)
         }
+        // 必须共享身份：接收方用 getSentFromUid() 校验发起者，普通广播拿到的是 -1，
+        // 会被当作伪造请求丢弃（实测固定项变更从未送达 system_server）。
+        val options = android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle()
         try {
-            context.sendBroadcast(intent.setPackage("android"))
-            context.sendBroadcast(intent.setPackage("com.coloros.smartsidebar"))
+            context.sendBroadcast(intent.setPackage("android"), null, options)
+            context.sendBroadcast(intent.setPackage("com.coloros.smartsidebar"), null, options)
         } catch (_: RuntimeException) {
             // Remote preference commit remains authoritative if a target process is unavailable.
         }
