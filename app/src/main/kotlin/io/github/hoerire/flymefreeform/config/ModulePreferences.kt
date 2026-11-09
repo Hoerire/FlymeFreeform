@@ -46,6 +46,9 @@ internal object ModulePreferences {
         "io.github.hoerire.flymefreeform.action.LAUNCHER_PAGE_STATE"
     const val EXTRA_LAUNCHER_BLOCKED = "launcher_blocked"
 
+    /** 桌面系统页面状态：桌面写入、system_server 在按下瞬间直接读取，避免广播排队延迟。 */
+    const val KEY_LAUNCHER_PAGE_BLOCKED = "flymefreeform_launcher_page_blocked"
+
     /** 侧边栏进程就绪：由模块在侧边栏进程内发出，system_server 收到后才去读目录。 */
     const val ACTION_SIDEBAR_READY = "io.github.hoerire.flymefreeform.action.SIDEBAR_READY"
 

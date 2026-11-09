@@ -215,6 +215,14 @@ internal class LauncherHookInstaller(
 
     private fun reportPageState(launcher: Context) {
         val blocked = isLauncherSystemPage(launcher)
+        // 直接写系统设置：system_server 在按下瞬间读它，避免广播排队造成的几十毫秒误差。
+        runCatching {
+            android.provider.Settings.System.putInt(
+                launcher.contentResolver,
+                io.github.hoerire.flymefreeform.config.ModulePreferences.KEY_LAUNCHER_PAGE_BLOCKED,
+                if (blocked) 1 else 0,
+            )
+        }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_SETTINGS_WRITE_FAILED", it) }
         runCatching {
             launcher.sendBroadcast(
                 android.content.Intent(

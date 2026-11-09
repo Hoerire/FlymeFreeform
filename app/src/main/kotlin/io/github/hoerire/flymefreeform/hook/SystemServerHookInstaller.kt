@@ -144,6 +144,16 @@ internal class SystemServerHookInstaller(
                 null,
                 android.content.Context.RECEIVER_EXPORTED,
             )
+            // 按下瞬间直接读共享状态，绕开广播排队。
+            environment.launcherPageReader = {
+                runCatching {
+                    android.provider.Settings.System.getInt(
+                        context.contentResolver,
+                        io.github.hoerire.flymefreeform.config.ModulePreferences.KEY_LAUNCHER_PAGE_BLOCKED,
+                        0,
+                    ) == 1
+                }.getOrDefault(false)
+            }
             module.log(Log.INFO, TAG, "LAUNCHER_PAGE_RECEIVER_INSTALLED", null)
         }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_RECEIVER_FAILED", it) }
     }

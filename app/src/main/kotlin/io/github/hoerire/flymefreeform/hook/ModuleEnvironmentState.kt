@@ -46,6 +46,9 @@ internal class ModuleEnvironmentState(
     fun updateLauncherSystemPage(blocked: Boolean) {
         launcherSystemPage = blocked
     }
+
+    /** 供 system_server 直接读取共享状态（按下瞬间调用，无广播延迟）。 */
+    @Volatile var launcherPageReader: (() -> Boolean)? = null
     @Volatile private var keyguardRecheckNeeded = true
     private var lastObservation: Observation? = null
     private var lastFailureAt = -10_000L
@@ -159,8 +162,10 @@ internal class ModuleEnvironmentState(
 
     fun isGestureAllowed(refreshKeyguard: Boolean = false): Boolean {
         if (refreshKeyguard && keyguardRecheckNeeded) refreshKeyguardState()
-        // 多任务 / 负一屏等系统页面不响应呼出手势（桌面内部页面由桌面进程上报）。
-        if (launcherSystemPage || isSystemPanelForeground()) return false
+        // 多任务 / 负一屏等系统页面不响应呼出手势。
+        // 优先读共享状态（桌面写入、这里直接读，无广播延迟），失败时回落到广播标志。
+        val blockedNow = launcherPageReader?.invoke() ?: launcherSystemPage
+        if (blockedNow || isSystemPanelForeground()) return false
         return isModuleAllowed() && gestureNavigation && !keyguardLocked
     }
 
