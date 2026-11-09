@@ -152,8 +152,8 @@ internal class ModuleEnvironmentState(
 
     fun isGestureAllowed(refreshKeyguard: Boolean = false): Boolean {
         if (refreshKeyguard && keyguardRecheckNeeded) refreshKeyguardState()
-        // 多任务 / 最近任务界面本身是系统页面，在其中呼出扇形菜单没有意义，直接禁止。
-        if (isRecentsForeground()) return false
+        // 多任务 / 负一屏等系统页面不响应呼出手势。
+        if (isSystemPanelForeground()) return false
         return isModuleAllowed() && gestureNavigation && !keyguardLocked
     }
 
@@ -180,15 +180,22 @@ internal class ModuleEnvironmentState(
     fun isForegroundExcluded(): Boolean = isExcluded(foregroundPackage)
 
     /**
-     * 当前是否处于多任务 / 最近任务界面。
+     * 当前是否处于不该响应扇形手势的系统页面。
      *
-     * 这里的界面本身就是系统页面（Recents/Overview），在其中呼出扇形菜单没有意义，
-     * 且会盖住缩略图，因此直接禁止呼出。
+     * 多任务（Recents/Overview）与负一屏（智能助理）都是系统页面：
+     * 在其中呼出扇形菜单会盖住内容，也没有「打开应用」的语义，因此直接禁止。
      */
-    fun isRecentsForeground(): Boolean {
+    fun isSystemPanelForeground(): Boolean {
         val name = foregroundActivity ?: return false
+        val pkg = foregroundPackage
+        if (pkg == "com.coloros.assistantscreen") return true
+        val fromLauncher = pkg != null &&
+            (pkg == "com.android.launcher" || pkg == "com.oplus.launcher")
         return name.contains("Recents", ignoreCase = true) ||
-            name.contains("Overview", ignoreCase = true)
+            name.contains("Overview", ignoreCase = true) ||
+            (fromLauncher &&
+                (name.contains("Assistant", ignoreCase = true) ||
+                    name.contains("MinusScreen", ignoreCase = true)))
     }
 
     /**
