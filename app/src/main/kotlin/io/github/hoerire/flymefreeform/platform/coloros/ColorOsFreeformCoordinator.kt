@@ -882,7 +882,16 @@ internal class ColorOsFreeformCoordinator(
             if (restoreMiniWindow(task, packageName)) return true
         }
         val task = tasks.firstOrNull { packageOfTask(it) == packageName && isTaskVisible(it) }
-            ?: return false
+            ?: run {
+                // 探针：没人匹配时把任务树里的包名与可见性打出来，便于定位为什么没命中。
+                debug(
+                    "SYSTEM_LAUNCH_NO_MATCH_" + packageName + "_" +
+                        tasks.joinToString("|") { each ->
+                            (packageOfTask(each) ?: "?") + ":" + (if (isTaskVisible(each)) 1 else 0)
+                        },
+                )
+                return false
+            }
         return try {
             val moveToFront = findMethod(task.javaClass, "moveToFront", 1)
             val atms = readField(controller, "mAtms")
@@ -1002,20 +1011,29 @@ internal class ColorOsFreeformCoordinator(
             false
         }
 
-    /** 任务所属包：优先取 baseIntent 的组件，退化取 realActivity。 */
-    private fun packageOfTask(task: Any): String? =
-        try {
+    /**
+     * 任务所属包。
+     *
+     * 依次尝试 baseIntent 的组件、realActivity、顶层/根 Activity 的 packageName：
+     * 被收成浮标的任务实测前两者可能为空，只认 baseIntent 会导致匹配不到、判定整体失效。
+     */
+    private fun packageOfTask(task: Any): String? {
+        runCatching {
             val intent = findMethod(task.javaClass, "getBaseIntent", 0).invoke(task) as? android.content.Intent
-            intent?.component?.packageName ?: run {
-                val component = findMethod(task.javaClass, "getRealActivity", 0).invoke(task)
-                    as? android.content.ComponentName
-                component?.packageName
-            }
-        } catch (_: ReflectiveOperationException) {
-            null
-        } catch (_: RuntimeException) {
-            null
+            intent?.component?.packageName
+        }.getOrNull()?.let { return it }
+        runCatching {
+            (findMethod(task.javaClass, "getRealActivity", 0).invoke(task)
+                as? android.content.ComponentName)?.packageName
+        }.getOrNull()?.let { return it }
+        listOf("topRunningActivity", "getRootActivity", "getTopNonFinishingActivity").forEach { name ->
+            runCatching {
+                val activity = findMethod(task.javaClass, name, 0).invoke(task) ?: return@runCatching null
+                readField(activity, "packageName") as? String
+            }.getOrNull()?.let { return it }
         }
+        return null
+    }
 
     private fun readWindowManagerService(): Any {
         val atms = readField(controller, "mAtms") ?: throw NoSuchFieldException("mAtms")
