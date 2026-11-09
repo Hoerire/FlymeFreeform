@@ -593,7 +593,8 @@ internal class ColorOsFreeformCoordinator(
         // 应用/快捷方式在松手当帧就下发启动，浮层自行淡出（与系统侧边栏一致的手感）；
         // 取屏类工具不能与浮层共存：先 removeViewImmediate，再等两帧合成完成才允许执行，
         // 否则截图/录屏会把扇形一起拍进画面（见 launchCommittedEntry 的两帧等待）。
-        if ((entry.target as? PinnedTarget.Sidebar)?.kind == PinnedTarget.Kind.Tool) removeOverlay()
+        // 启动任何目标都立刻撤掉浮层：留着它会让深色背景盖住新窗口（表现为黑色遮罩）。
+        removeOverlay(immediate = true)
         handler.post {
             if (generation == pointerGeneration) launchCommittedEntry(entry)
         }
@@ -764,12 +765,14 @@ internal class ColorOsFreeformCoordinator(
         overlay?.cancelGesture()
     }
 
-    private fun removeOverlay() {
+    private fun removeOverlay(immediate: Boolean = false) {
         val view = overlay ?: return
         // 点击贴边浮标/窗外时，角触手势会先呼出再立刻收起，表现为屏幕闪一下。
         // 低于最小可见时长时把移除推迟，且只移除当时那一份浮层。
+        // immediate=true 用于"已经启动应用"：此时必须马上撤掉浮层，否则它的深色背景
+        // 会盖在新窗口上，看起来像一层黑色遮罩。
         val elapsed = android.os.SystemClock.uptimeMillis() - overlayShownAt
-        if (elapsed < MIN_OVERLAY_VISIBLE_MS) {
+        if (!immediate && elapsed < MIN_OVERLAY_VISIBLE_MS) {
             if (!overlayRemovePending) {
                 overlayRemovePending = true
                 handler.postDelayed(
