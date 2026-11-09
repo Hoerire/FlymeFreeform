@@ -878,9 +878,11 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun bringWindowToFront(packageName: String): Boolean {
         val tasks = tasksOfFocusedDisplay() ?: return false
-        // 贴边浮标 / 迷你窗：任务还在但不在屏幕上，新启动会沿用它的旧小尺寸（表现为迷你窗），
-        // 所以先按「点浮标」的方式恢复成普通小窗。
-        tasks.firstOrNull { packageOfTask(it) == packageName && isMiniOrFloating(it) }?.let { task ->
+        // 贴边浮标 / 迷你窗：任务还在柔性表里、但不在屏幕上，新启动会沿用它的旧小尺寸
+        // （表现为迷你窗），所以先按「点浮标」的方式恢复成普通小窗。
+        // 判据用柔性表成员 + 不可见：浮标只缩 surface，Task.getBounds() 仍是原尺寸，按面积判不出来。
+        tasks.firstOrNull { packageOfTask(it) == packageName && isFlexibleMember(it) && !isTaskVisible(it) }
+            ?.let { task ->
             if (restoreMiniWindow(task, packageName)) return true
         }
         val task = tasks.firstOrNull { packageOfTask(it) == packageName && isTaskVisible(it) }
@@ -889,7 +891,10 @@ internal class ColorOsFreeformCoordinator(
                 debug(
                     "SYSTEM_LAUNCH_NO_MATCH_" + packageName + "_" +
                         tasks.joinToString("|") { each ->
-                            (packageOfTask(each) ?: "?") + ":" + (if (isTaskVisible(each)) 1 else 0)
+                            (packageOfTask(each) ?: "?") +
+                                ":v" + (if (isTaskVisible(each)) 1 else 0) +
+                                ":f" + (if (isFlexibleMember(each)) 1 else 0) +
+                                ":" + boundsOf(each)
                         },
                 )
                 return false
@@ -955,6 +960,27 @@ internal class ColorOsFreeformCoordinator(
             collectTasks(child, out, depth + 1)
         }
     }
+
+    /** 探针用：任务的边界尺寸，取不到返回 "?"。 */
+    private fun boundsOf(task: Any): String =
+        try {
+            val bounds = findMethod(task.javaClass, "getBounds", 0).invoke(task)
+                as? android.graphics.Rect ?: return "?"
+            bounds.width().toString() + "x" + bounds.height()
+        } catch (_: ReflectiveOperationException) {
+            "?"
+        } catch (_: RuntimeException) {
+            "?"
+        }
+
+    /** 任务是否登记在厂商的柔性任务表里（小窗、迷你窗、浮标都是）。 */
+    private fun isFlexibleMember(task: Any): Boolean =
+        try {
+            val members = readField(controller, "mFlexibleTasks") as? Iterable<*> ?: return false
+            synchronized(members) { members.any { it === task } }
+        } catch (_: RuntimeException) {
+            false
+        }
 
     /** 任务是否被收成了贴边浮标 / 迷你窗：面积不到屏幕一半。 */
     private fun isMiniOrFloating(task: Any): Boolean =
