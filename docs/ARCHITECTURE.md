@@ -1,67 +1,53 @@
-# FlymeFreeform 结构说明（契约层）
+# 结构说明
 
-本文件定义“系统长什么样、边界在哪、判据由谁负责”。改动前先读这里；实现细节读代码注释；
-踩坑历史读 CONSTRAINTS-ARCHIVE.md。
+这份文件只说三件事：代码分几块、每块负责什么、判断写在哪儿。
 
-## 1 进程与职责（唯一权威）
+## 进程
 
-| 进程 | 安装器 | 只做这些事 |
+| 进程 | 安装器 | 负责 |
 |---|---|---|
-| system_server | SystemServerHookInstaller | 启动判定与参数注入、窗口数量与准入、窗外关闭、收窗策略替换、扇形协调器 |
+| system_server | SystemServerHookInstaller | 启动参数注入、窗口数量与准入、窗外关闭、收窗、扇形协调 |
 | com.android.systemui | SystemUiHookInstaller | 底角触摸采集、通知点击转场 |
 | com.android.launcher | LauncherHookInstaller | 桌面侧底角触摸、桌面页面状态上报 |
-| com.coloros.smartsidebar:ui | SidebarHookInstaller | 「更多」面板接管、面板工具小窗注入 |
+| com.coloros.smartsidebar:ui | SidebarHookInstaller | 「更多」面板、面板工具小窗 |
 
-跨进程只有两条通道：侧边栏走 Binder（SidebarProtocol）；配置与状态走广播 + 远程 SharedPreferences。
-禁止静态字段跨进程共享。
+跨进程只有两条路：侧边栏走 Binder；配置走广播加远程 SharedPreferences。
 
-## 2 三条契约（判据只在这里定义）
+## 代码分层
 
-### 契约 A：启动判定（是否把小窗参数写进这次启动）
-- 实现：hook/launch/ActivityStarterZoomInjector（reasonFor 八段 + 抢占）
-- 输入：调用方包/uid、目标、action、resultTo、来源标记、开关快照
-- 输出：是否注入 + 早退原因
-- 不变量：总开关关闭 → 不改写；排除列表前台 → 不改写；禁用浮窗（目标/发起方/前台）→ 不改写
+- `logic/`：纯 Kotlin，不引用 android，不碰反射，可以被单测直接调用
+- `platform/coloros/`：只负责"读状态"和"执行动作"，不做判断
+- `hook/`：只挂钩子、转发参数，不写业务判断
 
-### 契约 B：扇形启动（点扇形固定项之后做什么）
-- 纯逻辑：logic/FanLaunchPolicy（无 Android 依赖、无反射、可单测）
-- 事实采集：platform/coloros/ColorOsFreeformCoordinator（反射读任务树与厂商状态）
-- 输入：目标包、该包是否存在可见任务
-- 输出：FrontExisting | LaunchAsZoom
-- 不变量：有可见窗口 → 只前置不重启；否则正常小窗启动
-- 边界：**迷你窗与贴边浮标是系统行为，模块不干预**（曾被当成 bug 修过两轮，均因不可判定而撤销）
+判断分布在两处纯逻辑里：`FanLaunchPolicy`（扇形点应用之后做什么）和 `ClosePolicy`（系统要收浮标时做什么）。
 
-### 契约 C：收窗策略（系统要收浮标时怎么办）
-- 纯逻辑：logic/ClosePolicy（可单测）
-- 输入：退出策略种类、触发入口（系统裁决 / 用户手势）、autoCloseWindow 开关
-- 输出：KeepOriginal | ReplaceWithToBack
-- 不变量：模块从不自己关窗口；只在系统裁决路径上把 ToFloat 换成 ToBack，并当帧隐藏 surface
+## 扇形点应用之后做什么
 
-## 3 数据流
+输入只有一条：这个包现在有没有可见任务。
 
-设置页 → 写远程 SharedPreferences → 各进程快照；
-同时发普通广播（必须 setShareIdentityEnabled）→ 接收方 forceReload + override。
+- 有可见任务：把它提到前台，不重新启动。重新启动会被系统原地改写成小窗，没有过渡动画。
+- 没有可见任务：正常以小窗启动。
 
-## 4 不变量（违反即 bug）
+迷你窗和贴边浮标不做特殊处理。它们由系统自己处理，模块插手过两轮，都因为状态判不出来而撤销：
+`getFlexibleZoomState()` 恒为 0，迷你窗的任务边界仍是满屏，浮标任务还会脱离任务树导致取不到包名。
 
-1. 模块不创建、不移动、不缩放窗口；只替换策略对象与隐藏 surface
-2. 任何反射调用都必须能声明“目标类/方法/字段已用 dexsql 核实”
-3. 任何在 hook 进程里注册的跨进程监听都视为不可靠；实时性只靠广播
-4. 纯逻辑层不得引用 android.*（logic/ 下的文件）
-5. 每个分支都必须有一条可搜索的日志码（SYSTEM_* / ZOOM_* / SIDEBAR_*）
+## 系统要收浮标时做什么
 
-## 5 未知项（写死在代码里之前必须实测）
+「自动收窗」打开时，凡是系统自己裁决要收成浮标的退出，都改成关闭，并在同一帧隐藏该任务的 surface。
 
-| 未知 | 现状 | 决定方式 |
-|---|---|---|
-| 迷你窗 / 浮标的判定 | 实测：getFlexibleZoomState() 恒为 0、Task 边界仍是满屏、任务可能脱离任务树导致包名解析失败 | **不做判定**，按系统行为放行 |
+不看这次退出由谁触发。扇形、更多面板、桌面、通知、应用内跳转都可能触发，逐个识别必然会漏。
+用户手动拖到边缘走的是拖拽入口，不属于系统裁决，保持原样。
 
-## 6 重构分片（每片独立可验收，禁止一次性大改）
+模块从不自己关窗口：退出动作仍由系统执行，模块只是把退出策略对象换掉，再隐藏 surface。
 
-| 片 | 内容 | 验收 |
-|---|---|---|
-| S1（本次） | 契约与约定文档、logic/ 纯逻辑骨架 | 文档与骨架评审 |
-| S2 | 扇形启动改为“采集事实 → 纯逻辑决策 → 执行”三段；形态映射表落位 | 单测 + 真机一次 |
-| S3 | 收窗改为 ClosePolicy 决策 + 唯一执行点 | 单测 + 日志成对出现 |
-| S4 | 启动判定 reasonFor 拆为数据驱动规则表 | 单测覆盖八段 |
-| S5 | 反射统一收敛到 platform/coloros/Reflect | 全仓 grep 检查 |
+## 几条硬规则
+
+1. 模块不创建、不移动、不缩放窗口
+2. 新增反射前先用 dexsql 在真机 jar 里确认方法签名
+3. hook 进程里的跨进程 SharedPreferences 监听不可靠，实时同步只靠广播，且发送端要 `setShareIdentityEnabled`
+4. 每个分支都要有一条能搜到的日志码
+
+## 改动顺序
+
+下一步是修那 4 条一直红的单元测试（手势 2 条、面板动画、图标几何），再谈把判断搬进 `logic/`。
+都不急，先修红的。
