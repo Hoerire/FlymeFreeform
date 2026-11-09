@@ -881,8 +881,11 @@ internal class ColorOsFreeformCoordinator(
         // 贴边浮标 / 迷你窗：任务还在柔性表里、但不在屏幕上，新启动会沿用它的旧小尺寸
         // （表现为迷你窗），所以先按「点浮标」的方式恢复成普通小窗。
         // 判据用柔性表成员 + 不可见：浮标只缩 surface，Task.getBounds() 仍是原尺寸，按面积判不出来。
-        tasks.firstOrNull { packageOfTask(it) == packageName && isFlexibleMember(it) && !isTaskVisible(it) }
-            ?.let { task ->
+        tasks.firstOrNull { each ->
+            packageOfTask(each) == packageName &&
+                !isTaskVisible(each) &&
+                (isFlexibleMember(each) || isMiniOrFloating(each))
+        }?.let { task ->
             if (restoreMiniWindow(task, packageName)) return true
         }
         val task = tasks.firstOrNull { packageOfTask(it) == packageName && isTaskVisible(it) }
@@ -1021,7 +1024,11 @@ internal class ColorOsFreeformCoordinator(
             val lock = atms?.javaClass?.getMethod("getGlobalLock")?.invoke(atms)
             val action = Runnable { inner.invoke(controller, strategy) }
             if (lock != null) synchronized(lock) { action.run() } else action.run()
-            debug("SYSTEM_LAUNCH_RESTORE_MINI_" + packageName)
+            debug(
+                "SYSTEM_LAUNCH_RESTORE_MINI_" + packageName +
+                    "_f" + (if (isFlexibleMember(task)) 1 else 0) +
+                    "_b" + boundsOf(task),
+            )
             true
         } catch (_: ReflectiveOperationException) {
             false
