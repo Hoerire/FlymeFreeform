@@ -228,6 +228,17 @@ internal class LauncherHookInstaller(
         }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_REPORT_FAILED", it) }
     }
 
+    /** 沿继承链找方法：桌面类层级较深，直接 getMethod 容易漏。 */
+    private fun findMethod(start: Class<*>, name: String, count: Int): java.lang.reflect.Method? {
+        var type: Class<*>? = start
+        while (type != null) {
+            type.declaredMethods.firstOrNull { it.name == name && it.parameterTypes.size == count }
+                ?.let { it.isAccessible = true; return it }
+            type = type.superclass
+        }
+        return null
+    }
+
     private fun isLauncherSystemPage(launcher: Context): Boolean =
         runCatching {
             val stateManager = launcher.javaClass.getMethod("getStateManager").invoke(launcher)
@@ -237,9 +248,10 @@ internal class LauncherHookInstaller(
                 ?.getField("OVERVIEW")
                 ?.get(null)
             if (state != null && overview != null && state === overview) return true
-            val workspace = launcher.javaClass.getMethod("getWorkspace").invoke(launcher)
-            val page = workspace?.javaClass?.getMethod("getCurrentPage")?.invoke(workspace) as? Int
-            page != null && page < 0
+            // 负一屏：桌面自带 isAssistantScreenVisible()，比"负页码"可靠。
+            // （实测负一屏是 com.coloros.assistantscreen 的独立窗口，不占 Workspace 页。）
+            findMethod(launcher.javaClass, "isAssistantScreenVisible", 0)
+                ?.invoke(launcher) as? Boolean == true
         }.getOrDefault(false)
 
     private fun shouldSuppress(owner: Context, event: MotionEvent): Boolean {
