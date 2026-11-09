@@ -1015,58 +1015,17 @@ internal object FloatingTaskRestorer {
                         val attrs = findField(child.javaClass, "mAttrs")?.get(child)
                         val pkg = attrs?.javaClass?.getField("packageName")?.get(attrs) as? String
                         if (pkg == packageName) {
-                            // 负一屏窗口是常驻的：返回桌面后 isVisible() 仍可能为 true。
-                            // 这里要求"请求可见 + 当前可见"，并且透明度不为 0。
-                            // 以「请求可见」为主判据：负一屏显示时它为 true，退回桌面后变 false；
-                            // isVisible() 对常驻窗口不够敏感。
-                            val requested =
-                                runCatching {
-                                    child.javaClass.getMethod("isVisibleRequested").invoke(child) as? Boolean
-                                }.getOrNull()
-                            if (requested != null) {
-                                if (requested) return true
-                            } else if (child.javaClass.getMethod("isVisible").invoke(child) as? Boolean == true) {
+                            // 负一屏窗口常驻、靠平移显示：隐藏时整块在屏幕左侧之外
+                            // （实测 mAttrs=(-1272,0)），显示时才滑到 0。
+                            // 因此只能看位置——isVisible / isVisibleRequested 一直是 true。
+                            val frame = runCatching {
+                                child.javaClass.getMethod("getFrame").invoke(child) as? android.graphics.Rect
+                            }.getOrNull() ?: runCatching {
+                                findField(child.javaClass, "mFrame")?.get(child) as? android.graphics.Rect
+                            }.getOrNull()
+                            if (frame != null && frame.width() > 0 &&
+                                frame.left > -frame.width() * 2 / 3
+                            ) {
                                 return true
                             }
                         }
-                    } else {
-                        pending.add(child)
-                    }
-                }
-            }
-            false
-        }.getOrDefault(false)
-    }
-
-    private fun packageOf(task: Any): String? =
-        runCatching {
-            val baseIntent = task.javaClass.getMethod("getBaseIntent").invoke(task) as? android.content.Intent
-            baseIntent?.component?.packageName
-                ?: (task.javaClass.getMethod("getRealActivity").invoke(task) as? android.content.ComponentName)
-                    ?.packageName
-        }.getOrNull()
-
-    private fun findField(start: Class<*>, name: String): java.lang.reflect.Field? {
-        var type: Class<*>? = start
-        while (type != null) {
-            runCatching { type.getDeclaredField(name) }.getOrNull()?.let {
-                it.isAccessible = true
-                return it
-            }
-            type = type.superclass
-        }
-        return null
-    }
-
-    private fun findMethod(start: Class<*>, name: String, count: Int): java.lang.reflect.Method? {
-        var type: Class<*>? = start
-        while (type != null) {
-            type.declaredMethods.firstOrNull { it.name == name && it.parameterTypes.size == count }?.let {
-                it.isAccessible = true
-                return it
-            }
-            type = type.superclass
-        }
-        return null
-    }
-}
