@@ -31,13 +31,13 @@ internal class ColorOsFreeformLauncher(
      */
     private val isZoomBlocked: (String) -> Boolean = { false },
     /**
-     * 该包是否已经有窗口。
+     * 把该包已有的窗口提到前台；没有窗口时返回 false。
      *
      * 已有任务再走一次小窗启动，命中的是系统的 getReusableOptionsForFreeForm：
-     * 复用那个任务、原地改写窗口参数，没有启动动画（实测是瞬间缩小）。
-     * 所以只要有窗口就不启动，不看窗口是什么形态。
+     * 复用那个任务、原地改写窗口参数，没有启动动画（实测是瞬间缩小）。所以有窗口时
+     * 不重新启动，只做前置。
      */
-    private val hasWindow: (String) -> Boolean = { false },
+    private val bringToFront: (String) -> Boolean = { false },
 ) {
     /** 详细日志：仅在「详细日志」开启时输出，与其他模块日志同一出口。 */
     private fun debug(code: String) {
@@ -45,8 +45,7 @@ internal class ColorOsFreeformLauncher(
     }
 
     fun launch(requested: ComponentName, atLeft: Boolean = true): FreeformLaunchResult {
-        if (hasWindow(requested.packageName)) {
-            debug("SYSTEM_LAUNCH_SKIP_HAS_WINDOW_" + requested.packageName)
+        if (bringToFront(requested.packageName)) {
             return FreeformLaunchResult.AlreadyOpen
         }
         var component = requested

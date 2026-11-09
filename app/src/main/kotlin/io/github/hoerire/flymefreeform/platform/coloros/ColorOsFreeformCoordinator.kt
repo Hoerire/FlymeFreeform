@@ -75,8 +75,8 @@ internal class ColorOsFreeformCoordinator(
         isZoomBlocked = { packageName ->
             lastSettings.isZoomLaunchExcluded(packageName) || lastSettings.isBlacklisted(packageName)
         },
-        // 已经有窗口的应用（任何形态）不再启动，见 hasWindowOf。
-        hasWindow = { packageName -> hasWindowOf(packageName) },
+        // 已经有窗口的应用不再重新启动，改为把已有窗口提到前台，见 bringWindowToFront。
+        bringToFront = { packageName -> bringWindowToFront(packageName) },
     )
     private val sidebar = ColorOsSidebarClient(context, handler, logger)
     private val appCatalog =
@@ -867,19 +867,28 @@ internal class ColorOsFreeformCoordinator(
       catch (_: RuntimeException) { null }
 
     /**
-     * 该包是否已经有窗口（任何形态：前台、后台全屏、小窗、贴边浮标）。
+     * 把该包已有的窗口提到前台，不重新启动。
      *
-     * 判据只有这一条：有窗口就不再启动。已有任务时系统会走 getReusableOptionsForFreeForm，
-     * 复用那个任务并原地改写窗口参数，没有启动动画（实测是瞬间缩小）。
-     *
-     * 任务从焦点显示内容的容器树里取，只沿 DisplayArea / DisplayContent 下钻；
-     * 取不到时返回 false，保持原行为。
+     * 扇形对「已经开着」的应用没有「再开一个」的语义，但也不能点了没反应：
+     * 直接前置已有任务，形态（全屏 / 小窗）保持不变——重新走小窗启动反而会被系统
+     * 原地改写成小窗且没有动画。找不到任务时返回 false，调用方按冷启动处理。
      */
-    private fun hasWindowOf(packageName: String): Boolean {
+    private fun bringWindowToFront(packageName: String): Boolean {
         val tasks = tasksOfFocusedDisplay() ?: return false
-        val found = tasks.any { packageOfTask(it) == packageName }
-        debug("SYSTEM_LAUNCH_HAS_WINDOW_" + packageName + "_" + found + "_n" + tasks.size)
-        return found
+        val task = tasks.firstOrNull { packageOfTask(it) == packageName } ?: return false
+        return try {
+            val moveToFront = findMethod(task.javaClass, "moveToFront", 1)
+            val atms = readField(controller, "mAtms")
+            val lock = atms?.javaClass?.getMethod("getGlobalLock")?.invoke(atms)
+            val action = Runnable { moveToFront.invoke(task, FRONT_REASON) }
+            if (lock != null) synchronized(lock) { action.run() } else action.run()
+            debug("SYSTEM_LAUNCH_FRONT_EXISTING_" + packageName + "_n" + tasks.size)
+            true
+        } catch (_: ReflectiveOperationException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
     }
 
     /** 焦点显示内容下的全部任务；取不到返回 null。 */
@@ -994,6 +1003,9 @@ internal class ColorOsFreeformCoordinator(
 
         /** 任务树下钻深度：实测 DisplayContent 下还套着 5 层以上 DisplayArea。 */
         const val MAX_TASK_WALK_DEPTH = 12
+
+        /** 前置已有窗口时写进系统日志的原因串。 */
+        const val FRONT_REASON = "FlymeFreeformFan"
 
         val CRITICAL_PACKAGES =
             setOf(
