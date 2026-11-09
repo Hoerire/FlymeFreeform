@@ -40,12 +40,6 @@ internal class OutsideTapCloseHookInstaller(
     /** 关闭去抖时间戳：一次点击只允许触发一次关闭。 */
     @Volatile private var lastCloseFiredAt = 0L
 
-    /** 已排期的延后收窗：同一任务重复排期时只保留一次。 */
-    private val pendingCloses =
-        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Any, Boolean>())
-
-    /** 排期用的主线程队列（收窗必须在 system_server 主线程执行）。 */
-    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     fun install(classLoader: ClassLoader) {
         try {
@@ -267,18 +261,17 @@ internal class OutsideTapCloseHookInstaller(
                             frame.methodName.contains("startActivity")
                     }
                     if (fromLimit && fromLaunch) {
-                        val controller = chain.thisObject
                         val current = strategy ?: return@intercept chain.proceed()
                         val task = runCatching {
                             fieldInHierarchy(current.javaClass, "mTask")?.get(current)
                         }.getOrNull()
                         val back = task?.let { runCatching { backConstructor.newInstance(it, true) }.getOrNull() }
-                        if (controller != null && task != null && back != null) {
+                        if (task != null && back != null) {
                             module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE", null)
-                            // 先不退出：等启动动画播完再收，避免两条动画叠在同一帧。
-                            if (deferCloseAfterLaunch(controller, innerLocked, task, back)) {
-                                return@intercept null
-                            }
+                            val result = chain.proceed(arrayOf(back))
+                            // 被动收窗不留画面：退场动画在新应用之上播，只能当帧抹掉。
+                            hideClosingSurface(task)
+                            return@intercept result
                         }
                     }
                 }
@@ -288,102 +281,47 @@ internal class OutsideTapCloseHookInstaller(
     }
 
     /**
-     * 延后收窗：等新应用的启动动画播完，再收掉被顶掉的旧窗口。
+     * 被动收窗不留画面。
      *
-     * 原先是同帧起播——旧窗走 ExitFlexibleTaskToBackStrategy 的退场缩放，新窗走启动的
-     * zoom 展开，两条 SurfaceControl 动画并行叠加。这里把旧窗退出压到启动动画之后执行，
-     * 两次动画各自完整、先后播放。
+     * 小窗压在小窗专用层（ALWAYS_ON_TOP_BASE_LAYER）之上，退场动画无论排在启动之前、
+     * 之后还是同时，都会画在新应用上面；所以「被新启动顶掉」这一次不播画面，直接在
+     * 退出同一个同步事务里隐藏任务 surface。
      *
-     * 只有「超限替换」这一条分支命中；点窗外、标题栏按钮、拖边缘等独立关闭不经过这里，
-     * 动画与原厂一致。返回 false 表示同一任务已经在排期里，调用方退回原来的立即退出。
+     * 依据：厂商 exitFlexibleTask 的 customTransition == 0x10（转浮标）分支就是
+     * reparent + hide + apply，隐藏 surface 是这套框架消画面的正规手段；这里只取 hide，
+     * 不跟它的 setTaskState(4) / setIsAlwaysTopStateChanged(false)，避免把任务留在浮标语义。
+     *
+     * 只在「超限替换」分支调用；点窗外、标题栏按钮、拖边缘等独立关闭不经过这里，
+     * 退场动画与原厂一致。
      */
-    private fun deferCloseAfterLaunch(
-        controller: Any,
-        innerLocked: Method,
-        task: Any,
-        backStrategy: Any,
-    ): Boolean {
-        if (!pendingCloses.add(task)) return false
-        val delay = closeDelayMillis()
-        if (delay <= 0L) {
-            runExit(controller, innerLocked, task, backStrategy, "IMMEDIATE")
-            return true
-        }
-        mainHandler.postDelayed(
-            { runExit(controller, innerLocked, task, backStrategy, "DEFERRED") },
-            delay,
-        )
-        module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_DEFERRED_" + delay, null)
-        return true
-    }
-
-    /**
-     * 真正执行退出。
-     *
-     * exitFlexibleTaskWindowInnerLocked 的方法名带 Locked，原调用点都在 WM 全局锁内，
-     * 延后执行时锁已经不在了，因此这里自己取 mAtms.getGlobalLock() 再调；
-     * 顺带在任务已经不在小窗列表时放弃，避免对已销毁的任务做退出。
-     */
-    private fun runExit(
-        controller: Any,
-        innerLocked: Method,
-        task: Any,
-        backStrategy: Any,
-        stage: String,
-    ) {
-        pendingCloses.remove(task)
+    private fun hideClosingSurface(task: Any) {
         try {
-            val body = Runnable {
-                if (!shouldRunExit(controller, task)) {
-                    module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_SKIP_" + stage + "_GONE", null)
-                    return@Runnable
-                }
-                innerLocked.invoke(controller, backStrategy)
-                module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_FIRED_" + stage, null)
+            val surface = task.javaClass.getMethod("getSurfaceControl").invoke(task)
+                as? android.view.SurfaceControl
+            val transaction = task.javaClass.getMethod("getSyncTransaction").invoke(task)
+                as? android.view.SurfaceControl.Transaction
+            if (surface == null || transaction == null || !surface.isValid) {
+                module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_HIDE_SKIPPED", null)
+                return
             }
-            val atms = fieldInHierarchy(controller.javaClass, "mAtms")?.get(controller)
-            val lock = atms?.javaClass?.getMethod("getGlobalLock")?.invoke(atms)
-            if (lock != null) synchronized(lock) { body.run() } else body.run()
-        } catch (exception: InvocationTargetException) {
-            val cause = exception.targetException ?: exception
+            transaction.hide(surface)
+            transaction.apply()
+            module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_SURFACE_HIDDEN", null)
+        } catch (exception: ReflectiveOperationException) {
             module.log(
                 Log.WARN,
                 TAG,
-                "ZOOM_REPLACE_TO_CLOSE_FIRED_FAILED_" + cause.javaClass.simpleName + "_" + cause.message,
-                cause,
+                "ZOOM_REPLACE_TO_CLOSE_HIDE_FAILED_" + exception.javaClass.simpleName + "_" + exception.message,
+                exception,
             )
-        } catch (exception: ReflectiveOperationException) {
-            module.log(Log.WARN, TAG, "ZOOM_REPLACE_TO_CLOSE_FIRED_FAILED_" + exception.javaClass.simpleName, exception)
         } catch (exception: RuntimeException) {
-            module.log(Log.WARN, TAG, "ZOOM_REPLACE_TO_CLOSE_FIRED_FAILED_" + exception.javaClass.simpleName, exception)
+            module.log(
+                Log.WARN,
+                TAG,
+                "ZOOM_REPLACE_TO_CLOSE_HIDE_FAILED_" + exception.javaClass.simpleName + "_" + exception.message,
+                exception,
+            )
         }
-    }
-
-    /**
-     * 是否还需要执行退出。
-     *
-     * 读不到小窗列表时按"需要"处理：漏收一个窗口比卡住等一个永不补发的退出更糟。
-     * 只有在确实读到列表、且任务已经不在其中时才放弃。
-     */
-    private fun shouldRunExit(controller: Any, task: Any): Boolean =
-        runCatching {
-            val containers = fieldInHierarchy(controller.javaClass, "mFlexibleTasks")?.get(controller)
-                ?: return@runCatching true
-            val members = synchronized(containers) {
-                (containers as? Iterable<*>)?.toList()
-            } ?: return@runCatching true
-            members.any { it === task }
-        }.getOrDefault(true)
-
-    /** 启动动画时长；系统把动画关掉（scale=0）时立即收窗。 */
-    private fun closeDelayMillis(): Long {
-        val scale = runCatching {
-            android.animation.ValueAnimator::class.java
-                .getMethod("getDurationScale")
-                .invoke(null) as? Float
-        }.getOrNull() ?: 1f
-        if (!scale.isFinite() || scale <= 0f) return 0L
-        return (LAUNCH_ANIM_DELAY_MS * scale).toLong()
     }
 
     /** 沿继承链找字段（厂商把字段放在父类上）。 */
@@ -973,9 +911,6 @@ internal class OutsideTapCloseHookInstaller(
         const val ORDINARY_ZOOM_STATE = 1
         const val SCALE_TOLERANCE = 0.02f
         const val FAILURE_LOG_INTERVAL_MS = 10_000L
-
-        /** 启动动画时长：新窗 zoom 展开播完之后才收旧窗。 */
-        const val LAUNCH_ANIM_DELAY_MS = 420L
     }
 }
 
