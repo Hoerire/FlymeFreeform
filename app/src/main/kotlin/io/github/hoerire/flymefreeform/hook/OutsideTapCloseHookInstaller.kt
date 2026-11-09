@@ -304,7 +304,9 @@ internal class OutsideTapCloseHookInstaller(
                 module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_HIDE_SKIPPED", null)
                 return
             }
-            transaction.hide(surface)
+            // SurfaceControl.Transaction#hide 是 @hide 成员，编译期不可见，只能反射调用。
+            val hide = transaction.javaClass.getMethod("hide", android.view.SurfaceControl::class.java)
+            hide.invoke(transaction, surface)
             transaction.apply()
             module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_SURFACE_HIDDEN", null)
         } catch (exception: ReflectiveOperationException) {
