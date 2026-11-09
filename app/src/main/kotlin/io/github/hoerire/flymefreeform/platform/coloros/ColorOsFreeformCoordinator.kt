@@ -171,6 +171,12 @@ internal class ColorOsFreeformCoordinator(
                 val dx = event.getRawX(index) - swipeStartX
                 val dy = event.getRawY(index) - swipeStartY
                 val slop = touchSlop
+                // 证据：底部按下后是否真的收到了 MOVE，以及位移方向。
+                val now = android.os.SystemClock.uptimeMillis()
+                if (now - bottomSwipeLogAt > 500L) {
+                    bottomSwipeLogAt = now
+                    debug("SYSTEM_BOTTOM_SWIPE_MOVE_dx" + dx.toInt() + "_dy" + dy.toInt())
+                }
                 // 垂直向上为主才认定为上滑；斜向内上滑（dx 占比大）交给扇形。
                 if (dy < -slop && kotlin.math.abs(dx) < kotlin.math.abs(dy) * BOTTOM_SWIPE_VERTICAL_RATIO) {
                     bottomSwipeAt = android.os.SystemClock.uptimeMillis()
@@ -196,6 +202,7 @@ internal class ColorOsFreeformCoordinator(
     private var swipePointerId = -1
     private var swipeStartX = 0f
     private var swipeStartY = 0f
+    private var bottomSwipeLogAt = 0L
     /** 本次 overlay 实际用的窗口类型；决定它压不压在输入法上面。 */
     private var overlayWindowType = OVERLAY_WINDOW_TYPE
     private val pointerQueueLock = Any()
