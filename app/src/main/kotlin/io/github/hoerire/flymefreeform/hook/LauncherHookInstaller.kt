@@ -147,7 +147,7 @@ internal class LauncherHookInstaller(
         runCatching {
             val stateManager = launcher.javaClass.getMethod("getStateManager").invoke(launcher)
             val listenerClass = launcher.javaClass.classLoader.loadClass(
-                "com.android.launcher3.statemanager.StateManager$StateListener",
+                "com.android.launcher3.statemanager.StateManager\$StateListener",
             )
             val proxy = java.lang.reflect.Proxy.newProxyInstance(
                 listenerClass.classLoader,
