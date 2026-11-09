@@ -247,11 +247,19 @@ internal class OutsideTapCloseHookInstaller(
                     configuration.forceReload()
                 }
                 if (isFloatExit && configuration.snapshot.autoCloseWindow) {
-                    val fromLimit = Throwable().stackTrace.any { frame ->
+                    val frames = Throwable().stackTrace
+                    val fromLimit = frames.any { frame ->
                         frame.methodName.contains("updateTaskMaxNum") ||
                             frame.methodName.contains("handleFlexibleExChange")
                     }
-                    if (fromLimit) {
+                    // 必须同时是「新启动应用」引起的超限：单纯在小窗之间切换焦点也会走上面两处，
+                    // 那种情况下关窗会让人切不回原窗口，所以只认启动链路。
+                    val fromLaunch = frames.any { frame ->
+                        frame.methodName.contains("executeRequest") ||
+                            frame.methodName.contains("ActivityStarter") ||
+                            frame.methodName.contains("startActivity")
+                    }
+                    if (fromLimit && fromLaunch) {
                         val current = strategy ?: return@intercept chain.proceed()
                         val task = runCatching {
                             fieldInHierarchy(current.javaClass, "mTask")?.get(current)
