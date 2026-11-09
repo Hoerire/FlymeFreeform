@@ -183,8 +183,13 @@ internal class LauncherHookInstaller(
             // 桌面内上滑进入多任务：状态切换是「请求」出去的，完成要到 600 ms 之后，
             // 所以要挂在 goToState(BaseState) 上，目标为 OVERVIEW 时立刻置位。
             runCatching {
-                val launcherClass = launcher.javaClass.classLoader.loadClass("com.android.launcher3.Launcher")
-                val stateManager = launcherClass.getMethod("getStateManager").invoke(launcher)
+                val loader = target.inputMethod.declaringClass.classLoader
+                val launcherClass = loader.loadClass("com.android.launcher3.Launcher")
+                val app = appContext() ?: return@runCatching
+                val launcherInstance = launcherClass
+                    .getMethod("getLauncher", Context::class.java)
+                    .invoke(null, app) ?: return@runCatching
+                val stateManager = launcherClass.getMethod("getStateManager").invoke(launcherInstance)
                     ?: return@runCatching
                 val goToState = stateManager.javaClass.methods.firstOrNull { method ->
                     method.name == "goToState" &&
