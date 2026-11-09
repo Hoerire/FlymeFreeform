@@ -30,6 +30,14 @@ internal class ColorOsFreeformLauncher(
      * 所以启动源头必须自己判一次；命中就退化成普通全屏启动。
      */
     private val isZoomBlocked: (String) -> Boolean = { false },
+    /**
+     * 该包是否已经是屏幕上的顶层应用。
+     *
+     * 前台应用再走一次小窗启动，会命中系统的「替换已有窗口」分支：任务原地从全屏改成
+     * 小窗，而且没有过渡动画（实测是突然缩小）。扇形对当前应用没有「再打开一次」的语义，
+     * 因此直接拦掉，什么都不做。
+     */
+    private val isForeground: (String) -> Boolean = { false },
 ) {
     /** 详细日志：仅在「详细日志」开启时输出，与其他模块日志同一出口。 */
     private fun debug(code: String) {
@@ -37,6 +45,10 @@ internal class ColorOsFreeformLauncher(
     }
 
     fun launch(requested: ComponentName, atLeft: Boolean = true): FreeformLaunchResult {
+        if (isForeground(requested.packageName)) {
+            debug("SYSTEM_LAUNCH_SKIP_FOREGROUND_" + requested.packageName)
+            return FreeformLaunchResult.AlreadyForeground
+        }
         var component = requested
         var reason = unavailableReason(component)
         if (reason != null) {
@@ -226,6 +238,9 @@ internal class ColorOsFreeformLauncher(
 
 internal sealed interface FreeformLaunchResult {
     data object Started : FreeformLaunchResult
+
+    /** 目标已经是顶层应用，不再重新启动。 */
+    data object AlreadyForeground : FreeformLaunchResult
 
     data class TargetUnavailable(
         val component: ComponentName,

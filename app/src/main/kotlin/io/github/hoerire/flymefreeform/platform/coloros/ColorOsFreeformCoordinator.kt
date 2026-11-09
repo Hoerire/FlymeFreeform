@@ -75,6 +75,8 @@ internal class ColorOsFreeformCoordinator(
         isZoomBlocked = { packageName ->
             lastSettings.isZoomLaunchExcluded(packageName) || lastSettings.isBlacklisted(packageName)
         },
+        // 顶层应用不再以小窗重新打开自己：系统会把现有任务原地改成小窗，且没有过渡动画。
+        isForeground = { packageName -> topRunningPackage() == packageName },
     )
     private val sidebar = ColorOsSidebarClient(context, handler, logger)
     private val appCatalog =
@@ -645,6 +647,8 @@ internal class ColorOsFreeformCoordinator(
             atLeft = overlayAtLeft,
         )) {
             FreeformLaunchResult.Started -> debug("SYSTEM_LAUNCH_APP_OK_" + target.packageName)
+            FreeformLaunchResult.AlreadyForeground ->
+                debug("SYSTEM_LAUNCH_APP_ALREADY_FOREGROUND_" + target.packageName)
             is FreeformLaunchResult.TargetUnavailable -> {
                 // WARN 常开：目标不可用时必须能定位到具体组件与原因。
                 val code = "FREEFORM_LAUNCH_TARGET_UNAVAILABLE_" +
@@ -826,18 +830,27 @@ internal class ColorOsFreeformCoordinator(
         focusedWindowPackage()?.let { packageName ->
             if (packageName in CRITICAL_PACKAGES) return true
         }
+        val packageName = topRunningPackage() ?: return false
+        return packageName in CRITICAL_PACKAGES
+    }
+
+    /**
+     * 顶层（焦点栈）正在运行的 Activity 所属包；取不到返回 null。
+     *
+     * 走的是 WindowManager 的焦点根任务，不依赖「最后 resumed 的活动」这条缓存：
+     * 后者在小窗之间切换时可能滞后一帧，而这里要判的是「此刻屏幕上是谁」。
+     */
+    private fun topRunningPackage(): String? {
         return try {
-            val atms = readField(controller, "mAtms") ?: return false
-            val root = readField(atms, "mRootWindowContainer") ?: return false
-            val task = findMethod(root.javaClass, "getTopDisplayFocusedRootTask", 0).invoke(root) ?: return false
-            val activity =
-                findMethod(task.javaClass, "topRunningActivity", 0).invoke(task) ?: return false
-            val packageName = readField(activity, "packageName") as? String ?: return false
-            packageName in CRITICAL_PACKAGES
+            val atms = readField(controller, "mAtms") ?: return null
+            val root = readField(atms, "mRootWindowContainer") ?: return null
+            val task = findMethod(root.javaClass, "getTopDisplayFocusedRootTask", 0).invoke(root) ?: return null
+            val activity = findMethod(task.javaClass, "topRunningActivity", 0).invoke(task) ?: return null
+            readField(activity, "packageName") as? String
         } catch (_: ReflectiveOperationException) {
-            false
+            null
         } catch (_: RuntimeException) {
-            false
+            null
         }
     }
 
