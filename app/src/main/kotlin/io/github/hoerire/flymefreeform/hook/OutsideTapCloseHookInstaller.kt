@@ -261,28 +261,18 @@ internal class OutsideTapCloseHookInstaller(
                             name.contains("determineFlexibleTaskToExit") ||
                             name.contains("setLastFlexibleTaskToExit")
                     }
-                    // 必须同时是「新启动应用」引起的退出：单纯在小窗之间切换焦点也会走上面几处，
-                    // 那种情况下关窗会让人切不回原窗口，所以只认启动链路。
-                    val launchOnStack = frames.any { frame ->
-                        val name = frame.methodName
-                        name.contains("executeRequest") ||
-                            name.contains("ActivityStarter") ||
-                            name.contains("startActivity")
-                    }
-                    // 退出裁决可能换线程执行，栈里就看不到发起启动的帧（实测 launch0 那次
-                    // 启动在主线程、裁决在 5311 线程），此时按「刚启动过」兜底。
-                    val launchRecent = RecentLaunchClock.recent(LAUNCH_LINK_WINDOW_MS)
-                    val fromLaunch = launchOnStack || launchRecent
-                    // 探针：每次「变浮标」退出都留下判据取值，复现一次即可定位。
+                    // 不再判断"这次退出是不是启动引起的"：入口太多（扇形、更多面板、桌面、
+                    // 通知、应用内跳转），而用户的规则只有一条——不允许窗口被收成贴边浮标。
+                    // 判据只看这次退出是不是系统自己的"该谁退出"裁决（determine*/updateTaskMaxNum*），
+                    // 用户拖到边缘走的拖拽入口不经过这里。
                     module.log(
                         Log.DEBUG,
                         TAG,
                         "ZOOM_REPLACE_PROBE_limit" + (if (fromLimit) 1 else 0) +
-                            "_launch" + (if (launchOnStack) 1 else 0) +
-                            "_recent" + (if (launchRecent) 1 else 0),
+                            "_recent" + (if (RecentLaunchClock.recent(LAUNCH_LINK_WINDOW_MS)) 1 else 0),
                         null,
                     )
-                    if (fromLimit && fromLaunch) {
+                    if (fromLimit) {
                         val current = strategy ?: return@intercept chain.proceed()
                         val task = runCatching {
                             fieldInHierarchy(current.javaClass, "mTask")?.get(current)
