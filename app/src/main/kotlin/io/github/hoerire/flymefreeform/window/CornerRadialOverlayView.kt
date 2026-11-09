@@ -231,6 +231,10 @@ internal class CornerRadialOverlayView(
         return selectedIndex
     }
 
+    /** 入场动画是否已经播完；没播完就抬手说明是误触，不该启动应用。 */
+    fun isSettled(): Boolean =
+        android.os.SystemClock.uptimeMillis() - shownAtUptime >= RadialEntryMotion.DURATION_MILLIS
+
     fun finishGesture() {
         val selection = selectedIndex
         val selectionLabel =

@@ -471,8 +471,15 @@ internal class ColorOsFreeformCoordinator(
                 gestureEngine.setSelection(selected)
             }
             is GestureAction.Commit -> {
-                debug("SYSTEM_GESTURE_COMMIT")
-                overlay?.finishGesture()
+                val view = overlay
+                if (view != null && !view.isSettled()) {
+                    // 扇形还在展开中就抬手：快速上滑容易命中第一格而"秒启动"，判为误触。
+                    debug("SYSTEM_GESTURE_COMMIT_TOO_EARLY")
+                    view.cancelGesture()
+                } else {
+                    debug("SYSTEM_GESTURE_COMMIT")
+                    view?.finishGesture()
+                }
             }
             // 手势被判取消时不要立刻收起：交给抬手（Commit）或系统 ACTION_CANCEL 决定，
             // 否则滑动过程中一旦被判取消，扇形就会自己消失。
