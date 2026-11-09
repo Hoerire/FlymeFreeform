@@ -154,7 +154,7 @@ internal class LauncherHookInstaller(
     }
 
     private fun installPageReporter(owner: Context) {
-        val launcher = resolveLauncher(owner) ?: return
+        val launcher = resolveLauncher(owner) ?: owner
         if (!pageReporterStarted.compareAndSet(false, true)) return
         runCatching {
             val stateManager = launcher.javaClass.getMethod("getStateManager").invoke(launcher)
@@ -171,6 +171,22 @@ internal class LauncherHookInstaller(
             stateManager?.javaClass
                 ?.getMethod("addStateListener", listenerClass)
                 ?.invoke(stateManager, proxy)
+            // 在 Launcher.onResume 里拿实例最可靠：那时刻 thisObject 就是 Launcher。
+            runCatching {
+                val launcherClass = launcher.javaClass.classLoader.loadClass("com.android.launcher3.Launcher")
+                val onResume = launcherClass.getMethod("onResume")
+                module.hook(onResume)
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .setId("flymefreeform.launcher.page_reporter")
+                    .intercept { chain ->
+                        val result = chain.proceed()
+                        (chain.thisObject as? Context)?.let { instance ->
+                            installPageReporter(instance)
+                            reportPageState(instance)
+                        }
+                        result
+                    }
+            }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_RESUME_HOOK_FAILED", it) }
             // 负一屏是桌面的一个翻页，不触发状态切换，这里单独跟一下页码变化。
             runCatching {
                 val pagedView = launcher.javaClass.classLoader.loadClass("com.android.launcher3.PagedView")
