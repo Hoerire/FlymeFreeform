@@ -180,6 +180,33 @@ internal class LauncherHookInstaller(
                 }
                 module.log(Log.INFO, TAG, "LAUNCHER_SWIPE_HOOK_INSTALLED", null)
             }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_SWIPE_HOOK_FAILED", it) }
+            // 桌面内上滑进入多任务：状态切换是「请求」出去的，完成要到 600 ms 之后，
+            // 所以要挂在 goToState(BaseState) 上，目标为 OVERVIEW 时立刻置位。
+            runCatching {
+                val launcherClass = launcher.javaClass.classLoader.loadClass("com.android.launcher3.Launcher")
+                val stateManager = launcherClass.getMethod("getStateManager").invoke(launcher)
+                    ?: return@runCatching
+                val goToState = stateManager.javaClass.methods.firstOrNull { method ->
+                    method.name == "goToState" &&
+                        method.parameterTypes.size == 2 &&
+                        method.parameterTypes[0].name.contains("BaseState")
+                } ?: run {
+                    module.log(Log.WARN, TAG, "LAUNCHER_GOTO_STATE_MISSING", null)
+                    return@runCatching
+                }
+                module.hook(goToState)
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .setId("flymefreeform.launcher.goto_state")
+                    .intercept { chain ->
+                        val targetState = chain.args.getOrNull(0)?.toString().orEmpty()
+                        if (targetState.contains("OVERVIEW", ignoreCase = true)) {
+                            module.log(Log.DEBUG, TAG, "LAUNCHER_GOTO_OVERVIEW", null)
+                            appContext()?.let { publishBlocked(it, true) }
+                        }
+                        chain.proceed()
+                    }
+                module.log(Log.INFO, TAG, "LAUNCHER_GOTO_STATE_HOOKED", null)
+            }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_GOTO_STATE_FAILED", it) }
             module.log(Log.INFO, TAG, "LAUNCHER_CORNER_INPUT_HOOK_INSTALLED")
         } catch (exception: IllegalArgumentException) {
             module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_HOOK_REJECTED", exception)
