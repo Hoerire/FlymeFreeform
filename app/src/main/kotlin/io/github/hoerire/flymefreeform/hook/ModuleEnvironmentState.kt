@@ -36,6 +36,9 @@ internal class ModuleEnvironmentState(
     @Volatile private var gestureNavigation = false
     @Volatile private var keyguardLocked = true
     @Volatile private var foregroundPackage: String? = null
+
+    /** 当前前台 Activity 的类名，用于识别多任务 / 最近任务界面。 */
+    @Volatile private var foregroundActivity: String? = null
     @Volatile private var keyguardRecheckNeeded = true
     private var lastObservation: Observation? = null
     private var lastFailureAt = -10_000L
@@ -149,12 +152,15 @@ internal class ModuleEnvironmentState(
 
     fun isGestureAllowed(refreshKeyguard: Boolean = false): Boolean {
         if (refreshKeyguard && keyguardRecheckNeeded) refreshKeyguardState()
+        // 多任务 / 最近任务界面本身是系统页面，在其中呼出扇形菜单没有意义，直接禁止。
+        if (isRecentsForeground()) return false
         return isModuleAllowed() && gestureNavigation && !keyguardLocked
     }
 
     /** 记录当前前台应用，供排除列表判定使用。仅在 system_server 内更新。 */
-    fun updateForeground(packageName: String?) {
+    fun updateForeground(packageName: String?, activityName: String? = null) {
         foregroundPackage = packageName
+        foregroundActivity = activityName
     }
 
     /**
@@ -172,6 +178,18 @@ internal class ModuleEnvironmentState(
 
     /** 当前前台应用是否在排除列表内。 */
     fun isForegroundExcluded(): Boolean = isExcluded(foregroundPackage)
+
+    /**
+     * 当前是否处于多任务 / 最近任务界面。
+     *
+     * 这里的界面本身就是系统页面（Recents/Overview），在其中呼出扇形菜单没有意义，
+     * 且会盖住缩略图，因此直接禁止呼出。
+     */
+    fun isRecentsForeground(): Boolean {
+        val name = foregroundActivity ?: return false
+        return name.contains("Recents", ignoreCase = true) ||
+            name.contains("Overview", ignoreCase = true)
+    }
 
     /**
      * 当前前台应用是否在「小窗跳转」的排除列表内。

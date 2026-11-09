@@ -94,7 +94,11 @@ internal class SystemServerHookInstaller(
                 .intercept { chain ->
                     runCatching {
                         val record = chain.getArg(0)
-                        environment.updateForeground(readField(record, "packageName") as? String)
+                        val component = readField(record, "mActivityComponent") as? android.content.ComponentName
+                        environment.updateForeground(
+                            (readField(record, "packageName") as? String) ?: component?.packageName,
+                            component?.className,
+                        )
                     }
                     chain.proceed()
                 }
