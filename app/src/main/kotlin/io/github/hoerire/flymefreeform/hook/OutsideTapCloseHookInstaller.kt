@@ -925,21 +925,14 @@ internal object FloatingTaskRestorer {
     }
 
     fun restore(packageName: String): Boolean {
-        val target = controller ?: resolveController()
-        if (target == null) {
-            debug("FLOAT_RESTORE_NO_CONTROLLER_" + packageName)
-            return false
-        }
+        val target = controller ?: resolveController() ?: return false
         return runCatching {
             val tasksField = findField(target.javaClass, "mFlexibleTasks") ?: return false
             @Suppress("UNCHECKED_CAST")
             val tasks = tasksField.get(target) as? List<Any?> ?: return false
-            val samePkg = tasks.filterNotNull().filter { packageOf(it) == packageName }
-            val task = samePkg.firstOrNull { isMiniOrFloating(it) }
-            if (task == null) {
-                debug("FLOAT_RESTORE_NO_MINI_" + packageName + "_candidates" + samePkg.size)
-                return false
-            }
+            val task = tasks.firstOrNull { candidate ->
+                candidate != null && packageOf(candidate) == packageName && isMiniOrFloating(candidate)
+            } ?: return false
             val loader = target.javaClass.classLoader
             val fullClass = Class.forName("com.android.server.wm.ExitFlexibleTaskToFullStrategy", false, loader)
             val taskClass = Class.forName("com.android.server.wm.Task", false, loader)
@@ -995,10 +988,6 @@ internal object FloatingTaskRestorer {
             val area = bounds.width().toLong() * bounds.height()
             area > 0 && area * 2 < screen
         }.getOrDefault(false)
-
-    private fun debug(code: String) {
-        io.github.hoerire.flymefreeform.log.ModuleLog.debug("FlymeFreeform") { code }
-    }
 
     private fun packageOf(task: Any): String? =
         runCatching {
