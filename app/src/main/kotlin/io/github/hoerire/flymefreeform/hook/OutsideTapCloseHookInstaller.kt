@@ -40,6 +40,13 @@ internal class OutsideTapCloseHookInstaller(
     /** 关闭去抖时间戳：一次点击只允许触发一次关闭。 */
     @Volatile private var lastCloseFiredAt = 0L
 
+    /** 已排期的延后收窗：同一任务重复排期时只保留一次。 */
+    private val pendingCloses =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Any, Boolean>())
+
+    /** 排期用的主线程队列（收窗必须在 system_server 主线程执行）。 */
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
     fun install(classLoader: ClassLoader) {
         try {
             val listenerClass = classLoader.loadClass(TOUCH_LISTENER_CLASS)
@@ -191,16 +198,6 @@ internal class OutsideTapCloseHookInstaller(
                     it,
                 )
             }
-        // 独立安装：只负责把"被新启动顶掉的收窗"从过渡动画目标里剔除，失败不影响关闭本身。
-        runCatching { installSkipReplaceCloseAnim(classLoader) }
-            .onFailure {
-                module.log(
-                    Log.WARN,
-                    TAG,
-                    "ZOOM_REPLACE_TO_CLOSE_SKIP_ANIM_FAILED_" + it.javaClass.simpleName + "_" + it.message,
-                    it,
-                )
-            }
     }
 
     /**
@@ -270,15 +267,18 @@ internal class OutsideTapCloseHookInstaller(
                             frame.methodName.contains("startActivity")
                     }
                     if (fromLimit && fromLaunch) {
+                        val controller = chain.thisObject
                         val current = strategy ?: return@intercept chain.proceed()
                         val task = runCatching {
                             fieldInHierarchy(current.javaClass, "mTask")?.get(current)
                         }.getOrNull()
                         val back = task?.let { runCatching { backConstructor.newInstance(it, true) }.getOrNull() }
-                        if (task != null && back != null) {
-                            ReplaceCloseMarker.mark(task)
+                        if (controller != null && task != null && back != null) {
                             module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE", null)
-                            return@intercept chain.proceed(arrayOf(back))
+                            // 先不退出：等启动动画播完再收，避免两条动画叠在同一帧。
+                            if (deferCloseAfterLaunch(controller, innerLocked, task, back)) {
+                                return@intercept null
+                            }
                         }
                     }
                 }
@@ -288,40 +288,102 @@ internal class OutsideTapCloseHookInstaller(
     }
 
     /**
-     * 把「被新启动顶掉」的那次收窗从过渡动画目标里剔除。
+     * 延后收窗：等新应用的启动动画播完，再收掉被顶掉的旧窗口。
      *
-     * 关闭本身仍走 ExitFlexibleTaskToBackStrategy，只是这条画面变化不再排进过渡动画，
-     * 于是启动的 TRANSIT_ZOOM_OPEN 独占屏幕，不再与新窗口的退场动画并行。
-     * 只认 ReplaceCloseMarker 记录过的任务；点窗外、标题栏按钮、拖边缘这些独立关闭
-     * 不经过替换分支，动画与原厂一致。
+     * 原先是同帧起播——旧窗走 ExitFlexibleTaskToBackStrategy 的退场缩放，新窗走启动的
+     * zoom 展开，两条 SurfaceControl 动画并行叠加。这里把旧窗退出压到启动动画之后执行，
+     * 两次动画各自完整、先后播放。
      *
-     * 判据来自 TransitionController 自身的语义：isFlexibleTaskNeedRemoveAnim 返回 true
-     * 表示把该条 change 从动画目标集合里移除（源码里的日志是 "updateAnimTargetIfNeed …
-     * remove it" / "remove current task that is custom animating"），因此这里返回 true
-     * 只影响「播不播动画」，不改任何退出状态机。
+     * 只有「超限替换」这一条分支命中；点窗外、标题栏按钮、拖边缘等独立关闭不经过这里，
+     * 动画与原厂一致。返回 false 表示同一任务已经在排期里，调用方退回原来的立即退出。
      */
-    private fun installSkipReplaceCloseAnim(loader: ClassLoader) {
-        val controllerClass = loader.loadClass(TRANSITION_CONTROLLER_CLASS)
-        val target = controllerClass.declaredMethods.firstOrNull { candidate ->
-            candidate.name == "isFlexibleTaskNeedRemoveAnim" && candidate.parameterTypes.size == 3
-        } ?: run {
-            module.log(Log.WARN, TAG, "ZOOM_REPLACE_TO_CLOSE_SKIP_ANIM_NO_METHOD", null)
-            return
+    private fun deferCloseAfterLaunch(
+        controller: Any,
+        innerLocked: Method,
+        task: Any,
+        backStrategy: Any,
+    ): Boolean {
+        if (!pendingCloses.add(task)) return false
+        val delay = closeDelayMillis()
+        if (delay <= 0L) {
+            runExit(controller, innerLocked, task, backStrategy, "IMMEDIATE")
+            return true
         }
-        target.isAccessible = true
-        module
-            .hook(target)
-            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.system.replace_close_skip_anim")
-            .intercept { chain ->
-                val changed = chain.args.getOrNull(2)
-                if (changed != null && ReplaceCloseMarker.matches(changed)) {
-                    module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_SKIP_ANIM", null)
-                    return@intercept true
+        mainHandler.postDelayed(
+            { runExit(controller, innerLocked, task, backStrategy, "DEFERRED") },
+            delay,
+        )
+        module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_DEFERRED_" + delay, null)
+        return true
+    }
+
+    /**
+     * 真正执行退出。
+     *
+     * exitFlexibleTaskWindowInnerLocked 的方法名带 Locked，原调用点都在 WM 全局锁内，
+     * 延后执行时锁已经不在了，因此这里自己取 mAtms.getGlobalLock() 再调；
+     * 顺带在任务已经不在小窗列表时放弃，避免对已销毁的任务做退出。
+     */
+    private fun runExit(
+        controller: Any,
+        innerLocked: Method,
+        task: Any,
+        backStrategy: Any,
+        stage: String,
+    ) {
+        pendingCloses.remove(task)
+        try {
+            val body = Runnable {
+                if (!shouldRunExit(controller, task)) {
+                    module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_SKIP_" + stage + "_GONE", null)
+                    return@Runnable
                 }
-                chain.proceed()
+                innerLocked.invoke(controller, backStrategy)
+                module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_FIRED_" + stage, null)
             }
-        module.log(Log.INFO, TAG, "ZOOM_REPLACE_TO_CLOSE_SKIP_ANIM_INSTALLED", null)
+            val atms = fieldInHierarchy(controller.javaClass, "mAtms")?.get(controller)
+            val lock = atms?.javaClass?.getMethod("getGlobalLock")?.invoke(atms)
+            if (lock != null) synchronized(lock) { body.run() } else body.run()
+        } catch (exception: InvocationTargetException) {
+            val cause = exception.targetException ?: exception
+            module.log(
+                Log.WARN,
+                TAG,
+                "ZOOM_REPLACE_TO_CLOSE_FIRED_FAILED_" + cause.javaClass.simpleName + "_" + cause.message,
+                cause,
+            )
+        } catch (exception: ReflectiveOperationException) {
+            module.log(Log.WARN, TAG, "ZOOM_REPLACE_TO_CLOSE_FIRED_FAILED_" + exception.javaClass.simpleName, exception)
+        } catch (exception: RuntimeException) {
+            module.log(Log.WARN, TAG, "ZOOM_REPLACE_TO_CLOSE_FIRED_FAILED_" + exception.javaClass.simpleName, exception)
+        }
+    }
+
+    /**
+     * 是否还需要执行退出。
+     *
+     * 读不到小窗列表时按"需要"处理：漏收一个窗口比卡住等一个永不补发的退出更糟。
+     * 只有在确实读到列表、且任务已经不在其中时才放弃。
+     */
+    private fun shouldRunExit(controller: Any, task: Any): Boolean =
+        runCatching {
+            val containers = fieldInHierarchy(controller.javaClass, "mFlexibleTasks")?.get(controller)
+                ?: return@runCatching true
+            val members = synchronized(containers) {
+                (containers as? Iterable<*>)?.toList()
+            } ?: return@runCatching true
+            members.any { it === task }
+        }.getOrDefault(true)
+
+    /** 启动动画时长；系统把动画关掉（scale=0）时立即收窗。 */
+    private fun closeDelayMillis(): Long {
+        val scale = runCatching {
+            android.animation.ValueAnimator::class.java
+                .getMethod("getDurationScale")
+                .invoke(null) as? Float
+        }.getOrNull() ?: 1f
+        if (!scale.isFinite() || scale <= 0f) return 0L
+        return (LAUNCH_ANIM_DELAY_MS * scale).toLong()
     }
 
     /** 沿继承链找字段（厂商把字段放在父类上）。 */
@@ -912,8 +974,8 @@ internal class OutsideTapCloseHookInstaller(
         const val SCALE_TOLERANCE = 0.02f
         const val FAILURE_LOG_INTERVAL_MS = 10_000L
 
-        const val TRANSITION_CONTROLLER_CLASS =
-            "com.android.server.wm.FlexibleTaskTransitionController"
+        /** 启动动画时长：新窗 zoom 展开播完之后才收旧窗。 */
+        const val LAUNCH_ANIM_DELAY_MS = 420L
     }
 }
 
@@ -963,55 +1025,6 @@ private fun Method.invokeUnwrapped(instance: Any?, vararg arguments: Any?): Any?
     } catch (exception: InvocationTargetException) {
         throw exception.targetException
     }
-/**
- * 记录「被新启动顶掉」的那次收窗，供过渡控制器剔除它的退场动画。
- *
- * 写入点是 exitFlexibleTaskWindowInnerLocked 的替换分支，读取点是
- * FlexibleTaskTransitionController 的动画目标计算，两者同进程、时间差在毫秒级，
- * 所以用任务 id + 时间窗识别，不跨进程、不落盘。
- */
-internal object ReplaceCloseMarker {
-    /** 识别时间窗：只覆盖同一次启动的过渡计算。 */
-    private const val WINDOW_MS = 2_000L
-
-    @Volatile
-    private var markedTask: Any? = null
-
-    @Volatile
-    private var markedTaskId: Int = -1
-
-    @Volatile
-    private var markedAt = 0L
-
-    fun mark(target: Any) {
-        markedTask = target
-        markedTaskId = runCatching { taskIdOf(target) ?: -1 }.getOrDefault(-1)
-        markedAt = SystemClock.uptimeMillis()
-    }
-
-    fun matches(candidate: Any): Boolean {
-        val at = markedAt
-        if (at == 0L || SystemClock.uptimeMillis() - at > WINDOW_MS) return false
-        if (candidate === markedTask) return true
-        val expected = markedTaskId
-        if (expected < 0) return false
-        return runCatching { taskIdOf(candidate) == expected }.getOrDefault(false)
-    }
-
-    private fun taskIdOf(task: Any): Int? {
-        var type: Class<*>? = task.javaClass
-        while (type != null) {
-            val field = runCatching { type.getDeclaredField("mTaskId") }.getOrNull()
-            if (field != null) {
-                field.isAccessible = true
-                return field.getInt(task)
-            }
-            type = type.superclass
-        }
-        return null
-    }
-}
-
 /**
  * 缓存 system_server 的 FlexibleTaskController，并提供"把浮标恢复成小窗"。
  *
