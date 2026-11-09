@@ -154,7 +154,13 @@ internal class LauncherHookInstaller(
     }
 
     private fun installPageReporter(owner: Context) {
-        val launcher = resolveLauncher(owner) ?: owner
+        // 只接受真正的 Launcher 实例：手势入口传进来的是 TouchInteractionService，
+        // 在它上面调用 getStateManager 会抛异常，并把这个一次性开关浪费掉。
+        val launcher = resolveLauncher(owner)
+        if (launcher == null) {
+            module.log(Log.DEBUG, TAG, "LAUNCHER_PAGE_NO_INSTANCE_" + owner.javaClass.simpleName, null)
+            return
+        }
         if (!pageReporterStarted.compareAndSet(false, true)) return
         runCatching {
             val stateManager = launcher.javaClass.getMethod("getStateManager").invoke(launcher)
@@ -237,7 +243,7 @@ internal class LauncherHookInstaller(
 
     private fun shouldSuppress(owner: Context, event: MotionEvent): Boolean {
         // 多任务界面与负一屏不响应扇形手势；同时把状态上报给 system_server（手势判定在那里）。
-        installPageReporter(owner)
+        // 这里只做判定，注册交给 Launcher.onResume。
         resolveLauncher(owner)?.let { if (isLauncherSystemPage(it)) return false }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             resetStream()
