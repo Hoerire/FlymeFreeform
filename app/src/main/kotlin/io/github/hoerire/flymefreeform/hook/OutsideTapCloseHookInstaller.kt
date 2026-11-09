@@ -84,7 +84,6 @@ internal class OutsideTapCloseHookInstaller(
                         return@intercept chain.proceed()
                     }
                     access.rememberRegion(caption, originalRegion)
-                    FloatingTaskRestorer.remember(access.controllerForTrace(caption))
                     val protectedRegion =
                         try {
                             access.buildProtectedRegion(caption, originalRegion, configuration.snapshot)
@@ -268,8 +267,7 @@ internal class OutsideTapCloseHookInstaller(
                     module.log(
                         Log.DEBUG,
                         TAG,
-                        "ZOOM_REPLACE_PROBE_limit" + (if (fromLimit) 1 else 0) +
-                            "_recent" + (if (RecentLaunchClock.recent(LAUNCH_LINK_WINDOW_MS)) 1 else 0),
+                        "ZOOM_REPLACE_PROBE_limit" + (if (fromLimit) 1 else 0),
                         null,
                     )
                     if (fromLimit) {
@@ -383,10 +381,6 @@ internal class OutsideTapCloseHookInstaller(
         private val environmentAllowed: () -> Boolean,
     ) {
         private val controllerField = listenerClass.requiredField("this$0")
-
-        /** 供恢复逻辑取样：从标题栏取 controller。 */
-        fun controllerForTrace(caption: Any): Any? =
-            runCatching { captionControllerField.get(caption) }.getOrNull()
 
         private val contextField = controllerClass.requiredField("mContext")
         private val flexibleTasksField = controllerClass.requiredField("mFlexibleTasks")
@@ -925,9 +919,6 @@ internal class OutsideTapCloseHookInstaller(
         const val ORDINARY_ZOOM_STATE = 1
         const val SCALE_TOLERANCE = 0.02f
         const val FAILURE_LOG_INTERVAL_MS = 10_000L
-
-        /** 把「刚刚以小窗启动过」当作退出归属的判据窗口。 */
-        const val LAUNCH_LINK_WINDOW_MS = 1_000L
     }
 }
 
@@ -977,115 +968,4 @@ private fun Method.invokeUnwrapped(instance: Any?, vararg arguments: Any?): Any?
     } catch (exception: InvocationTargetException) {
         throw exception.targetException
     }
-/**
- * 缓存 system_server 的 FlexibleTaskController，并提供"把浮标恢复成小窗"。
- *
- * 扇形点开的应用若正躺在浮标里，就按点浮标的方式恢复（ToFull），
- * 而不是新开窗口——后者会沿用任务的旧非全屏尺寸，表现成迷你窗。
- */
-internal object FloatingTaskRestorer {
-    @Volatile private var controller: Any? = null
 
-    fun remember(value: Any?) {
-        if (value != null) controller = value
-    }
-
-    fun restore(packageName: String): Boolean {
-        val target = controller ?: resolveController() ?: return false
-        return runCatching {
-            val tasksField = findField(target.javaClass, "mFlexibleTasks") ?: return false
-            @Suppress("UNCHECKED_CAST")
-            val tasks = tasksField.get(target) as? List<Any?> ?: return false
-            val task = tasks.firstOrNull { candidate ->
-                candidate != null && packageOf(candidate) == packageName && isMiniOrFloating(candidate)
-            } ?: return false
-            val loader = target.javaClass.classLoader
-            val fullClass = Class.forName("com.android.server.wm.ExitFlexibleTaskToFullStrategy", false, loader)
-            val taskClass = Class.forName("com.android.server.wm.Task", false, loader)
-            val ctor = fullClass.declaredConstructors.firstOrNull { candidate ->
-                candidate.parameterTypes.size == 2 &&
-                    candidate.parameterTypes[0].isAssignableFrom(taskClass) &&
-                    candidate.parameterTypes[1] == Boolean::class.javaPrimitiveType
-            } ?: return false
-            ctor.isAccessible = true
-            val strategy = ctor.newInstance(task, true)
-            val inner = findMethod(target.javaClass, "exitFlexibleTaskWindowInnerLocked", 1) ?: return false
-            inner.invoke(target, strategy)
-            true
-        }.getOrDefault(false)
-    }
-
-    /** 直接从厂商服务取 controller：不依赖 hook 是否已经缓存过。 */
-    private fun resolveController(): Any? =
-        runCatching {
-            val loader = ClassLoader.getSystemClassLoader()
-            val serviceClass = Class.forName(
-                "com.android.server.wm.FlexibleWindowManagerService",
-                false,
-                loader,
-            )
-            val instance = serviceClass
-                .getMethod("getInstance", Any::class.java)
-                .invoke(null, systemContext())
-                ?: return null
-            val resolved = serviceClass.getMethod("getFlexibleTaskController").invoke(instance)
-            controller = resolved
-            resolved
-        }.getOrNull()
-
-    private fun systemContext(): android.content.Context? =
-        runCatching {
-            Class.forName("android.app.ActivityThread")
-                .getMethod("currentActivityThread")
-                .invoke(null)
-                ?.let { thread ->
-                    thread.javaClass.getMethod("getSystemContext").invoke(thread) as? android.content.Context
-                }
-        }.getOrNull()
-
-    /** 只有迷你窗/贴边浮标才需要恢复；正常小窗直接聚焦即可，不能重置它的尺寸。 */
-    private fun isMiniOrFloating(task: Any): Boolean =
-        runCatching {
-            val bounds = task.javaClass.getMethod("getBounds").invoke(task) as? android.graphics.Rect
-                ?: return false
-            val metrics = systemContext()?.resources?.displayMetrics
-            if (metrics == null) return false
-            val screen = metrics.widthPixels.toLong() * metrics.heightPixels
-            val area = bounds.width().toLong() * bounds.height()
-            area > 0 && area * 2 < screen
-        }.getOrDefault(false)
-
-
-
-    private fun packageOf(task: Any): String? =
-        runCatching {
-            val baseIntent = task.javaClass.getMethod("getBaseIntent").invoke(task) as? android.content.Intent
-            baseIntent?.component?.packageName
-                ?: (task.javaClass.getMethod("getRealActivity").invoke(task) as? android.content.ComponentName)
-                    ?.packageName
-        }.getOrNull()
-
-    private fun findField(start: Class<*>, name: String): java.lang.reflect.Field? {
-        var type: Class<*>? = start
-        while (type != null) {
-            runCatching { type.getDeclaredField(name) }.getOrNull()?.let {
-                it.isAccessible = true
-                return it
-            }
-            type = type.superclass
-        }
-        return null
-    }
-
-    private fun findMethod(start: Class<*>, name: String, count: Int): java.lang.reflect.Method? {
-        var type: Class<*>? = start
-        while (type != null) {
-            type.declaredMethods.firstOrNull { it.name == name && it.parameterTypes.size == count }?.let {
-                it.isAccessible = true
-                return it
-            }
-            type = type.superclass
-        }
-        return null
-    }
-}

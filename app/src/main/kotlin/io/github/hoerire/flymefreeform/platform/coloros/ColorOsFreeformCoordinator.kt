@@ -75,8 +75,6 @@ internal class ColorOsFreeformCoordinator(
         isZoomBlocked = { packageName ->
             lastSettings.isZoomLaunchExcluded(packageName) || lastSettings.isBlacklisted(packageName)
         },
-        // 顶层应用不再以小窗重新打开自己：系统会把现有任务原地改成小窗，且没有过渡动画。
-        isForeground = { packageName -> topRunningPackage() == packageName },
         // 已经有窗口的应用（任何形态）不再启动，见 hasWindowOf。
         hasWindow = { packageName -> hasWindowOf(packageName) },
     )
@@ -649,8 +647,6 @@ internal class ColorOsFreeformCoordinator(
             atLeft = overlayAtLeft,
         )) {
             FreeformLaunchResult.Started -> debug("SYSTEM_LAUNCH_APP_OK_" + target.packageName)
-            FreeformLaunchResult.AlreadyForeground ->
-                debug("SYSTEM_LAUNCH_APP_ALREADY_FOREGROUND_" + target.packageName)
             FreeformLaunchResult.AlreadyOpen ->
                 debug("SYSTEM_LAUNCH_APP_ALREADY_OPEN_" + target.packageName)
             is FreeformLaunchResult.TargetUnavailable -> {
@@ -870,16 +866,6 @@ internal class ColorOsFreeformCoordinator(
     } catch (_: ReflectiveOperationException) { null }
       catch (_: RuntimeException) { null }
 
-    /**
-     * 目标包当前的任务形态，用来决定扇形要不要真的启动它。
-     *
-     * 已有任务的包再走小窗启动，命中的是 getReusableOptionsForFreeForm：复用那个任务、
-     * 原地改写窗口参数，没有启动动画。所以「已有窗口」直接不响应；贴边浮标 / 迷你窗
-     * 例外，仍交给 FloatingTaskRestorer 恢复成小窗。
-     *
-     * 判据取自焦点显示内容的真实任务树，不依赖任何缓存；读不到时按「没有任务」处理，
-     * 保持原行为。
-     */
     /**
      * 该包是否已经有窗口（任何形态：前台、后台全屏、小窗、贴边浮标）。
      *

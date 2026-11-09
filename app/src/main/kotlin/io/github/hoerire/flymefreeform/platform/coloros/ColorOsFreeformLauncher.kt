@@ -31,14 +31,6 @@ internal class ColorOsFreeformLauncher(
      */
     private val isZoomBlocked: (String) -> Boolean = { false },
     /**
-     * 该包是否已经是屏幕上的顶层应用。
-     *
-     * 前台应用再走一次小窗启动，会命中系统的「替换已有窗口」分支：任务原地从全屏改成
-     * 小窗，而且没有过渡动画（实测是突然缩小）。扇形对当前应用没有「再打开一次」的语义，
-     * 因此直接拦掉，什么都不做。
-     */
-    private val isForeground: (String) -> Boolean = { false },
-    /**
      * 该包是否已经有窗口。
      *
      * 已有任务再走一次小窗启动，命中的是系统的 getReusableOptionsForFreeForm：
@@ -53,10 +45,6 @@ internal class ColorOsFreeformLauncher(
     }
 
     fun launch(requested: ComponentName, atLeft: Boolean = true): FreeformLaunchResult {
-        if (isForeground(requested.packageName)) {
-            debug("SYSTEM_LAUNCH_SKIP_FOREGROUND_" + requested.packageName)
-            return FreeformLaunchResult.AlreadyForeground
-        }
         if (hasWindow(requested.packageName)) {
             debug("SYSTEM_LAUNCH_SKIP_HAS_WINDOW_" + requested.packageName)
             return FreeformLaunchResult.AlreadyOpen
@@ -104,16 +92,6 @@ internal class ColorOsFreeformLauncher(
             }
         }
         val options = createLaunchOptions(atLeft)
-        // 供替换收窗钩子判断"这次退出是不是新启动顶掉的"：退出裁决可能换线程执行，
-        // 那边看不到这里的调用栈。
-        io.github.hoerire.flymefreeform.hook.RecentLaunchClock.mark(requested.packageName)
-
-        // 目标已在浮标里：按"点浮标"的方式恢复成小窗，而不是新开窗口
-        // （新开会沿用该任务的旧非全屏尺寸，表现成迷你窗）。
-        if (io.github.hoerire.flymefreeform.hook.FloatingTaskRestorer.restore(requested.packageName)) {
-            debug("SYSTEM_LAUNCH_FLOAT_RESTORED_" + requested.packageName)
-            return FreeformLaunchResult.Started
-        }
 
         if (startAsZoomWindow(intent, options)) {
             debug("SYSTEM_LAUNCH_ZOOM_OK_" + requested.packageName)
@@ -253,9 +231,6 @@ internal class ColorOsFreeformLauncher(
 
 internal sealed interface FreeformLaunchResult {
     data object Started : FreeformLaunchResult
-
-    /** 目标已经是顶层应用，不再重新启动。 */
-    data object AlreadyForeground : FreeformLaunchResult
 
     /** 目标已经有一个窗口（全屏任务或小窗），不再重新启动。 */
     data object AlreadyOpen : FreeformLaunchResult

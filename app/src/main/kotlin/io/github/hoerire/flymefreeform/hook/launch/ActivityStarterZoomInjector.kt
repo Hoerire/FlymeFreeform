@@ -57,9 +57,6 @@ internal class ActivityStarterZoomInjector(
                     // 总开关关闭时完全让行：不读配置、不改参数、不启动窗口，
                     // 保证与其他同时启用的模块互不干扰。
                     if (!configuration.snapshot.enabled) return@intercept chain.proceed()
-                    // 任何一次经 ActivityStarter 的启动都留痕：退出裁决可能换线程执行，
-                    // 也可能由侧边栏「更多」面板的原生路由发起，收窗钩子需要这层兜底。
-                    io.github.hoerire.flymefreeform.hook.RecentLaunchClock.mark(null)
                     runCatching { trace(chain.thisObject, method.name) }
                     val preempted =
                         runCatching { preemptWithZoomWindow(chain.thisObject, method.name) }
@@ -373,11 +370,6 @@ internal class ActivityStarterZoomInjector(
                 .onFailure { module.log(Log.WARN, TAG, "ZOOM_OPTIONS_WRITE_FAILED", it) }
         }
         ModuleLog.debug(TAG) { "ZOOM_INJECTED_" + reason }
-        // 供替换收窗钩子判断"这次退出是不是新启动顶掉的"：退出裁决可能换线程执行，
-        // 那边看不到这里的调用栈。
-        io.github.hoerire.flymefreeform.hook.RecentLaunchClock.mark(
-            intent.component?.packageName ?: intent.getPackage(),
-        )
         // 记录本次注入的目标与时刻：目标应用若用中转页二次发起同一目标（Via 的 .Trampoline），
         // 第二次启动的 options 会被 reason:9 拒绝，届时据此抢占重发。
         lastInjectTarget = intent.component?.packageName ?: intent.getPackage()
