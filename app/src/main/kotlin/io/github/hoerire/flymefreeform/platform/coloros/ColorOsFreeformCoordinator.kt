@@ -882,6 +882,13 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun existingTaskOf(packageName: String): ExistingTask {
         val tasks = tasksOfFocusedDisplay() ?: return ExistingTask.None
+        val state = stateOf(packageName, tasks)
+        // 探针：确认任务树到底爬到了几个任务、判成什么形态。
+        debug("SYSTEM_LAUNCH_TASK_WALK_" + packageName + "_" + state.name + "_n" + tasks.size)
+        return state
+    }
+
+    private fun stateOf(packageName: String, tasks: List<Any>): ExistingTask {
         var bubble = false
         for (task in tasks) {
             if (packageOfTask(task) != packageName) continue
@@ -907,12 +914,26 @@ internal class ColorOsFreeformCoordinator(
             null
         }
 
-    /** 容器树里收集 Task；非任务节点按子节点下钻。 */
+    /**
+     * 容器树里收集 Task。
+     *
+     * 真实层级比想象深：ROOT → Display → WindowedMagnification → HideDisplayCutout →
+     * OneHanded → AppZoomOut → Leaf → … → TaskDisplayArea → Task（dumpsys activity containers
+     * 可见）。早先按 4 层截断，一个任务都爬不到，「已有窗口」判定永远为假。
+     * 现在只沿 DisplayArea / DisplayContent 下钻，跳过窗口节点，深度放宽到 [MAX_TASK_WALK_DEPTH]。
+     */
     private fun collectTasks(container: Any, out: MutableList<Any>, depth: Int) {
         if (depth > MAX_TASK_WALK_DEPTH) return
         val self = findMethod(container.javaClass, "asTask", 0).invoke(container)
         if (self != null) {
             out.add(self)
+            return
+        }
+        val typeName = container.javaClass.name
+        if (!typeName.contains("DisplayArea") &&
+            !typeName.contains("DisplayContent") &&
+            !typeName.contains("RootWindowContainer")
+        ) {
             return
         }
         val count = findMethod(container.javaClass, "getChildCount", 0).invoke(container) as? Int ?: 0
@@ -1016,8 +1037,8 @@ internal class ColorOsFreeformCoordinator(
         /** 厂商柔性状态里的「普通小窗」；迷你窗/贴边浮标是别的取值。 */
         const val ORDINARY_ZOOM_STATE = 1
 
-        /** 任务树下钻层级：RootWindowContainer → DisplayContent → TaskDisplayArea → Task。 */
-        const val MAX_TASK_WALK_DEPTH = 4
+        /** 任务树下钻深度：实测 DisplayContent 下还套着 5 层以上 DisplayArea。 */
+        const val MAX_TASK_WALK_DEPTH = 12
 
         val CRITICAL_PACKAGES =
             setOf(
