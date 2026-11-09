@@ -387,6 +387,10 @@ internal class ColorOsFreeformCoordinator(
             return
         }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            // 跨进程 SharedPreferences 的变更监听不可靠（模块自己的注释里也写了），
+            // 设置页刚切换的开关可能还没同步到本进程。每次呼出前重读一次，
+            // 一次手势一次，开销可忽略，但能保证「详细日志」「自动收窗」等开关即时生效。
+            configuration.forceReload()
             // 每个 DOWN 都拼字符串在热路径上很贵；只有开详细日志时才计算。
             if (io.github.hoerire.flymefreeform.log.VerboseLog.enabled) {
                 debug("SYSTEM_GESTURE_DOWN_" + event.x.toInt() + "_" + event.y.toInt())
