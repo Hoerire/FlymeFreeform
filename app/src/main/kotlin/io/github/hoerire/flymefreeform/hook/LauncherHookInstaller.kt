@@ -124,6 +124,23 @@ internal class LauncherHookInstaller(
                         chain.proceed()
                     }
                 }
+            // 独立安装：桌面状态上报完全独立于手势 hook，拿实例靠 Launcher.onResume。
+            runCatching {
+                val launcherClass = target.inputMethod.declaringClass.classLoader
+                    .loadClass("com.android.launcher3.Launcher")
+                module.hook(launcherClass.getMethod("onResume"))
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .setId("flymefreeform.launcher.page_reporter")
+                    .intercept { chain ->
+                        val result = chain.proceed()
+                        (chain.thisObject as? Context)?.let { instance ->
+                            installPageReporter(instance)
+                            reportPageState(instance)
+                        }
+                        result
+                    }
+                module.log(Log.INFO, TAG, "LAUNCHER_PAGE_RESUME_HOOK_INSTALLED", null)
+            }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_RESUME_HOOK_FAILED", it) }
             module.log(Log.INFO, TAG, "LAUNCHER_CORNER_INPUT_HOOK_INSTALLED")
         } catch (exception: IllegalArgumentException) {
             module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_HOOK_REJECTED", exception)
@@ -177,22 +194,6 @@ internal class LauncherHookInstaller(
             stateManager?.javaClass
                 ?.getMethod("addStateListener", listenerClass)
                 ?.invoke(stateManager, proxy)
-            // 在 Launcher.onResume 里拿实例最可靠：那时刻 thisObject 就是 Launcher。
-            runCatching {
-                val launcherClass = launcher.javaClass.classLoader.loadClass("com.android.launcher3.Launcher")
-                val onResume = launcherClass.getMethod("onResume")
-                module.hook(onResume)
-                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.launcher.page_reporter")
-                    .intercept { chain ->
-                        val result = chain.proceed()
-                        (chain.thisObject as? Context)?.let { instance ->
-                            installPageReporter(instance)
-                            reportPageState(instance)
-                        }
-                        result
-                    }
-            }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_RESUME_HOOK_FAILED", it) }
             // 负一屏是桌面的一个翻页，不触发状态切换，这里单独跟一下页码变化。
             runCatching {
                 val pagedView = launcher.javaClass.classLoader.loadClass("com.android.launcher3.PagedView")
