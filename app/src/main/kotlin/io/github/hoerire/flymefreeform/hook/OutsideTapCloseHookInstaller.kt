@@ -1017,15 +1017,17 @@ internal object FloatingTaskRestorer {
                         if (pkg == packageName) {
                             // 负一屏窗口是常驻的：返回桌面后 isVisible() 仍可能为 true。
                             // 这里要求"请求可见 + 当前可见"，并且透明度不为 0。
-                            val visible = child.javaClass.getMethod("isVisible").invoke(child) as? Boolean
+                            // 以「请求可见」为主判据：负一屏显示时它为 true，退回桌面后变 false；
+                            // isVisible() 对常驻窗口不够敏感。
                             val requested =
                                 runCatching {
                                     child.javaClass.getMethod("isVisibleRequested").invoke(child) as? Boolean
                                 }.getOrNull()
-                            val alpha = runCatching {
-                                attrs?.javaClass?.getField("alpha")?.getFloat(attrs)
-                            }.getOrNull() ?: 1f
-                            if (visible == true && requested != false && alpha > 0.01f) return true
+                            if (requested != null) {
+                                if (requested) return true
+                            } else if (child.javaClass.getMethod("isVisible").invoke(child) as? Boolean == true) {
+                                return true
+                            }
                         }
                     } else {
                         pending.add(child)
