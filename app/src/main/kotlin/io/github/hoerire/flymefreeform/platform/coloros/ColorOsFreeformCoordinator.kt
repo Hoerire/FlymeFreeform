@@ -149,18 +149,37 @@ internal class ColorOsFreeformCoordinator(
      * 不做缓存、不看任何标志：每次按下时直接看那个窗口"是否被请求可见"。
      * 缓存或标志一旦和真实状态错位，就会出现"识别不到"或"回到桌面仍失效"。
      */
-    /** 记录"底部中间上滑"的时间戳：这是进入多任务/回桌面的手势起点。 */
+    /**
+     * 记录"从底部开始的纯上滑"：这是进入多任务/回桌面的手势。
+     *
+     * 底部整条都能上滑，所以起点不设水平限制；区分靠方向——纯向上（垂直为主）算上滑，
+     * 斜向内上滑是扇形手势，不算。
+     */
     private fun trackBottomSwipe(event: MotionEvent) {
-        if (event.actionMasked != MotionEvent.ACTION_DOWN) return
-        val metrics = context.resources.displayMetrics
-        val height = metrics.heightPixels.toFloat()
-        val width = metrics.widthPixels.toFloat()
-        val y = event.rawY
-        val x = event.rawX
-        val bottomZone = height * BOTTOM_SWIPE_ZONE
-        val inCenter = x > width * BOTTOM_SWIPE_CENTER_MIN && x < width * BOTTOM_SWIPE_CENTER_MAX
-        if (y >= bottomZone && inCenter) {
-            bottomSwipeAt = android.os.SystemClock.uptimeMillis()
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                swipePointerId = event.getPointerId(0)
+                swipeStartX = event.rawX
+                swipeStartY = event.rawY
+                val height = context.resources.displayMetrics.heightPixels.toFloat()
+                swipeFromBottom = swipeStartY >= height * BOTTOM_SWIPE_ZONE
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!swipeFromBottom) return
+                val index = event.findPointerIndex(swipePointerId)
+                if (index < 0) return
+                val dx = event.getRawX(index) - swipeStartX
+                val dy = event.getRawY(index) - swipeStartY
+                val slop = touchSlop
+                // 垂直向上为主才认定为上滑；斜向内上滑（dx 占比大）交给扇形。
+                if (dy < -slop && kotlin.math.abs(dx) < kotlin.math.abs(dy) * BOTTOM_SWIPE_VERTICAL_RATIO) {
+                    bottomSwipeAt = android.os.SystemClock.uptimeMillis()
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                swipeFromBottom = false
+                swipePointerId = -1
+            }
         }
     }
 
@@ -171,8 +190,12 @@ internal class ColorOsFreeformCoordinator(
     /** 最近任务校验的节流时间戳。 */
     private var lastRecentsCheckAt = 0L
 
-    /** 最近一次"底部中间上滑"的时间；用于屏蔽多任务切换期间的角区手势。 */
+    /** 最近一次"底部上滑"的时间；用于屏蔽多任务切换期间的角区手势。 */
     private var bottomSwipeAt = 0L
+    private var swipeFromBottom = false
+    private var swipePointerId = -1
+    private var swipeStartX = 0f
+    private var swipeStartY = 0f
     /** 本次 overlay 实际用的窗口类型；决定它压不压在输入法上面。 */
     private var overlayWindowType = OVERLAY_WINDOW_TYPE
     private val pointerQueueLock = Any()
@@ -945,8 +968,8 @@ internal class ColorOsFreeformCoordinator(
         /** 底部上滑后的屏蔽窗口。 */
         const val BOTTOM_SWIPE_GUARD_MS = 1_000L
         const val BOTTOM_SWIPE_ZONE = 0.92f
-        const val BOTTOM_SWIPE_CENTER_MIN = 0.15f
-        const val BOTTOM_SWIPE_CENTER_MAX = 0.85f
+        /** 垂直位移占比下限：越大越"必须竖着滑"才算上滑。 */
+        const val BOTTOM_SWIPE_VERTICAL_RATIO = 1.5f
         val CRITICAL_PACKAGES =
             setOf(
                 "com.android.systemui",
