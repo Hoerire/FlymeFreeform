@@ -988,3 +988,85 @@ internal object FloatingTaskRestorer {
             val area = bounds.width().toLong() * bounds.height()
             area > 0 && area * 2 < screen
         }.getOrDefault(false)
+
+    /**
+     * 指定包的窗口当前是否可见。
+     *
+     * 负一屏是 com.coloros.assistantscreen 的独立窗口，不在桌面进程内部，
+     * 桌面也不会为它触发任何回调，因此只能由 system_server 直接看窗口。
+     */
+    fun isPackageWindowVisible(packageName: String): Boolean {
+        val target = controller ?: resolveController() ?: return false
+        return runCatching {
+            val atms = findField(target.javaClass, "mAtms")?.get(target) ?: return false
+            val root = findField(atms.javaClass, "mRootWindowContainer")?.get(atms) ?: return false
+            val display = root.javaClass.getMethod("getDefaultDisplay").invoke(root) ?: return false
+            // 从 DisplayContent 逐层收集窗口（DisplayArea 树）。
+            val pending = ArrayDeque<Any>()
+            pending.add(display)
+            var guard = 0
+            while (pending.isNotEmpty() && guard++ < 512) {
+                val node = pending.removeFirst()
+                val children = findField(node.javaClass, "mChildren")?.get(node) as? Collection<*> ?: continue
+                for (child in children) {
+                    if (child == null) continue
+                    val windowName = child.javaClass.name
+                    if (windowName.contains("WindowState")) {
+                        val attrs = findField(child.javaClass, "mAttrs")?.get(child)
+                        val pkg = attrs?.javaClass?.getField("packageName")?.get(attrs) as? String
+                        if (pkg == packageName) {
+                            // 负一屏窗口常驻、靠平移显示：隐藏时整块在屏幕左侧之外
+                            // （实测 mAttrs=(-1272,0)），显示时才滑到 0。
+                            // 因此只能看位置：isVisible / isVisibleRequested 一直是 true。
+                            val frame = runCatching {
+                                child.javaClass.getMethod("getFrame").invoke(child) as? android.graphics.Rect
+                            }.getOrNull() ?: runCatching {
+                                findField(child.javaClass, "mFrame")?.get(child) as? android.graphics.Rect
+                            }.getOrNull()
+                            if (frame != null && frame.width() > 0 &&
+                                frame.left > -frame.width() * 2 / 3
+                            ) {
+                                return true
+                            }
+                        }
+                    } else {
+                        pending.add(child)
+                    }
+                }
+            }
+            false
+        }.getOrDefault(false)
+    }
+
+    private fun packageOf(task: Any): String? =
+        runCatching {
+            val baseIntent = task.javaClass.getMethod("getBaseIntent").invoke(task) as? android.content.Intent
+            baseIntent?.component?.packageName
+                ?: (task.javaClass.getMethod("getRealActivity").invoke(task) as? android.content.ComponentName)
+                    ?.packageName
+        }.getOrNull()
+
+    private fun findField(start: Class<*>, name: String): java.lang.reflect.Field? {
+        var type: Class<*>? = start
+        while (type != null) {
+            runCatching { type.getDeclaredField(name) }.getOrNull()?.let {
+                it.isAccessible = true
+                return it
+            }
+            type = type.superclass
+        }
+        return null
+    }
+
+    private fun findMethod(start: Class<*>, name: String, count: Int): java.lang.reflect.Method? {
+        var type: Class<*>? = start
+        while (type != null) {
+            type.declaredMethods.firstOrNull { it.name == name && it.parameterTypes.size == count }?.let {
+                it.isAccessible = true
+                return it
+            }
+            type = type.superclass
+        }
+        return null
+    }
+}
