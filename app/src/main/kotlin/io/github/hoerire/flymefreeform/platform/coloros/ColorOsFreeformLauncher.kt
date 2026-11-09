@@ -109,6 +109,9 @@ internal class ColorOsFreeformLauncher(
             }
         }
         val options = createLaunchOptions(atLeft)
+        // 供替换收窗钩子判断"这次退出是不是新启动顶掉的"：退出裁决可能换线程执行，
+        // 那边看不到这里的调用栈。
+        io.github.hoerire.flymefreeform.hook.RecentLaunchClock.mark(requested.packageName)
 
         // 目标已在浮标里：按"点浮标"的方式恢复成小窗，而不是新开窗口
         // （新开会沿用该任务的旧非全屏尺寸，表现成迷你窗）。

@@ -370,6 +370,11 @@ internal class ActivityStarterZoomInjector(
                 .onFailure { module.log(Log.WARN, TAG, "ZOOM_OPTIONS_WRITE_FAILED", it) }
         }
         ModuleLog.debug(TAG) { "ZOOM_INJECTED_" + reason }
+        // 供替换收窗钩子判断"这次退出是不是新启动顶掉的"：退出裁决可能换线程执行，
+        // 那边看不到这里的调用栈。
+        io.github.hoerire.flymefreeform.hook.RecentLaunchClock.mark(
+            intent.component?.packageName ?: intent.getPackage(),
+        )
         // 记录本次注入的目标与时刻：目标应用若用中转页二次发起同一目标（Via 的 .Trampoline），
         // 第二次启动的 options 会被 reason:9 拒绝，届时据此抢占重发。
         lastInjectTarget = intent.component?.packageName ?: intent.getPackage()

@@ -263,18 +263,23 @@ internal class OutsideTapCloseHookInstaller(
                     }
                     // 必须同时是「新启动应用」引起的退出：单纯在小窗之间切换焦点也会走上面几处，
                     // 那种情况下关窗会让人切不回原窗口，所以只认启动链路。
-                    val fromLaunch = frames.any { frame ->
+                    val launchOnStack = frames.any { frame ->
                         val name = frame.methodName
                         name.contains("executeRequest") ||
                             name.contains("ActivityStarter") ||
                             name.contains("startActivity")
                     }
-                    // 探针：每次「变浮标」退出都留下两个判据的取值，复现一次即可定位。
+                    // 退出裁决可能换线程执行，栈里就看不到发起启动的帧（实测 launch0 那次
+                    // 启动在主线程、裁决在 5311 线程），此时按「刚启动过」兜底。
+                    val launchRecent = RecentLaunchClock.recent(LAUNCH_LINK_WINDOW_MS)
+                    val fromLaunch = launchOnStack || launchRecent
+                    // 探针：每次「变浮标」退出都留下判据取值，复现一次即可定位。
                     module.log(
                         Log.DEBUG,
                         TAG,
                         "ZOOM_REPLACE_PROBE_limit" + (if (fromLimit) 1 else 0) +
-                            "_launch" + (if (fromLaunch) 1 else 0),
+                            "_launch" + (if (launchOnStack) 1 else 0) +
+                            "_recent" + (if (launchRecent) 1 else 0),
                         null,
                     )
                     if (fromLimit && fromLaunch) {
@@ -930,6 +935,9 @@ internal class OutsideTapCloseHookInstaller(
         const val ORDINARY_ZOOM_STATE = 1
         const val SCALE_TOLERANCE = 0.02f
         const val FAILURE_LOG_INTERVAL_MS = 10_000L
+
+        /** 把「刚刚以小窗启动过」当作退出归属的判据窗口。 */
+        const val LAUNCH_LINK_WINDOW_MS = 1_000L
     }
 }
 
