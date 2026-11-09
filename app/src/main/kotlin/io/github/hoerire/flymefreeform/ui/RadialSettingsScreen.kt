@@ -5,6 +5,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.ScreenRotation
+import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.SwipeRight
 import androidx.compose.runtime.Composable
@@ -39,13 +41,17 @@ internal fun RadialSettingsScreen(
     onCornerSidesChange: (Boolean, Boolean) -> Unit,
     onCornerTriggerRangeChange: (Int) -> Unit,
     onRadialHitRangeChange: (Int) -> Unit,
-    onRadialMaxItemsChange: (Int) -> Unit,
+    onRadialIconSizeChange: (Int) -> Unit,
+
     onRadialKeepOpenChange: (Boolean) -> Unit,
+    onPauseInLandscapeChange: (Boolean) -> Unit,
+    onPauseInGameModeChange: (Boolean) -> Unit,
     onNavigateToPinnedApps: () -> Unit,
 ) {
     val enabled = state.settingsEditable && state.settings.enabled
     var cornerRangePreviewDp by remember { mutableStateOf<Int?>(null) }
     var hitRangePreviewDp by remember { mutableStateOf<Int?>(null) }
+    var iconSizePreviewDp by remember { mutableStateOf<Int?>(null) }
     val left = state.settings.leftCornerEnabled
     val right = state.settings.rightCornerEnabled
     val sideIndex =
@@ -72,21 +78,6 @@ internal fun RadialSettingsScreen(
     ) {
         item(key = "trigger") {
             Card(modifier = Modifier.fillMaxWidth()) {
-                OverlaySpinnerPreference(
-                    items = sideItems,
-                    selectedIndex = sideIndex,
-                    title = stringResource(R.string.corner_trigger_side_title),
-                    summary = stringResource(R.string.corner_trigger_side_summary),
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.SwipeRight, enabled) },
-                    onSelectedIndexChange = { index ->
-                        when (index) {
-                            0 -> onCornerSidesChange(true, true)
-                            1 -> onCornerSidesChange(true, false)
-                            2 -> onCornerSidesChange(false, true)
-                        }
-                    },
-                )
                 SwitchPreference(
                     checked = state.settings.radialKeepOpen,
                     onCheckedChange = onRadialKeepOpenChange,
@@ -101,6 +92,21 @@ internal fun RadialSettingsScreen(
                     onClick = onNavigateToPinnedApps,
                     enabled = enabled,
                     startAction = { PreferenceIcon(Icons.Rounded.Apps, enabled) },
+                )
+                OverlaySpinnerPreference(
+                    items = sideItems,
+                    selectedIndex = sideIndex,
+                    title = stringResource(R.string.corner_trigger_side_title),
+                    summary = stringResource(R.string.corner_trigger_side_summary),
+                    enabled = enabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.SwipeRight, enabled) },
+                    onSelectedIndexChange = { index ->
+                        when (index) {
+                            0 -> onCornerSidesChange(true, true)
+                            1 -> onCornerSidesChange(true, false)
+                            2 -> onCornerSidesChange(false, true)
+                        }
+                    },
                 )
                 RemoteDpSliderPreference(
                     icon = Icons.Rounded.Straighten,
@@ -130,17 +136,33 @@ internal fun RadialSettingsScreen(
                 )
                 RemoteDpSliderPreference(
                     icon = Icons.Rounded.Apps,
-                    confirmedValue = state.settings.radialMaxItems,
+                    confirmedValue = state.settings.radialIconSizeDp,
                     isUpdating = state.isUpdating,
                     enabled = enabled,
-                    title = stringResource(R.string.radial_max_items_title),
-                    summary = stringResource(R.string.radial_max_items_summary),
-                    minDp = ModulePreferences.MIN_RADIAL_MAX_ITEMS,
-                    maxDp = ModulePreferences.MAX_RADIAL_MAX_ITEMS,
-                    coerceDp = ModulePreferences::coerceRadialMaxItems,
-                    onPreviewChange = {},
-                    onCommit = onRadialMaxItemsChange,
-                    showDpUnit = false,
+                    title = stringResource(R.string.radial_icon_size_title),
+                    summary = stringResource(R.string.radial_icon_size_summary),
+                    minDp = ModulePreferences.MIN_RADIAL_ICON_SIZE_DP,
+                    maxDp = ModulePreferences.MAX_RADIAL_ICON_SIZE_DP,
+                    coerceDp = ModulePreferences::coerceRadialIconSizeDp,
+                    onPreviewChange = { iconSizePreviewDp = it },
+                    onCommit = onRadialIconSizeChange,
+                )
+                // 这两项只暂停扇形菜单的呼出，其余能力不受影响，因此归在扇形这一页。
+                SwitchPreference(
+                    checked = state.settings.pauseInLandscape,
+                    onCheckedChange = onPauseInLandscapeChange,
+                    title = stringResource(R.string.pause_in_landscape_title),
+                    summary = stringResource(R.string.pause_in_landscape_summary),
+                    enabled = enabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.ScreenRotation, enabled) },
+                )
+                SwitchPreference(
+                    checked = state.settings.pauseInGameMode,
+                    onCheckedChange = onPauseInGameModeChange,
+                    title = stringResource(R.string.pause_in_game_mode_title),
+                    summary = stringResource(R.string.pause_in_game_mode_summary),
+                    enabled = enabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.SportsEsports, enabled) },
                 )
             }
         }
@@ -155,6 +177,19 @@ internal fun RadialSettingsScreen(
     hitRangePreviewDp?.let { rangeDp ->
         HitRangePreview(
             hitRangeDp = rangeDp,
+            itemCount =
+                if (state.settings.pinsSaved) {
+                    state.settings.pinnedTargets.size + 1
+                } else {
+                    ModulePreferences.MAX_PINNED_APPS + 1
+                },
+            leftEnabled = left,
+            rightEnabled = right,
+        )
+    }
+    iconSizePreviewDp?.let { sizeDp ->
+        IconSizePreview(
+            iconSizeDp = sizeDp,
             itemCount =
                 if (state.settings.pinsSaved) {
                     state.settings.pinnedTargets.size + 1

@@ -305,7 +305,10 @@ internal fun PinnedAppsScreen(
                     R.string.entry_group_cloned_apps to candidates.filter {
                         (it.target as? PinnedTarget.Sidebar)?.kind == PinnedTarget.Kind.CloneApp
                     },
-                    R.string.entry_group_apps to candidates.filter { it.target is PinnedTarget.App },
+                    // 只列可启动的应用：系统服务在豁免/黑名单里可选，但没有启动入口，不能进扇形。
+            R.string.entry_group_apps to candidates.filter {
+                (it.target as? PinnedTarget.App)?.className?.isNotEmpty() == true
+            },
                 ).filter { it.second.isNotEmpty() }
             }
             OverlayBottomSheet(

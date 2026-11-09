@@ -23,6 +23,13 @@ import android.os.Bundle
  */
 internal class ColorOsFreeformLauncher(
     private val context: Context,
+    /**
+     * 该包是否禁止以浮窗打开。
+     *
+     * 扇形走厂商 zoom 入口，不经过 ActivityStarter，那边的三道闸门管不到这里，
+     * 所以启动源头必须自己判一次；命中就退化成普通全屏启动。
+     */
+    private val isZoomBlocked: (String) -> Boolean = { false },
 ) {
     /** 详细日志：仅在「详细日志」开启时输出，与其他模块日志同一出口。 */
     private fun debug(code: String) {
@@ -59,7 +66,27 @@ internal class ColorOsFreeformLauncher(
                         setComponent(component)
                     }
                 }
+        // 命中「禁用浮窗」的目标一律全屏：不带任何 window mode 参数启动。
+        if (isZoomBlocked(intent.component?.packageName ?: requested.packageName)) {
+            val target = intent.component?.packageName ?: requested.packageName
+            debug("SYSTEM_LAUNCH_FULLSCREEN_EXCLUDED_" + target)
+            return try {
+                context.startActivity(intent)
+                FreeformLaunchResult.Started
+            } catch (exception: SecurityException) {
+                FreeformLaunchResult.Failed("FREEFORM_LAUNCH_SECURITY_REJECTED", exception)
+            } catch (exception: RuntimeException) {
+                FreeformLaunchResult.Failed("FREEFORM_LAUNCH_START_FAILED", exception)
+            }
+        }
         val options = createLaunchOptions(atLeft)
+
+        // 目标已在浮标里：按"点浮标"的方式恢复成小窗，而不是新开窗口
+        // （新开会沿用该任务的旧非全屏尺寸，表现成迷你窗）。
+        if (io.github.hoerire.flymefreeform.hook.FloatingTaskRestorer.restore(requested.packageName)) {
+            debug("SYSTEM_LAUNCH_FLOAT_RESTORED_" + requested.packageName)
+            return FreeformLaunchResult.Started
+        }
 
         if (startAsZoomWindow(intent, options)) {
             debug("SYSTEM_LAUNCH_ZOOM_OK_" + requested.packageName)
@@ -124,18 +151,22 @@ internal class ColorOsFreeformLauncher(
         }
 
     /**
-     * 与原生侧边栏同构的启动参数：
-     * `extra_window_mode=100`、`splashScreenStyle=1`、`start_zoom_at_other_side`（13 左 / 14 右）。
-     * 保留旧的 windowingMode / mZoomLaunchFlags，普通 startActivity 兜底时仍然按小窗打开。
+     * 启动参数，逐项对齐原生侧边栏（实测抓包）：
+     * `launchDisplayId=0`、`splashScreenStyle=1`、`mZoomLaunchFlags=0`、
+     * `extra_window_mode=100`、`start_zoom_at_other_side`（13 左 / 14 右）。
+     *
+     * 关键：原生**不传** `android.activity.windowingMode`。之前我们多塞了这一项，
+     * 系统因此不走"替换已有窗口"的分支，多出来的窗口被收成浮标。
+     * 另外 splashScreenStyle 必须放在平台 options 之后写，否则会被覆盖成 -1。
      */
     private fun createLaunchOptions(atLeft: Boolean): Bundle =
         Bundle().apply {
-            putInt(ZOOM_FLAGS_KEY, ZOOM_LAUNCH_FLAG)
-            putInt(WINDOWING_MODE_KEY, FLEXIBLE_WINDOWING_MODE)
-            putInt(EXTRA_WINDOW_MODE_KEY, FLEXIBLE_WINDOWING_MODE)
-            putInt(SPLASH_SCREEN_STYLE_KEY, 1)
-            putInt(LAUNCH_SIDE_KEY, if (atLeft) LAUNCH_AT_LEFT else LAUNCH_AT_RIGHT)
             createPlatformOptions()?.let(::putAll)
+            putInt(ZOOM_FLAGS_KEY, 0)
+            putInt(LAUNCH_DISPLAY_KEY, 0)
+            putInt(SPLASH_SCREEN_STYLE_KEY, 1)
+            putInt(EXTRA_WINDOW_MODE_KEY, FLEXIBLE_WINDOWING_MODE)
+            putInt(LAUNCH_SIDE_KEY, if (atLeft) LAUNCH_AT_LEFT else LAUNCH_AT_RIGHT)
         }
 
     /** 走厂商 zoom 入口；不可用或返回失败码时回落到普通启动。 */
@@ -171,27 +202,18 @@ internal class ColorOsFreeformLauncher(
             0
         }
 
-    /** 隐藏 setter 只是补强；ColorOS 的两个 Bundle 参数才是不可缺少的启动协议。 */
+    /** 平台侧 options：不再设置 windowingMode，原生只靠 `extra_window_mode` 表达小窗。 */
     @SuppressLint("BlockedPrivateApi")
     private fun createPlatformOptions(): Bundle? =
         try {
-            ActivityOptions.makeBasic().let { options ->
-                ActivityOptions::class.java
-                    .getDeclaredMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
-                    .also { it.isAccessible = true }
-                    .invoke(options, FLEXIBLE_WINDOWING_MODE)
-                options.toBundle()
-            }
-        } catch (_: ReflectiveOperationException) {
-            null
+            ActivityOptions.makeBasic().toBundle()
         } catch (_: RuntimeException) {
             null
         }
-
     private companion object {
         const val FLEXIBLE_WINDOWING_MODE = 100
         const val ZOOM_LAUNCH_FLAG = 4
-        const val WINDOWING_MODE_KEY = "android.activity.windowingMode"
+        const val LAUNCH_DISPLAY_KEY = "android.activity.launchDisplayId"
         const val ZOOM_FLAGS_KEY = "android:activity.mZoomLaunchFlags"
         const val EXTRA_WINDOW_MODE_KEY = "extra_window_mode"
         const val SPLASH_SCREEN_STYLE_KEY = "android.activity.splashScreenStyle"

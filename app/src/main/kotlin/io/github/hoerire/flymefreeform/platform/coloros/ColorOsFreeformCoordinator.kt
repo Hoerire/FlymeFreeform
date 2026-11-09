@@ -69,7 +69,13 @@ internal class ColorOsFreeformCoordinator(
     private val windowManager = context.getSystemService(WindowManager::class.java)
     private val gestureEngine = CornerGestureEngine()
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
-    private val launcher = ColorOsFreeformLauncher(context)
+    // 扇形启动绕开 ActivityStarter，这里把「禁用浮窗」的判定直接传给启动器。
+    private val launcher = ColorOsFreeformLauncher(
+        context,
+        isZoomBlocked = { packageName ->
+            lastSettings.isZoomLaunchExcluded(packageName) || lastSettings.isBlacklisted(packageName)
+        },
+    )
     private val sidebar = ColorOsSidebarClient(context, handler, logger)
     private val appCatalog =
         ColorOsAppCatalog(context, catalogExecutor, logger) { snapshot ->
@@ -84,6 +90,7 @@ internal class ColorOsFreeformCoordinator(
     private val entryCatalog = ColorOsEntryCatalogBroker(context, handler, logger) { entries ->
         appCatalog.updateSidebarEntries(entries, lastSettings)
     }
+
     private var entryLaunchGeneration = 0L
     private val packageReceiver =
         object : BroadcastReceiver() {
@@ -133,6 +140,11 @@ internal class ColorOsFreeformCoordinator(
     private var activeGestureConfig: CornerGestureConfig? = null
     /** 当前这次扇形是从哪个下角拉起的：决定小窗从哪一侧出现。 */
     private var overlayAtLeft = true
+    /** 浮层显示时刻与待执行的延迟移除标记：低于最小可见时长时不许拆除。 */
+    private var overlayShownAt = 0L
+    private var overlayRemovePending = false
+    /** 最近任务校验的节流时间戳。 */
+    private var lastRecentsCheckAt = 0L
     /** 本次 overlay 实际用的窗口类型；决定它压不压在输入法上面。 */
     private var overlayWindowType = OVERLAY_WINDOW_TYPE
     private val pointerQueueLock = Any()
@@ -142,6 +154,8 @@ internal class ColorOsFreeformCoordinator(
     private var lastOverlayFailureLogAt = -OVERLAY_FAILURE_LOG_INTERVAL_MS
 
     fun start() {
+        // 识屏宿主被限制后台运行会让三条入口同时失效；开机纠正一次，之后省电策略再改也不会失效。
+        ScreenIdentifyAppOps.ensure(context)
         handler.post {
             entryCatalog.start()
             environmentState.start(context)
@@ -351,14 +365,14 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
+    // 「更多」面板开着时指针流必须继续：否则扇形呼不出来，页就没有机会把面板收掉。
     private fun shouldKeepPointerStream(): Boolean =
-        activeEnvironmentApproved && !morePanelActive && when (gestureEngine.phase) {
+        activeEnvironmentApproved && when (gestureEngine.phase) {
             GesturePhase.Armed, GesturePhase.Revealing, GesturePhase.Selecting -> true
             else -> false
         }
 
     private fun handlePointerEvent(event: MotionEvent) {
-        if (morePanelActive) return
         val settings = lastSettings
         if (!pointerRegistered || !environmentState.isGestureAllowed()) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -368,7 +382,10 @@ internal class ColorOsFreeformCoordinator(
             return
         }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            debug("SYSTEM_GESTURE_DOWN_" + event.x.toInt() + "_" + event.y.toInt())
+            // 每个 DOWN 都拼字符串在热路径上很贵；只有开详细日志时才计算。
+            if (io.github.hoerire.flymefreeform.log.VerboseLog.enabled) {
+                debug("SYSTEM_GESTURE_DOWN_" + event.x.toInt() + "_" + event.y.toInt())
+            }
             activeEnvironmentApproved = isGestureEnvironmentAllowed()
             if (!activeEnvironmentApproved) {
                 debug("SYSTEM_GESTURE_REJECTED_" + environmentRejectionReason())
@@ -413,7 +430,9 @@ internal class ColorOsFreeformCoordinator(
                     )
                 }
                 MotionEvent.ACTION_UP -> gestureEngine.up(event.getPointerId(event.actionIndex))
-                MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> gestureEngine.cancel()
+                MotionEvent.ACTION_CANCEL -> gestureEngine.cancel()
+                // 多指按下不再取消主手势，只忽略新增的那根手指。
+                MotionEvent.ACTION_POINTER_DOWN -> GestureAction.Ignore
                 else -> if (gestureEngine.isClaimed) gestureEngine.cancel() else GestureAction.Ignore
             }
         if (action is GestureAction.Ignore) {
@@ -439,13 +458,23 @@ internal class ColorOsFreeformCoordinator(
                 debug("SYSTEM_GESTURE_COMMIT")
                 overlay?.finishGesture()
             }
-            GestureAction.Cancel -> overlay?.cancelGesture()
+            // 手势被判取消时不要立刻收起：交给抬手（Commit）或系统 ACTION_CANCEL 决定，
+            // 否则滑动过程中一旦被判取消，扇形就会自己消失。
+            GestureAction.Cancel -> Unit
             GestureAction.Ignore, GestureAction.PassThrough -> Unit
         }
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
             activeEnvironmentApproved = false
             activeGestureConfig = null
         }
+    }
+
+    /** 打开「更多」面板前按最新最近任务重排一次；扇形呼出不走这里。 */
+    private fun refreshPanelRecents() {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastRecentsCheckAt < RECENTS_CHECK_INTERVAL_MS) return
+        lastRecentsCheckAt = now
+        appCatalog.refresh(lastSettings, reloadApps = false, forceRecentOrder = true)
     }
 
     private fun showOverlay(
@@ -456,8 +485,16 @@ internal class ColorOsFreeformCoordinator(
         entryLaunchGeneration++
         entryCatalog.cancelLaunch()
         removeOverlay()
+        // 扇形呼出时收掉「更多」面板：面板是应用层之上的 overlay，留着会盖住扇形，
+        // 也会盖住随后打开的小窗。这里只做这一件事，面板内部状态机不动。
+        if (sidebar.isPanelActive()) {
+            sidebar.cancel()
+            debug("SYSTEM_MORE_PANEL_CLOSED_BY_OVERLAY")
+        }
         morePanelActive = false
         overlayAtLeft = side == io.github.hoerire.flymefreeform.gesture.CornerSide.Left
+        overlayShownAt = android.os.SystemClock.uptimeMillis()
+        // 扇形不再依赖「最近应用」，呼出时不做任何目录刷新，避免呼出卡顿。
         val hitRangeDp = lastSettings.radialHitRangeDp
         debug(
             "SYSTEM_OVERLAY_HIT_RANGE_" + hitRangeDp + "DP_" +
@@ -484,6 +521,7 @@ internal class ColorOsFreeformCoordinator(
                 x = x,
                 y = y,
                 hitRangeDp = hitRangeDp,
+                iconSizeDp = lastSettings.radialIconSizeDp,
                 keepOpen = keepOpen,
             )
             overlay = view
@@ -614,6 +652,8 @@ internal class ColorOsFreeformCoordinator(
 
     override fun onMorePanelRequested() {
         debug("SYSTEM_MORE_PANEL_REQUESTED")
+        // 「更多」面板用最新的最近任务重排；扇形本身已不再依赖这份数据。
+        refreshPanelRecents()
         if (!isGestureEnvironmentAllowed()) {
             removeOverlay()
             return
@@ -727,6 +767,23 @@ internal class ColorOsFreeformCoordinator(
 
     private fun removeOverlay() {
         val view = overlay ?: return
+        // 点击贴边浮标/窗外时，角触手势会先呼出再立刻收起，表现为屏幕闪一下。
+        // 低于最小可见时长时把移除推迟，且只移除当时那一份浮层。
+        val elapsed = android.os.SystemClock.uptimeMillis() - overlayShownAt
+        if (elapsed < MIN_OVERLAY_VISIBLE_MS) {
+            if (!overlayRemovePending) {
+                overlayRemovePending = true
+                handler.postDelayed(
+                    {
+                        overlayRemovePending = false
+                        if (overlay === view) removeOverlay()
+                    },
+                    MIN_OVERLAY_VISIBLE_MS - elapsed,
+                )
+            }
+            return
+        }
+        overlayRemovePending = false
         debug("SYSTEM_OVERLAY_REMOVE")
         overlay = null
         if (sidebar.isPending) sidebar.cancel()
@@ -825,6 +882,12 @@ internal class ColorOsFreeformCoordinator(
         const val OVERLAY_WINDOW_TYPE = WindowManager.LayoutParams.TYPE_INPUT_METHOD_DIALOG
         const val FALLBACK_OVERLAY_TYPE = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         const val OVERLAY_FAILURE_LOG_INTERVAL_MS = 10_000L
+
+        /** 浮层最小可见时长：短于此值的"呼出即收起"会把画面闪一下。 */
+        const val MIN_OVERLAY_VISIBLE_MS = 200L
+
+        /** 最近任务校验的最小间隔。 */
+        const val RECENTS_CHECK_INTERVAL_MS = 2_000L
         val CRITICAL_PACKAGES =
             setOf(
                 "com.android.systemui",

@@ -54,6 +54,9 @@ internal class ActivityStarterZoomInjector(
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .setId("flymefreeform.zoom.starter." + method.name + "." + method.parameterCount)
                 .intercept { chain ->
+                    // 总开关关闭时完全让行：不读配置、不改参数、不启动窗口，
+                    // 保证与其他同时启用的模块互不干扰。
+                    if (!configuration.snapshot.enabled) return@intercept chain.proceed()
                     runCatching { trace(chain.thisObject, method.name) }
                     val preempted =
                         runCatching { preemptWithZoomWindow(chain.thisObject, method.name) }
@@ -86,16 +89,44 @@ internal class ActivityStarterZoomInjector(
     @Volatile
     private var lastInjectAt = 0L
 
+    /**
+     * 上一次注入的目标是不是"中转页启动"（组件类名含 Trampoline）。
+     *
+     * 必须在这里记录：中转页自己二次发起的那次是隐式 Intent，`intent.component` 为 null，
+     * 到那时再判类名永远取不到值。
+     */
+    @Volatile
+    private var lastInjectTrampoline = false
+
     private fun preemptWithZoomWindow(starter: Any?, stage: String): Boolean {
         if (starter == null) return false
-        if (preempting.get() == true) return false
+        if (preempting.get() == true) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_PREEMPT_REENTRANT_" + stage }
+            return false
+        }
         val settings = configuration.snapshot
-        if (!settings.enabled) return false
+        if (!settings.enabled) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_DISABLED_" + stage }
+            return false
+        }
+        // 闸门 2：排除列表内的应用在前台时停用全部增强，抢占这条快捷通道也要一并失效。
+        if (environment?.isForegroundExcluded() == true) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_BLACKLIST_PREEMPT_" + stage }
+            return false
+        }
+        // 闸门 3：禁用浮窗内的应用在前台时，抢占同样不做。
+        if (environment?.isForegroundZoomExcluded() == true && settings.zoomLaunch) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_ZOOM_EXCLUDED_PREEMPT_" + stage }
+            return false
+        }
         val request = readField(starter, "mRequest")
         val intent =
             readField(starter, "mIntent") as? Intent
                 ?: (request?.let { readField(it, "intent") } as? Intent)
-                ?: return false
+                ?: run {
+                    ModuleLog.debug(TAG) { "ZOOM_SKIP_PREEMPT_NO_INTENT_" + stage }
+                    return false
+                }
         val pendingIntent = request?.let { readField(it, "originatingPendingIntent") }
         val callingPackage =
             request?.let { readField(it, "callingPackage") as? String }.orEmpty()
@@ -109,7 +140,21 @@ internal class ActivityStarterZoomInjector(
             systemUiUid > 0 &&
                 (callingUid == systemUiUid || realCallingUid == systemUiUid ||
                     requestRealUid == systemUiUid)
-        val target = resolveTarget(intent, request) ?: return false
+        val target = resolveTarget(intent, request)
+        if (target == null) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_PREEMPT_NO_TARGET_" + stage }
+            return false
+        }
+        // 闸门 3（目标维度）：目标是禁用浮窗内的应用，抢占不做。
+        if (environment?.isZoomExcluded(target) == true) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_EXCLUDED_TARGET_PREEMPT_" + target }
+            return false
+        }
+        // 闸门 3（发起方维度）：禁用浮窗内的应用代发的启动，抢占同样不做。
+        if (environment?.isZoomExcluded(callingPackage) == true) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_EXCLUDED_CALLER_PREEMPT_" + callingPackage }
+            return false
+        }
         // startActivityForResult 的跨应用启动（登录、授权、选图、分享回传）需要目标
         // 把结果回传并自行 finish；改由 zoom 入口另起一次启动会打断回传链路，
         // 表现为授权窗口不关闭、或直接提示用户取消。这类启动一律放行。
@@ -120,7 +165,16 @@ internal class ActivityStarterZoomInjector(
         // Trampoline、由目标自己发起、action 为 VIEW、距上次注入 3 秒内。
         val hasResultTo = request?.let { readField(it, "resultTo") } != null
         val trampolineRelay = hasResultTo && isTrampolineRelay(intent, target, callingPackage)
-        if (hasResultTo && !trampolineRelay) return false
+        if (hasResultTo && !trampolineRelay) {
+            if (isLauncherIconLaunch(callingPackage, intent.action, hasResultTo)) return false
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_RESULT_TO_cp" + callingPackage +
+                "_tg" + target +
+                "_ac" + intent.action.orEmpty() +
+                "_li" + (lastInjectTarget ?: "-") +
+                "_tp" + (if (lastInjectTrampoline) 1 else 0) +
+                "_ag" + (android.os.SystemClock.uptimeMillis() - lastInjectAt) }
+            return false
+        }
         val eligible =
             when {
                 // 锁屏与息屏状态下不接管任何启动：此时系统正在显示锁屏界面或恢复桌面，
@@ -200,9 +254,19 @@ internal class ActivityStarterZoomInjector(
                 "rt=" + (if (request?.let { readField(it, "resultTo") } != null) 1 else 0),
                 "gr=" + (if (request?.let { readField(it, "intentGrants") } != null) 1 else 0),
                 "fl=" + (intent?.let { "0x" + Integer.toHexString(it.flags) }.orEmpty()),
+                "cn=" + (intent?.component?.className ?: "-"),
             )
         ModuleLog.debug(TAG) { "ZOOM_TRACE " + parts.joinToString(" ") }
     }
+
+    /**
+     * 桌面图标点击：桌面以 startActivityForResult + MAIN 打开应用。
+     *
+     * 这一类每次点图标都必然保持全屏，逐条打「跳过原因」只会把真正的异常埋掉，
+     * 因此三条兜底日志对它一律静默；其余启动照常记录。
+     */
+    private fun isLauncherIconLaunch(callingPackage: String?, action: String?, hasResultTo: Boolean): Boolean =
+        callingPackage == LAUNCHER_PACKAGE && action == Intent.ACTION_MAIN && hasResultTo
 
     /** 判定「目标应用自己的中转页二次发起同一目标」：判据尽量窄，避免误伤授权与回传链路。 */
     private fun isTrampolineRelay(intent: Intent, target: String, callingPackage: String?): Boolean {
@@ -210,8 +274,8 @@ internal class ActivityStarterZoomInjector(
         if (intent.action != Intent.ACTION_VIEW) return false
         if (lastInjectTarget != target) return false
         if (android.os.SystemClock.uptimeMillis() - lastInjectAt >= TRAMPOLINE_WINDOW_MS) return false
-        val activity = intent.component?.className.orEmpty()
-        return activity.contains("Trampoline", ignoreCase = true)
+        // 类名在中转页自己的隐式 Intent 里取不到，只能沿用注入时记录的结果。
+        return lastInjectTrampoline
     }
 
     private fun startZoomWindow(intent: Intent, targetPackage: String): Boolean =
@@ -252,8 +316,14 @@ internal class ActivityStarterZoomInjector(
         val intent =
             readField(starter, "mIntent") as? Intent
                 ?: (request?.let { readField(it, "intent") } as? Intent)
-                ?: return
-        if (intent.getIntExtra(ZoomLaunchSpec.EXTRA_APPLIED, 0) == 1) return
+                ?: run {
+                    ModuleLog.debug(TAG) { "ZOOM_SKIP_NO_INTENT" }
+                    return
+                }
+        if (intent.getIntExtra(ZoomLaunchSpec.EXTRA_APPLIED, 0) == 1) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_ALREADY_APPLIED_" + (intent.component?.packageName ?: intent.getPackage()) }
+            return
+        }
         val callingUid =
             intField(starter, "mCallingUid").takeIf { it > 0 }
                 ?: request?.let { intField(it, "callingUid") }
@@ -304,6 +374,8 @@ internal class ActivityStarterZoomInjector(
         // 第二次启动的 options 会被 reason:9 拒绝，届时据此抢占重发。
         lastInjectTarget = intent.component?.packageName ?: intent.getPackage()
         lastInjectAt = android.os.SystemClock.uptimeMillis()
+        lastInjectTrampoline =
+            intent.component?.className?.contains("Trampoline", ignoreCase = true) == true
         if (reason == "notification") collapseShade()
         // 记录本次跨应用跳转，供发起方回到前台时关闭目标浮窗。
         if (reason == "inter_app" && callingPackage != null) {
@@ -373,13 +445,56 @@ internal class ActivityStarterZoomInjector(
         callingPackage: String?,
         hasResultTo: Boolean,
     ): String? {
-        // 「小窗跳转」是唯一的启动改写开关：关闭时任何入口都不改写，
-        // 全部启动回到系统默认的全屏行为。
-        if (!configuration.snapshot.zoomLaunch) return null
+        // 全局搜索（桌面下拉）必须最先短路：桌面是以 startActivityForResult 拉起搜索页的，
+        // 特征与「桌面卡片」完全一致，一旦让桌面判定先跑就会被改成浮窗。
+        if (intent.action == ACTION_GLOBAL_SEARCH) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_GLOBAL_SEARCH" }
+            return null
+        }
+        // 桌面快捷项与卡片是**独立开关**：即使「小窗跳转」关闭，也按各自开关决定，
+        // 因此这一段必须排在总开关判定之前。
+        val desktopTarget =
+            intent.component?.packageName
+                ?: intent.getPackage()
+                ?: resolveImplicitTarget(intent)
+        if (desktopTarget != null) {
+            launcherOriginReason(intent, desktopTarget, callingPackage, realCallingUid, requestRealUid, hasResultTo)
+                ?.let { reason ->
+                    if (reason != SUPPRESSED_LAUNCHER_ORIGIN) return reason
+                    ModuleLog.debug(TAG) { "ZOOM_SKIP_DESKTOP_ORIGIN_DISABLED_" + desktopTarget }
+                    return null
+                }
+        }
+        // 「小窗跳转」是其余启动入口的改写开关：关闭时全部回到系统默认的全屏行为。
+        if (!configuration.snapshot.zoomLaunch) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_SWITCH_OFF" }
+            return null
+        }
+        // 闸门 2（排除列表）：该应用在前台时停用模块全部增强，判定点与全局开关并列，
+        // 因此通知点击、磁贴、中转页抢占、应用互跳全部一并失效。
+        if (environment?.isForegroundExcluded() == true) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_BLACKLIST_FOREGROUND" }
+            return null
+        }
+        // 闸门 3（禁用浮窗）：该列表内的应用在前台时，任何启动都不改写。
+        // 与闸门 2 分开判定、分开打日志，排障时能看出是哪一层拦下的。
+        if (environment?.isForegroundZoomExcluded() == true) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_ZOOM_EXCLUDED" }
+            return null
+        }
         if (intent.getIntExtra(ZoomLaunchSpec.EXTRA_SOURCE, 0) == ZoomLaunchSpec.SOURCE_NOTIFICATION) {
             return "notification"
         }
         if (intent.getBooleanExtra(EXTRA_QUICK_SETTINGS, false)) return "control_center"
+        // 全局搜索（桌面下滑呼出）：搜索页按全屏排版，输入法、结果列表、返回手势都依赖整屏，
+        // 塞进小窗等于不可用。判据只认 action，不认搜索包名——换机型换了搜索实现也一并覆盖。
+        //
+        // 必须放在桌面「卡片」判定之前：桌面是用 startActivityForResult 拉起搜索页的
+        // （cp=桌面、rt=1、action 非 MAIN），正好命中卡片分支，会被开成小窗。
+        if (intent.action == ACTION_GLOBAL_SEARCH) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_GLOBAL_SEARCH" }
+            return null
+        }
         // 通知点击经 PendingIntent 下发，发起方为 SystemUI。
         //
         // 常规通知由 SystemUI 的通知启动入口改写参数，此处若再次写入会覆盖系统已设定的
@@ -392,10 +507,19 @@ internal class ActivityStarterZoomInjector(
             intent.component?.packageName
                 ?: intent.getPackage()
                 ?: resolveImplicitTarget(intent)
-                ?: return null
-        // 排除列表内的应用不参与任何启动改写。
-        if (environment?.isExcluded(target) == true) {
-            ModuleLog.debug(TAG) { "ZOOM_SKIPPED_EXCLUDED_" + target }
+                ?: run {
+                    ModuleLog.debug(TAG) { "ZOOM_SKIP_NO_TARGET_ac" + intent.action.orEmpty() }
+                    return null
+                }
+        // 闸门 3（目标维度）：命中「禁用浮窗」的应用，不以任何形式的自由浮窗打开。
+        if (environment?.isZoomExcluded(target) == true) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_EXCLUDED_TARGET_" + target }
+            return null
+        }
+        // 闸门 3（发起方维度）：禁用浮窗内的应用代发的启动同样全屏。
+        // 设备互联这类应用常在后台代发（前台仍是别的应用），只按目标包名拦不住。
+        if (environment?.isZoomExcluded(callingPackage) == true) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_EXCLUDED_CALLER_" + callingPackage }
             return null
         }
 
@@ -408,7 +532,9 @@ internal class ActivityStarterZoomInjector(
 
         // 通知点击：目标非系统组件时按小窗启动。
         if (systemUiPending) {
-            return if (target !in SKIP_TARGETS) "notification" else null
+            if (target !in SKIP_TARGETS) return "notification"
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_NOTIFICATION_SYSTEM_TARGET_" + target }
+            return null
         }
 
         // 文件选择类界面保持全屏：这类页面依赖完整的列表与预览布局，
@@ -451,9 +577,11 @@ internal class ActivityStarterZoomInjector(
         ) {
             return "inter_app"
         }
-        launcherOriginReason(intent, target, callingPackage, realCallingUid, requestRealUid, hasResultTo)
-            ?.let { return it }
-        if (target in SKIP_TARGETS) return null
+        // 桌面入口已在方法开头（总开关之前）判定过，这里不再重复。
+        if (target in SKIP_TARGETS) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_SYSTEM_TARGET_" + target }
+            return null
+        }
         // system_server 以 MAIN 启动应用的两类来源：
         // 1. 通知点击，落点通常是系统包，见 SYSTEM_NOTIFICATION_TARGETS；
         // 2. 无桌面入口的模块管理工具（如 LSPosed 管理器）经 root 权限代发，
@@ -486,6 +614,13 @@ internal class ActivityStarterZoomInjector(
         // 系统在 OplusListManagerImpl 中记录该包来自控制中心，据此判定。
         if (fromControlCenter(target)) {
             return "control_center_launcher"
+        }
+        if (!isLauncherIconLaunch(callingPackage, intent.action, hasResultTo)) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_NO_RULE_cp" + callingPackage +
+                "_tg" + target +
+                "_ac" + intent.action.orEmpty() +
+                "_rt" + (if (hasResultTo) 1 else 0) +
+                "_su" + (if (fromSystemUi) 1 else 0) }
         }
         return null
     }
@@ -523,6 +658,10 @@ internal class ActivityStarterZoomInjector(
             intent.action != Intent.ACTION_MAIN &&
             target !in LAUNCHER_CARD_SKIP
         ) {
+            if (!configuration.snapshot.zoomLauncherCard) {
+                ModuleLog.debug(TAG) { "ZOOM_SKIP_LAUNCHER_CARD_DISABLED_" + target }
+                return SUPPRESSED_LAUNCHER_ORIGIN
+            }
             return "launcher_card"
         }
         // 快捷菜单里的系统设置入口（应用详情 / 应用信息）：桌面直接发起，不带 resultTo。
@@ -545,7 +684,18 @@ internal class ActivityStarterZoomInjector(
                 launcherUid > 0 &&
                 (realCallingUid == launcherUid || requestRealUid == launcherUid)
         if (fromShortcut && !hasResultTo && target !in SKIP_TARGETS) {
+            if (!configuration.snapshot.zoomLauncherShortcut) {
+                ModuleLog.debug(TAG) { "ZOOM_SKIP_LAUNCHER_SHORTCUT_DISABLED_" + target }
+                return SUPPRESSED_LAUNCHER_ORIGIN
+            }
             return "launcher_shortcut"
+        }
+        if (!isLauncherIconLaunch(callingPackage, intent.action, hasResultTo)) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_NO_LAUNCHER_RULE_cp" + callingPackage +
+                "_tg" + target +
+                "_ru" + realCallingUid +
+                "_rr" + requestRealUid +
+                "_rt" + (if (hasResultTo) 1 else 0) }
         }
         return null
     }
@@ -723,6 +873,9 @@ internal class ActivityStarterZoomInjector(
         const val TAG = "FlymeFreeform"
         const val ACTIVITY_STARTER_CLASS = "com.android.server.wm.ActivityStarter"
 
+        /** 系统全局搜索：桌面下滑呼出的搜索页，始终全屏。 */
+        const val ACTION_GLOBAL_SEARCH = "android.search.action.GLOBAL_SEARCH"
+
         /** 控制中心启动应用时携带的字段。 */
         const val EXTRA_QUICK_SETTINGS = "start_from_systemui_qs"
 
@@ -730,6 +883,9 @@ internal class ActivityStarterZoomInjector(
 
         /** 桌面进程：其发起的启动属于图标点击，不计入应用间跳转。 */
         const val LAUNCHER_PACKAGE = "com.android.launcher"
+
+        /** 桌面入口被用户关掉时的压制标记：reasonFor 见到它直接判为不走小窗。 */
+        const val SUPPRESSED_LAUNCHER_ORIGIN = "launcher_suppressed"
 
         /** 文件选择与文档选取类动作：始终全屏。 */
         val PICKER_ACTIONS =

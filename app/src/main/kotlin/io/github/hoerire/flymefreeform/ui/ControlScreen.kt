@@ -97,7 +97,6 @@ internal fun ControlScreen(
     onRequestScopes: () -> Unit,
     onNavigateToPinnedApps: () -> Unit,
     onNavigateToRadialSettings: () -> Unit,
-    onNavigateToEnvironmentScope: () -> Unit,
     onNavigateToBlacklist: () -> Unit,
     onNavigateToZoomOptions: () -> Unit,
 ) {
@@ -168,7 +167,7 @@ internal fun ControlScreen(
                             featuresEnabled = featuresEnabled,
                             onNavigateToRadialSettings = onNavigateToRadialSettings,
                             onNavigateToZoomOptions = onNavigateToZoomOptions,
-                            onNavigateToEnvironmentScope = onNavigateToEnvironmentScope,
+                            onNavigateToBlacklist = onNavigateToBlacklist,
                         )
                     }
                     item(key = "about") {
@@ -190,7 +189,7 @@ private fun EntryCard(
     featuresEnabled: Boolean,
     onNavigateToRadialSettings: () -> Unit,
     onNavigateToZoomOptions: () -> Unit,
-    onNavigateToEnvironmentScope: () -> Unit,
+    onNavigateToBlacklist: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         ArrowPreference(
@@ -208,9 +207,9 @@ private fun EntryCard(
             startAction = { PreferenceIcon(Icons.Rounded.LockOpen, featuresEnabled) },
         )
         ArrowPreference(
-            title = stringResource(R.string.environment_scope_title),
-            summary = stringResource(R.string.environment_scope_summary),
-            onClick = onNavigateToEnvironmentScope,
+            title = stringResource(R.string.blacklist_title),
+            summary = stringResource(R.string.blacklist_summary),
+            onClick = onNavigateToBlacklist,
             enabled = featuresEnabled,
             startAction = { PreferenceIcon(Icons.Rounded.Block, featuresEnabled) },
         )
@@ -606,3 +605,64 @@ internal val WideWindowMinWidth = 600.dp
 internal val ScreenTopSpacing = 12.dp
 internal val ScreenBottomSpacing = 12.dp
 private val CardSpacing = 12.dp
+/**
+ * 拖动「图标大小」时的实时预览：按扇形真实几何画出槽位圆点与「更多」圆盘，
+ * 用来确认主题图标与溢出按钮是否对齐。
+ */
+@Composable
+internal fun IconSizePreview(
+    iconSizeDp: Int,
+    itemCount: Int,
+    leftEnabled: Boolean,
+    rightEnabled: Boolean,
+) {
+    val activeColor = MiuixTheme.colorScheme.primary
+    val inactiveColor = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val basePixel = minOf(size.width, size.height) / RadialBaseShortEdgeDp
+        // 与 RadialIconGeometry 一致：图标变大时半径同比外推。
+        val arcRadius =
+            (RadialBaseArcRadiusDp + (iconSizeDp - RadialBaseIconDiameterDp) / 2f) * basePixel
+        val iconRadius = iconSizeDp * basePixel / 2f
+        val slots = itemCount.coerceIn(1, 7)
+        val step = RadialSpanDegrees / slots
+        val strokeWidth = 2.dp.toPx()
+        val dash = PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 5.dp.toPx()))
+
+        fun drawSide(originX: Float, originY: Float, mirrored: Boolean, enabled: Boolean) {
+            val color = if (enabled) activeColor else inactiveColor
+            for (index in 0 until slots) {
+                val slot = slots - index - 1
+                val leftDegrees = -RadialSafeDegrees - (slot + 0.5f) * step
+                val degrees = if (mirrored) -180f - leftDegrees else leftDegrees
+                val radians = degrees * PI.toFloat() / 180f
+                val center =
+                    Offset(
+                        x = originX + cos(radians) * arcRadius,
+                        y = originY + sin(radians) * arcRadius,
+                    )
+                drawCircle(
+                    color = color.copy(alpha = if (enabled) 0.14f else 0.05f),
+                    radius = iconRadius,
+                    center = center,
+                )
+                drawCircle(
+                    color = color.copy(alpha = if (enabled) 0.65f else 0.25f),
+                    radius = iconRadius,
+                    center = center,
+                    style = Stroke(width = strokeWidth, pathEffect = dash),
+                )
+                // 最后一格是「更多」：按可见占比画，和应用图标对齐后的观感一致。
+                val isMoreSlot = slot == slots - 1
+                drawCircle(
+                    color = color.copy(alpha = if (enabled) 0.85f else 0.30f),
+                    radius = iconRadius * (if (isMoreSlot) 0.92f else 1f),
+                    center = center,
+                )
+            }
+        }
+
+        drawSide(originX = 0f, originY = size.height, mirrored = false, enabled = leftEnabled)
+        drawSide(originX = size.width, originY = size.height, mirrored = true, enabled = rightEnabled)
+    }
+}

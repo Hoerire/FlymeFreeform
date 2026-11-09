@@ -75,6 +75,9 @@ internal class ColorOsSidebarClient(
         return true
     }
 
+    /** 面板会话是否还活着（已提交且未结束）。 */
+    fun isPanelActive(): Boolean = current?.committed == true
+
     fun cancel() {
         val request = current ?: return
         if (request.committed) {

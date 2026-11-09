@@ -34,6 +34,7 @@ internal class NotificationEnqueueProbe(private val module: XposedModule) {
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .setId("flymefreeform.notif.enqueue_probe")
             .intercept { chain ->
+                // 探针只读；详细日志关闭时 describe 内部不会产生任何提取开销。
                 runCatching { describe(chain.getArg(0) as? String, chain.getArg(6) as? Notification) }
                     .onFailure { module.log(Log.WARN, TAG, "NOTIF_ENQUEUE_PROBE_FAILED", it) }
                 chain.proceed()

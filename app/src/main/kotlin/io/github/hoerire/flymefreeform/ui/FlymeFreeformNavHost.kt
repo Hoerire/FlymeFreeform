@@ -31,10 +31,13 @@ internal sealed interface AppRoute : NavKey {
     data object ZoomOptions : AppRoute
 
     @Serializable
-    data object RadialSettings : AppRoute
+    data object ZoomExcluded : AppRoute
 
     @Serializable
-    data object EnvironmentScope : AppRoute
+    data object ZoomExcludedPicker : AppRoute
+
+    @Serializable
+    data object RadialSettings : AppRoute
 }
 
 @Composable
@@ -48,6 +51,7 @@ internal fun FlymeFreeformNavHost(
     onCornerSidesChange: (Boolean, Boolean) -> Unit,
     onCornerTriggerRangeChange: (Int) -> Unit,
     onRadialHitRangeChange: (Int) -> Unit,
+    onRadialIconSizeChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
@@ -56,8 +60,12 @@ internal fun FlymeFreeformNavHost(
     onZoomMaxWindowCountChange: (Int) -> Unit,
     onZoomAllowAnyAppChange: (Boolean) -> Unit,
     onZoomLaunchChange: (Boolean) -> Unit,
+    onZoomLauncherShortcutChange: (Boolean) -> Unit,
+    onZoomLauncherCardChange: (Boolean) -> Unit,
+    onAutoCloseWindowChange: (Boolean) -> Unit,
+    onZoomExcludedChange: (List<String>) -> Unit,
+    onShowSystemAppsChange: (Boolean) -> Unit,
     onRadialKeepOpenChange: (Boolean) -> Unit,
-    onRadialMaxItemsChange: (Int) -> Unit,
     onRequestScopes: () -> Unit,
     onPinnedTargetsChange: (List<PinnedTarget>) -> Unit,
     onBlacklistChange: (List<String>) -> Unit,
@@ -75,13 +83,6 @@ internal fun FlymeFreeformNavHost(
         {
             if (backStack.lastOrNull() != AppRoute.PinnedApps) {
                 backStack.add(AppRoute.PinnedApps)
-            }
-        }
-    }
-    val navigateToEnvironmentScope = remember(backStack) {
-        {
-            if (backStack.lastOrNull() != AppRoute.EnvironmentScope) {
-                backStack.add(AppRoute.EnvironmentScope)
             }
         }
     }
@@ -113,6 +114,20 @@ internal fun FlymeFreeformNavHost(
             }
         }
     }
+    val navigateToZoomExcluded = remember(backStack) {
+        {
+            if (backStack.lastOrNull() != AppRoute.ZoomExcluded) {
+                backStack.add(AppRoute.ZoomExcluded)
+            }
+        }
+    }
+    val navigateToZoomExcludedPicker = remember(backStack) {
+        {
+            if (backStack.lastOrNull() != AppRoute.ZoomExcludedPicker) {
+                backStack.add(AppRoute.ZoomExcludedPicker)
+            }
+        }
+    }
 
     NavDisplay(
         backStack = backStack,
@@ -135,7 +150,6 @@ internal fun FlymeFreeformNavHost(
                 onRequestScopes = onRequestScopes,
                 onNavigateToPinnedApps = navigateToPinnedApps,
                 onNavigateToRadialSettings = navigateToRadialSettings,
-                onNavigateToEnvironmentScope = navigateToEnvironmentScope,
                 onNavigateToBlacklist = navigateToBlacklist,
                 onNavigateToZoomOptions = navigateToZoomOptions,
             )
@@ -147,8 +161,10 @@ internal fun FlymeFreeformNavHost(
                 onCornerSidesChange = onCornerSidesChange,
                 onCornerTriggerRangeChange = onCornerTriggerRangeChange,
                 onRadialHitRangeChange = onRadialHitRangeChange,
-                onRadialMaxItemsChange = onRadialMaxItemsChange,
+                onRadialIconSizeChange = onRadialIconSizeChange,
                 onRadialKeepOpenChange = onRadialKeepOpenChange,
+                onPauseInLandscapeChange = onPauseInLandscapeChange,
+                onPauseInGameModeChange = onPauseInGameModeChange,
                 onNavigateToPinnedApps = navigateToPinnedApps,
             )
         }
@@ -159,17 +175,30 @@ internal fun FlymeFreeformNavHost(
                 onZoomMaxWindowCountChange = onZoomMaxWindowCountChange,
                 onZoomAllowAnyAppChange = onZoomAllowAnyAppChange,
                 onZoomLaunchChange = onZoomLaunchChange,
+                onZoomLauncherShortcutChange = onZoomLauncherShortcutChange,
+                onZoomLauncherCardChange = onZoomLauncherCardChange,
+                onAutoCloseWindowChange = onAutoCloseWindowChange,
+                onNavigateToZoomExcluded = navigateToZoomExcluded,
                 onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
                 onHandleSwipeUpToMiniEnabledChange = onHandleSwipeUpToMiniEnabledChange,
             )
         }
-        entry<AppRoute.EnvironmentScope> {
-            EnvironmentScopeScreen(
+        entry<AppRoute.ZoomExcluded> {
+            ZoomExcludedScreen(
                 state = state,
+                apps = apps,
                 onBack = popBackStack,
-                onPauseInLandscapeChange = onPauseInLandscapeChange,
-                onPauseInGameModeChange = onPauseInGameModeChange,
-                onNavigateToBlacklist = navigateToBlacklist,
+                onAddApps = navigateToZoomExcludedPicker,
+                onZoomExcludedChange = onZoomExcludedChange,
+            )
+        }
+        entry<AppRoute.ZoomExcludedPicker> {
+            ZoomExcludedPickerScreen(
+                state = state,
+                apps = apps,
+                onBack = popBackStack,
+                onZoomExcludedChange = onZoomExcludedChange,
+                onShowSystemAppsChange = onShowSystemAppsChange,
             )
         }
         entry<AppRoute.Blacklist> {
@@ -187,6 +216,7 @@ internal fun FlymeFreeformNavHost(
                 apps = apps,
                 onBack = popBackStack,
                 onBlacklistChange = onBlacklistChange,
+                onShowSystemAppsChange = onShowSystemAppsChange,
             )
         }
         entry<AppRoute.PinnedApps> {

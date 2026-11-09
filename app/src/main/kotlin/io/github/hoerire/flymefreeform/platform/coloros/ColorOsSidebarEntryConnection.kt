@@ -46,6 +46,17 @@ internal class ColorOsSidebarEntryConnection(
     /** 常驻连接；null 表示尚未建立。 */
     private var link: WarmLink? = null
     private var binding = false
+
+    /**
+     * 最近一次准备阶段解析出的用户信息。
+     *
+     * 连接回调可能晚于请求 deadline 才到达，那时 [current] 已被超时清空；
+     * 没有这份缓存就只能放弃建链，而 [binding] 已置真，后续请求再也不会重新绑定，
+     * 表现为「侧边栏目录永久不可用，直到进程被杀」。
+     */
+    private var lastUserId = -1
+    private var lastUid = -1
+    private var lastUserContext: Context? = null
     private var preparing = false
     private var pendingAfterBind: (() -> Unit)? = null
 
@@ -65,9 +76,11 @@ internal class ColorOsSidebarEntryConnection(
             if (name != COMPONENT) return
             val warm = link
             if (warm != null && warm.binder === service) return
-            val userId = current?.userId ?: return
-            val uid = current?.uid ?: return
-            val userContext = current?.userContext ?: return
+            val userId = current?.userId?.takeIf { it >= 0 } ?: lastUserId
+            if (userId < 0) return
+            val uid = current?.uid?.takeIf { it > 0 } ?: lastUid
+            if (uid <= 0) return
+            val userContext = current?.userContext ?: lastUserContext ?: return
             val created = WarmLink(service, Messenger(service), uid, userId, userContext)
             try {
                 service.linkToDeath(death, 0)
@@ -155,15 +168,27 @@ internal class ColorOsSidebarEntryConnection(
             request.userId = userId
             request.userContext = userContext
             val uid = ColorOsSidebarTarget.supportedUid(userContext)
-            if (uid == null || userContext.getSystemService(UserManager::class.java)?.isUserForeground != true ||
-                Settings.Secure.getInt(userContext.contentResolver, "edge_panel_toggle", -1) != 1 ||
-                (request.target != null && request.target.userId != userId)
-            ) {
+            val foreground = userContext.getSystemService(UserManager::class.java)?.isUserForeground == true
+            val toggle = Settings.Secure.getInt(userContext.contentResolver, "edge_panel_toggle", -1)
+            val targetUserMismatch = request.target != null && request.target.userId != userId
+            if (uid == null || !foreground || toggle != 1 || targetUserMismatch) {
+                log(
+                    Log.WARN,
+                    "SIDEBAR_ENTRY_SKIP_uid" + (uid ?: -1) +
+                        "_fg" + (if (foreground) 1 else 0) +
+                        "_toggle" + toggle +
+                        "_tu" + (if (targetUserMismatch) 1 else 0) +
+                        "_user" + userId,
+                    null,
+                )
                 preparing = false
                 handler.post { finish(request) }
                 return@work
             }
             request.uid = uid
+            lastUserId = userId
+            lastUid = uid
+            lastUserContext = userContext
             if (!request.active.get()) {
                 preparing = false
                 return@work
@@ -307,7 +332,12 @@ internal class ColorOsSidebarEntryConnection(
         val now = SystemClock.uptimeMillis()
         if (now - lastFailure >= 5_000L) {
             lastFailure = now
-            log(Log.WARN, "SIDEBAR_ENTRY_TRANSPORT_FAILED", exception)
+            log(
+                Log.WARN,
+                "SIDEBAR_ENTRY_TRANSPORT_FAILED_" + exception.javaClass.simpleName +
+                    "_" + (exception.message ?: "-"),
+                exception,
+            )
         }
     }
 
@@ -324,7 +354,15 @@ internal class ColorOsSidebarEntryConnection(
         @Volatile var remote: Messenger? = null
         var confirmed = false
         val transfer = CatalogTransfer(SidebarEntryProtocol.MAX_ENTRIES, SelectableEntry::target)
-        val timeout = Runnable { finish(this) }
+        val timeout = Runnable {
+            log(Log.WARN, "SIDEBAR_ENTRY_TIMEOUT_" + (if (target == null) "LIST" else "LAUNCH"), null)
+            // 绑定已发起但连接还没回来：这次请求等不到结果了，先把绑定作废，
+            // 下一次请求才会重新 bindService；否则会一直等一个不会再触发回调的旧绑定。
+            // 超时说明这条链路已经不可信：可能绑定没回来，也可能 link 还在但对端不再回应。
+            // 两种情况都作废连接，让下一次请求重新 bindService，避免一直挂在死连接上。
+            finish(this)
+            dropLink(unbind = true)
+        }
     }
 
     private companion object {

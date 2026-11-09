@@ -93,9 +93,9 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setRadialKeepOpen(enabled: Boolean) =
         updateSettings { it.copy(radialKeepOpen = enabled) }
 
-    fun setRadialMaxItems(count: Int) =
+    fun setRadialIconSizeDp(value: Int) =
         updateSettings {
-            it.copy(radialMaxItems = ModulePreferences.coerceRadialMaxItems(count))
+            it.copy(radialIconSizeDp = ModulePreferences.coerceRadialIconSizeDp(value))
         }
 
     fun setZoomMaxWindowCount(count: Int) =
@@ -111,8 +111,30 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setZoomLaunch(enabled: Boolean) =
         updateSettings { it.copy(zoomLaunch = enabled) }
 
+    /** 桌面长按快捷项是否转小窗。 */
+    fun setZoomLauncherShortcut(enabled: Boolean) =
+        updateSettings { it.copy(zoomLauncherShortcut = enabled) }
+
+    /** 窗口超过数量限制时是否自动关闭旧窗口（默认关闭，保持系统收成浮标的行为）。 */
+    fun setAutoCloseWindow(enabled: Boolean) =
+        updateSettings { it.copy(autoCloseWindow = enabled) }
+
+    /** 桌面卡片与负一屏是否转小窗。 */
+    fun setZoomLauncherCard(enabled: Boolean) =
+        updateSettings { it.copy(zoomLauncherCard = enabled) }
+
+    /** 应用选择列表是否列出系统应用。 */
+    fun setShowSystemApps(enabled: Boolean) =
+        updateSettings { it.copy(showSystemApps = enabled) }
+
     fun setBlacklistPackages(packages: List<String>) =
         updateSettings { it.copy(blacklistPackages = ModulePreferences.decodePackages(ModulePreferences.encodePackages(packages))) }
+
+    /** 「禁用浮窗」列表；与排除列表各存各的键，互不影响。 */
+    fun setZoomExcludedPackages(packages: List<String>) =
+        updateSettings {
+            it.copy(zoomExcludedPackages = ModulePreferences.decodePackages(ModulePreferences.encodePackages(packages)))
+        }
 
     fun setPinnedTargets(components: List<PinnedTarget>) =
         updateSettings {

@@ -34,6 +34,12 @@ internal class OutsideTapCloseHookInstaller(
 ) {
     private var lastFailureLogAt = -FAILURE_LOG_INTERVAL_MS
 
+    /** 允许强制重读配置的次数：只在拦截初始阶段用，之后不再读盘。 */
+    @Volatile private var reloadBudget = 3
+
+    /** 关闭去抖时间戳：一次点击只允许触发一次关闭。 */
+    @Volatile private var lastCloseFiredAt = 0L
+
     fun install(classLoader: ClassLoader) {
         try {
             val listenerClass = classLoader.loadClass(TOUCH_LISTENER_CLASS)
@@ -72,7 +78,12 @@ internal class OutsideTapCloseHookInstaller(
                 .intercept { chain ->
                     val caption = chain.thisObject ?: return@intercept chain.proceed()
                     val originalRegion = chain.getArg(0) as? Region ?: return@intercept chain.proceed()
+                    // 刚关闭过窗口时系统正在重排剩余浮标，此时再改写触摸区域会放大成闪烁。
+                    if (android.os.SystemClock.uptimeMillis() - lastCloseFiredAt < REGION_QUIET_MS) {
+                        return@intercept chain.proceed()
+                    }
                     access.rememberRegion(caption, originalRegion)
+                    FloatingTaskRestorer.remember(access.controllerForTrace(caption))
                     val protectedRegion =
                         try {
                             access.buildProtectedRegion(caption, originalRegion, configuration.snapshot)
@@ -146,6 +157,11 @@ internal class OutsideTapCloseHookInstaller(
                         }
                     val result = chain.proceed()
                     if (listener != null && closeCandidate != null) {
+                        // 一次点击窗外会连续投递多个 pointer 事件，逐个关闭会表现为屏幕连闪几下。
+                        if (android.os.SystemClock.uptimeMillis() - lastCloseFiredAt < CLOSE_DEBOUNCE_MS) {
+                            return@intercept result
+                        }
+                        lastCloseFiredAt = android.os.SystemClock.uptimeMillis()
                         if (io.github.hoerire.flymefreeform.log.VerboseLog.enabled) {
                             module.log(Log.DEBUG, TAG, "OUTSIDE_TAP_CLOSE_FIRED", null)
                         }
@@ -165,6 +181,116 @@ internal class OutsideTapCloseHookInstaller(
         } catch (exception: LinkageError) {
             module.log(Log.WARN, TAG, "OUTSIDE_TAP_TARGET_LINKAGE_FAILED", exception)
         }
+        // 独立安装：任何失败都只影响"替换转关闭"这一项，不能连累窗外关闭。
+        runCatching { installReplaceToClose(classLoader) }
+            .onFailure {
+                module.log(
+                    Log.WARN,
+                    TAG,
+                    "ZOOM_REPLACE_TO_CLOSE_FAILED_" + it.javaClass.simpleName + "_" + it.message,
+                    it,
+                )
+            }
+    }
+
+    /**
+     * 把「因新窗口替换而转成浮标」改成「直接关闭」。
+     *
+     * 系统的策略对象 ExitFlexibleTaskToFloatStrategy 会带一个来源标记，
+     * 其中 SOURCE_FROM_HANDLE_REPLACE_TO_FLOAT 表示"被新窗口顶掉、收成浮标"。
+     * 在 controller.exitFlexibleTaskWindowInnerLocked 入口把它替换成 ToBack（关闭）策略，
+     * 结果是窗口被关掉而不是留下浮标；用户主动拖到边缘（其他来源）仍然保持原生行为。
+     */
+    /**
+     * 把「因窗口超过上限被收成浮标」改成「直接关闭」。
+     *
+     * 判据是调用栈：超限路径固定经过 updateTaskMaxNumWhenFocusChanged / handleFlexibleExChange，
+     * 用户手动拖到边缘走的是拖拽入口，不经过这两处，因此不会被误伤。
+     * 命中时把 ToFloat（exitTo:5，变浮标）换成 ToBack（exitTo:6，真关闭）。
+     */
+    private fun installReplaceToClose(loader: ClassLoader) {
+        val controllerClass = loader.loadClass(FLEXIBLE_TASK_CONTROLLER_CLASS)
+        val baseClass = loader.loadClass(ABS_EXIT_STRATEGY_CLASS)
+        val floatStrategyClass = loader.loadClass(EXIT_TO_FLOAT_STRATEGY_CLASS)
+        val backStrategyClass = loader.loadClass(EXIT_TO_BACK_STRATEGY_CLASS)
+        val innerLocked =
+            methodInHierarchy(controllerClass, "exitFlexibleTaskWindowInnerLocked", 1)
+                ?: run {
+                    module.log(Log.WARN, TAG, "ZOOM_REPLACE_TO_CLOSE_NO_METHOD", null)
+                    return
+                }
+        val taskClass = loader.loadClass("com.android.server.wm.Task")
+        val backConstructor =
+            backStrategyClass.declaredConstructors
+                .firstOrNull { candidate ->
+                    candidate.parameterTypes.size == 2 &&
+                        candidate.parameterTypes[0].isAssignableFrom(taskClass) &&
+                        candidate.parameterTypes[1] == Boolean::class.javaPrimitiveType
+                }
+                ?.apply { isAccessible = true }
+                ?: run {
+                    module.log(Log.WARN, TAG, "ZOOM_REPLACE_TO_CLOSE_NO_CTOR", null)
+                    return
+                }
+        module
+            .hook(innerLocked)
+            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+            .setId("flymefreeform.system.replace_to_close")
+            .intercept { chain ->
+                if (!configuration.snapshot.enabled) return@intercept chain.proceed()
+                val strategy = chain.args.getOrNull(0)
+                val isFloatExit = strategy != null && floatStrategyClass.isInstance(strategy)
+                // 开关状态：仅在"确实是一次转浮标退出"且快照为关闭时才重读磁盘配置，
+                // 避免把预算浪费在无关退出上。
+                if (isFloatExit && !configuration.snapshot.autoCloseWindow && reloadBudget > 0) {
+                    reloadBudget--
+                    configuration.forceReload()
+                }
+                if (isFloatExit && configuration.snapshot.autoCloseWindow) {
+                    val fromLimit = Throwable().stackTrace.any { frame ->
+                        frame.methodName.contains("updateTaskMaxNum") ||
+                            frame.methodName.contains("handleFlexibleExChange")
+                    }
+                    if (fromLimit) {
+                        val current = strategy ?: return@intercept chain.proceed()
+                        val task = runCatching {
+                            fieldInHierarchy(current.javaClass, "mTask")?.get(current)
+                        }.getOrNull()
+                        val back = task?.let { runCatching { backConstructor.newInstance(it, true) }.getOrNull() }
+                        if (back != null) {
+                            module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE", null)
+                            return@intercept chain.proceed(arrayOf(back))
+                        }
+                    }
+                }
+                chain.proceed()
+            }
+        module.log(Log.INFO, TAG, "ZOOM_REPLACE_TO_CLOSE_INSTALLED", null)
+    }
+    /** 沿继承链找字段（厂商把字段放在父类上）。 */
+    private fun fieldInHierarchy(start: Class<*>, name: String): java.lang.reflect.Field? {
+        var type: Class<*>? = start
+        while (type != null) {
+            runCatching { type.getDeclaredField(name) }.getOrNull()?.let {
+                it.isAccessible = true
+                return it
+            }
+            type = type.superclass
+        }
+        return null
+    }
+
+    /** 沿继承链找指定参数个数的方法。 */
+    private fun methodInHierarchy(start: Class<*>, name: String, count: Int): java.lang.reflect.Method? {
+        var type: Class<*>? = start
+        while (type != null) {
+            type.declaredMethods.firstOrNull { it.name == name && it.parameterTypes.size == count }?.let {
+                it.isAccessible = true
+                return it
+            }
+            type = type.superclass
+        }
+        return null
     }
 
     private fun logFailure(code: String, throwable: Throwable) {
@@ -186,6 +312,11 @@ internal class OutsideTapCloseHookInstaller(
         private val environmentAllowed: () -> Boolean,
     ) {
         private val controllerField = listenerClass.requiredField("this$0")
+
+        /** 供恢复逻辑取样：从标题栏取 controller。 */
+        fun controllerForTrace(caption: Any): Any? =
+            runCatching { captionControllerField.get(caption) }.getOrNull()
+
         private val contextField = controllerClass.requiredField("mContext")
         private val flexibleTasksField = controllerClass.requiredField("mFlexibleTasks")
         private val captionTaskField = captionClass.requiredField("mTask")
@@ -242,6 +373,7 @@ internal class OutsideTapCloseHookInstaller(
         private val engines = IdentityHashMap<Any, OutsideTapGestureEngine>()
         private val captions = WeakHashMap<Any, Unit>()
         private val protectedTasks = WeakHashMap<Any, Unit>()
+
 
         fun onConfigurationChanged(
             settings: io.github.hoerire.flymefreeform.config.ModuleSettingsSnapshot,
@@ -512,15 +644,43 @@ internal class OutsideTapCloseHookInstaller(
             synchronized(engines) { engines.values.forEach(OutsideTapGestureEngine::interrupt) }
         }
 
+        /**
+         * 关闭兜底。
+         *
+         * 我们把触摸区扩大之后，系统自己就会处理「点窗外关闭」；此前这里又立即调了一次
+         * `exitFlexibleTask`，等于同一个窗口被退出两次，表现为关闭瞬间画面闪很多下
+         * （从浮标恢复的小窗尤其明显）。现在改为：先让系统关，延迟一小段再检查，
+         * 只有窗口仍然存在时才补一次关闭。
+         */
         fun closeIfStillValid(listener: Any, task: Any) {
             if (!environmentAllowed()) return
             val controller = controllerField.get(listener) ?: return
             if (getTopZoomTask.invokeUnwrapped(controller) !== task || !isOrdinaryZoom(controller, task)) {
                 return
             }
-            exitFlexibleTask.invokeUnwrapped(controller, task, true, 0, 0)
+            // 优先走系统关闭按钮的入口：构造退出策略 → exitFlexibleTaskWindowInnerLocked。
+            // 直接调 exitFlexibleTask(task,true,0,0) 会落到强制动画分支，
+            // 从浮标恢复的窗口会逐帧重排（每秒几十次 relayout，表现为闪）。
+            val byStrategy = runCatching {
+                val loader = controller.javaClass.classLoader
+                val strategyClass = Class.forName("com.android.server.wm.ExitFlexibleTaskToBackStrategy", false, loader)
+                val constructor = strategyClass.declaredConstructors.firstOrNull { candidate ->
+                    candidate.parameterTypes.size == 2 &&
+                        candidate.parameterTypes[1] == Boolean::class.javaPrimitiveType
+                } ?: return@runCatching false
+                constructor.isAccessible = true
+                val strategy = constructor.newInstance(task, true)
+                val baseClass = Class.forName("com.android.server.wm.AbsFlexibleTaskExitStrategy", false, loader)
+                val inner = controller.javaClass.getMethod("exitFlexibleTaskWindowInnerLocked", baseClass)
+                inner.isAccessible = true
+                inner.invoke(controller, strategy)
+                true
+            }.getOrDefault(false)
+            io.github.hoerire.flymefreeform.log.ModuleLog.debug("FFOUT") {
+                "OUTSIDE_TAP_CLOSE_STRATEGY_OK_" + byStrategy
+            }
+            if (!byStrategy) exitFlexibleTask.invokeUnwrapped(controller, task, true, 0, 0)
         }
-
         private fun beginOutsideTap(
             engine: OutsideTapGestureEngine,
             controller: Any,
@@ -673,9 +833,19 @@ internal class OutsideTapCloseHookInstaller(
 
     private companion object {
         const val TAG = "FlymeFreeform"
+
+        /** 同一次点击内的重复关闭抑制窗口。 */
+        const val CLOSE_DEBOUNCE_MS = 400L
+
+        /** 关闭后这段时间内不改写触摸区域：留给系统做剩余浮标的重排。 */
+        const val REGION_QUIET_MS = 900L
+
         const val TOUCH_LISTENER_CLASS =
             "com.android.server.wm.FlexibleTaskController\$TouchListener"
         const val FLEXIBLE_TASK_CONTROLLER_CLASS = "com.android.server.wm.FlexibleTaskController"
+        const val ABS_EXIT_STRATEGY_CLASS = "com.android.server.wm.AbsFlexibleTaskExitStrategy"
+        const val EXIT_TO_FLOAT_STRATEGY_CLASS = "com.android.server.wm.ExitFlexibleTaskToFloatStrategy"
+        const val EXIT_TO_BACK_STRATEGY_CLASS = "com.android.server.wm.ExitFlexibleTaskToBackStrategy"
         const val TASK_CLASS = "com.android.server.wm.Task"
         const val TASK_EXT_CLASS = "com.android.server.wm.TaskExtImpl"
         const val DISPLAY_CONTENT_CLASS = "com.android.server.wm.DisplayContent"
@@ -733,3 +903,113 @@ private fun Method.invokeUnwrapped(instance: Any?, vararg arguments: Any?): Any?
     } catch (exception: InvocationTargetException) {
         throw exception.targetException
     }
+/**
+ * 缓存 system_server 的 FlexibleTaskController，并提供"把浮标恢复成小窗"。
+ *
+ * 扇形点开的应用若正躺在浮标里，就按点浮标的方式恢复（ToFull），
+ * 而不是新开窗口——后者会沿用任务的旧非全屏尺寸，表现成迷你窗。
+ */
+internal object FloatingTaskRestorer {
+    @Volatile private var controller: Any? = null
+
+    fun remember(value: Any?) {
+        if (value != null) controller = value
+    }
+
+    fun restore(packageName: String): Boolean {
+        val target = controller ?: resolveController() ?: return false
+        return runCatching {
+            val tasksField = findField(target.javaClass, "mFlexibleTasks") ?: return false
+            @Suppress("UNCHECKED_CAST")
+            val tasks = tasksField.get(target) as? List<Any?> ?: return false
+            val task = tasks.firstOrNull { candidate ->
+                candidate != null && packageOf(candidate) == packageName && isMiniOrFloating(candidate)
+            } ?: return false
+            val loader = target.javaClass.classLoader
+            val fullClass = Class.forName("com.android.server.wm.ExitFlexibleTaskToFullStrategy", false, loader)
+            val taskClass = Class.forName("com.android.server.wm.Task", false, loader)
+            val ctor = fullClass.declaredConstructors.firstOrNull { candidate ->
+                candidate.parameterTypes.size == 2 &&
+                    candidate.parameterTypes[0].isAssignableFrom(taskClass) &&
+                    candidate.parameterTypes[1] == Boolean::class.javaPrimitiveType
+            } ?: return false
+            ctor.isAccessible = true
+            val strategy = ctor.newInstance(task, true)
+            val inner = findMethod(target.javaClass, "exitFlexibleTaskWindowInnerLocked", 1) ?: return false
+            inner.invoke(target, strategy)
+            true
+        }.getOrDefault(false)
+    }
+
+    /** 直接从厂商服务取 controller：不依赖 hook 是否已经缓存过。 */
+    private fun resolveController(): Any? =
+        runCatching {
+            val loader = ClassLoader.getSystemClassLoader()
+            val serviceClass = Class.forName(
+                "com.android.server.wm.FlexibleWindowManagerService",
+                false,
+                loader,
+            )
+            val instance = serviceClass
+                .getMethod("getInstance", Any::class.java)
+                .invoke(null, systemContext())
+                ?: return null
+            val resolved = serviceClass.getMethod("getFlexibleTaskController").invoke(instance)
+            controller = resolved
+            resolved
+        }.getOrNull()
+
+    private fun systemContext(): android.content.Context? =
+        runCatching {
+            Class.forName("android.app.ActivityThread")
+                .getMethod("currentActivityThread")
+                .invoke(null)
+                ?.let { thread ->
+                    thread.javaClass.getMethod("getSystemContext").invoke(thread) as? android.content.Context
+                }
+        }.getOrNull()
+
+    /** 只有迷你窗/贴边浮标才需要恢复；正常小窗直接聚焦即可，不能重置它的尺寸。 */
+    private fun isMiniOrFloating(task: Any): Boolean =
+        runCatching {
+            val bounds = task.javaClass.getMethod("getBounds").invoke(task) as? android.graphics.Rect
+                ?: return false
+            val metrics = systemContext()?.resources?.displayMetrics
+            if (metrics == null) return false
+            val screen = metrics.widthPixels.toLong() * metrics.heightPixels
+            val area = bounds.width().toLong() * bounds.height()
+            area > 0 && area * 4 < screen
+        }.getOrDefault(false)
+
+    private fun packageOf(task: Any): String? =
+        runCatching {
+            val baseIntent = task.javaClass.getMethod("getBaseIntent").invoke(task) as? android.content.Intent
+            baseIntent?.component?.packageName
+                ?: (task.javaClass.getMethod("getRealActivity").invoke(task) as? android.content.ComponentName)
+                    ?.packageName
+        }.getOrNull()
+
+    private fun findField(start: Class<*>, name: String): java.lang.reflect.Field? {
+        var type: Class<*>? = start
+        while (type != null) {
+            runCatching { type.getDeclaredField(name) }.getOrNull()?.let {
+                it.isAccessible = true
+                return it
+            }
+            type = type.superclass
+        }
+        return null
+    }
+
+    private fun findMethod(start: Class<*>, name: String, count: Int): java.lang.reflect.Method? {
+        var type: Class<*>? = start
+        while (type != null) {
+            type.declaredMethods.firstOrNull { it.name == name && it.parameterTypes.size == count }?.let {
+                it.isAccessible = true
+                return it
+            }
+            type = type.superclass
+        }
+        return null
+    }
+}

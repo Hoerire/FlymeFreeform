@@ -2,8 +2,9 @@ package io.github.hoerire.flymefreeform.ui
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Apps
-import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.CropFree
+import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.SwipeUp
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Widgets
@@ -16,6 +17,7 @@ import io.github.hoerire.flymefreeform.config.OutsideTapCloseMode
 import io.github.hoerire.flymefreeform.framework.FrameworkConnectionState
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 
@@ -38,6 +40,10 @@ internal fun ZoomOptionsScreen(
     onZoomMaxWindowCountChange: (Int) -> Unit,
     onZoomAllowAnyAppChange: (Boolean) -> Unit,
     onZoomLaunchChange: (Boolean) -> Unit,
+    onZoomLauncherShortcutChange: (Boolean) -> Unit,
+    onZoomLauncherCardChange: (Boolean) -> Unit,
+    onAutoCloseWindowChange: (Boolean) -> Unit,
+    onNavigateToZoomExcluded: () -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
 ) {
@@ -80,21 +86,49 @@ internal fun ZoomOptionsScreen(
                     onCommit = onZoomMaxWindowCountChange,
                     showDpUnit = false,
                 )
+                // 解除限制＝原本不支持的应用也放行，图标用「开锁」直接表达解锁准入。
                 SwitchPreference(
                     checked = state.settings.zoomAllowAnyApp,
                     onCheckedChange = onZoomAllowAnyAppChange,
                     title = stringResource(R.string.zoom_allow_any_app_title),
                     summary = stringResource(R.string.zoom_allow_any_app_summary),
                     enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.Apps, enabled) },
+                    startAction = { PreferenceIcon(Icons.Rounded.LockOpen, enabled) },
                 )
+                // 小窗跳转＝把启动改成自由浮窗，图标直接用「画中画」这个通用小窗符号。
                 SwitchPreference(
                     checked = state.settings.zoomLaunch,
                     onCheckedChange = onZoomLaunchChange,
                     title = stringResource(R.string.zoom_launch_title),
                     summary = stringResource(R.string.zoom_launch_summary),
                     enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.SwapHoriz, enabled) },
+                    startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, enabled) },
+                )
+                // 桌面上的两个入口单独可关：关掉后保持系统默认的全屏行为。
+                SwitchPreference(
+                    checked = state.settings.zoomLauncherShortcut,
+                    onCheckedChange = onZoomLauncherShortcutChange,
+                    title = stringResource(R.string.zoom_launcher_shortcut_title),
+                    summary = stringResource(R.string.zoom_launcher_shortcut_summary),
+                    enabled = enabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.SwipeUp, enabled) },
+                )
+                // 窗口超过数量限制时：开 → 直接关闭旧窗口；关 → 保持系统收成贴边浮标。
+                SwitchPreference(
+                    checked = state.settings.autoCloseWindow,
+                    onCheckedChange = onAutoCloseWindowChange,
+                    title = stringResource(R.string.auto_close_window_title),
+                    summary = stringResource(R.string.auto_close_window_summary),
+                    enabled = enabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.CropFree, enabled) },
+                )
+                SwitchPreference(
+                    checked = state.settings.zoomLauncherCard,
+                    onCheckedChange = onZoomLauncherCardChange,
+                    title = stringResource(R.string.zoom_launcher_card_title),
+                    summary = stringResource(R.string.zoom_launcher_card_summary),
+                    enabled = enabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.Widgets, enabled) },
                 )
                 SwitchPreference(
                     checked = state.settings.handleSwipeUpToMiniEnabled,
@@ -103,6 +137,14 @@ internal fun ZoomOptionsScreen(
                     summary = stringResource(R.string.handle_swipe_up_to_mini_summary),
                     enabled = enabled,
                     startAction = { PreferenceIcon(Icons.Rounded.SwipeUp, enabled) },
+                )
+                // 禁用浮窗＝列表内应用不以任何形式的自由浮窗打开，图标用「四角括号」画全屏边界。
+                ArrowPreference(
+                    title = stringResource(R.string.zoom_excluded_title),
+                    summary = stringResource(R.string.zoom_excluded_summary),
+                    onClick = onNavigateToZoomExcluded,
+                    enabled = enabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.CropFree, enabled) },
                 )
             }
         }

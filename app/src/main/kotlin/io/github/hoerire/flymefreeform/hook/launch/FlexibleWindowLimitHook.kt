@@ -61,15 +61,18 @@ internal class FlexibleWindowLimitHook(
                         // 两个子功能各自独立生效：数量上限与应用准入互不依赖。
                         // 排除列表内的应用在前台时整体让行，保持系统原值。
                         val settings = configuration.snapshot
+                        // 先让链继续（系统与其他模块都有机会参与），再决定是否覆盖返回值，
+                        // 关闭本功能时原样返回，不与其它模块争抢。
+                        val original = chain.proceed()
                         if (!settings.enabled || environment?.isForegroundExcluded() == true) {
-                            chain.proceed()
+                            original
                         } else if (isMaxWinNum) {
                             // 直接作为上限值：这是用户在设置里明确指定的个数，不做放宽合并。
                             settings.zoomMaxWindowCount
                         } else if (settings.zoomAllowAnyApp) {
                             true
                         } else {
-                            chain.proceed()
+                            original
                         }
                     }
                 count++

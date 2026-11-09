@@ -78,6 +78,7 @@ internal object AdaptiveOverlayGeometry {
         density: Float,
         radialItemCount: Int,
         radialHitRangeDp: Float? = null,
+        radialIconSizeDp: Float? = null,
         radialInsets: OverlaySafeInsets = safeInsets,
         fontScale: Float,
         panelItemCount: Int,
@@ -103,13 +104,18 @@ internal object AdaptiveOverlayGeometry {
                 safeInsets = radialInsets,
                 itemCount = radialItemCount,
                 hitRadiusDp = radialHitRangeDp,
+                iconSizeDp = radialIconSizeDp ?: RadialIconGeometry.BASE_ICON_DIAMETER_DP,
             )
 
         val outerMargin = plateDiameter * OUTER_MARGIN_FRACTION
         val requestedContentHorizontalPadding = plateDiameter * PANEL_HORIZONTAL_PADDING_FRACTION
         val labelTextSize = plateDiameter * PANEL_LABEL_FRACTION * fontScale.coerceAtLeast(0.1f)
         val horizontalTextPadding = labelTextSize * PANEL_LABEL_HORIZONTAL_PADDING_FRACTION
-        val panelIconDiameter = plateDiameter * PANEL_ICON_FRACTION
+        // 面板内图标跟随「图标大小」同比缩放，避免扇内扇外两套尺寸。
+        val iconScale =
+            ((radialIconSizeDp ?: RadialIconGeometry.BASE_ICON_DIAMETER_DP) /
+                RadialIconGeometry.BASE_ICON_DIAMETER_DP).coerceIn(0.7f, 1.4f)
+        val panelIconDiameter = plateDiameter * PANEL_ICON_FRACTION * iconScale
         val minimumCellWidth =
             max(
                 panelIconDiameter * PANEL_ICON_CELL_FRACTION,

@@ -110,7 +110,7 @@ internal class LauncherHookInstaller(
             }
             module
                 .hook(target.inputMethod)
-                .setPriority(XposedInterface.PRIORITY_HIGHEST)
+                // 不设置 PRIORITY_HIGHEST：多个模块同时启用时，抢最高优先级会压过别人的拦截链。
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .setId("flymefreeform.launcher.corner_input_owner")
                 .intercept { chain ->
@@ -173,7 +173,8 @@ internal class LauncherHookInstaller(
                 }
             }
 
-            MotionEvent.ACTION_POINTER_DOWN -> gestureEngine.cancel()
+            // 多指按下不取消主手势（与系统侧一致），避免滑选中途被判为断触。
+            MotionEvent.ACTION_POINTER_DOWN -> GestureAction.Ignore
 
             MotionEvent.ACTION_UP -> {
                 gestureEngine.up(event.getPointerId(event.actionIndex))

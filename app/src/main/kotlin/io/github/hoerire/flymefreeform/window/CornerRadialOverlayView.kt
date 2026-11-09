@@ -140,6 +140,9 @@ internal class CornerRadialOverlayView(
     private var panelImages: Map<io.github.hoerire.flymefreeform.config.PinnedTarget, ImageBitmap> = emptyMap()
     private var side = CornerSide.Right
     private var radialHitRangeDp = ModulePreferences.DEFAULT_RADIAL_HIT_RANGE_DP
+    private var radialIconSizeDp = ModulePreferences.DEFAULT_RADIAL_ICON_SIZE_DP
+    /** 浮层显示时刻：呼出手势的抬手会作为 tap 落到这里，必须忽略。 */
+    private var shownAtUptime = 0L
     /** 「永久保持」：松手未选中时保留浮层，并允许直接点选条目。 */
     private var keepOpen = false
     private var latestX = 0f
@@ -183,6 +186,7 @@ internal class CornerRadialOverlayView(
         x: Float,
         y: Float,
         hitRangeDp: Int = ModulePreferences.DEFAULT_RADIAL_HIT_RANGE_DP,
+        iconSizeDp: Int = ModulePreferences.DEFAULT_RADIAL_ICON_SIZE_DP,
         keepOpen: Boolean = false,
     ) {
         check(!isAttachedToWindow) { "Overlay must be initialized before it is attached" }
@@ -190,6 +194,8 @@ internal class CornerRadialOverlayView(
         this.side = side
         // 保持挂起不改变命中判定：滑动选格与点选统一使用「命中范围」的设定值。
         this.radialHitRangeDp = ModulePreferences.coerceRadialHitRangeDp(hitRangeDp)
+        this.radialIconSizeDp = ModulePreferences.coerceRadialIconSizeDp(iconSizeDp)
+        shownAtUptime = android.os.SystemClock.uptimeMillis()
         this.catalog = catalog
         latestX = x
         latestY = y
@@ -239,7 +245,7 @@ internal class CornerRadialOverlayView(
                 "_HITRADIUS_" + (radialHitRangeDp * resources.displayMetrics.density).toInt() + "PX",
         )
         when {
-            // 永久保持：未选中任何条目时不收起，等待下一次点选。
+            // 抬手即结束：保持挂起模式下未选中时不收起，其余情况未选中则收起。
             selection == null && keepOpen -> removeCallbacks(timeout)
             selection == null -> dismissAnimated()
             selection < catalog.radialApps.size -> dismissAnimated(catalog.radialApps[selection])
@@ -436,6 +442,12 @@ internal class CornerRadialOverlayView(
                             .fillMaxSize()
                             .pointerInput(radialLayout, catalog, radialHitRangeDp) {
                                 detectTapGestures { offset ->
+                                    // 呼出手势松手时系统会把这次抬手补成一个 tap，
+                                    // 落点在底角附近，会命中最近的格子并立刻开小窗。
+                                    // 显示后的极短时间内收到的点击一律忽略。
+                                    if (android.os.SystemClock.uptimeMillis() - shownAtUptime < OPEN_GRACE_MS) {
+                                        return@detectTapGestures
+                                    }
                                     val hitRadius =
                                         radialHitRangeDp * resources.displayMetrics.density
                                     val index =
@@ -656,6 +668,7 @@ internal class CornerRadialOverlayView(
         alpha: Float,
     ) {
         if (image.width <= 0 || image.height <= 0 || size <= 0f) return
+        // 图标已在目录里裁成圆，这里整图满径绘制：不再每帧量内容包围盒。
         val aspectRatio = image.width.toFloat() / image.height
         val drawWidth = if (aspectRatio >= 1f) size else size * aspectRatio
         val drawHeight = if (aspectRatio >= 1f) size / aspectRatio else size
@@ -665,6 +678,7 @@ internal class CornerRadialOverlayView(
         clipPath(radialClipPath) {
             drawImage(
                 image = image,
+                srcSize = IntSize(image.width, image.height),
                 dstOffset =
                     IntOffset(
                         (centerX - destinationSize.width / 2f).roundToInt(),
@@ -872,6 +886,7 @@ internal class CornerRadialOverlayView(
                 density = resources.displayMetrics.density,
                 radialItemCount = catalog.radialApps.size + 1,
                 radialHitRangeDp = radialHitRangeDp.toFloat(),
+                radialIconSizeDp = radialIconSizeDp.toFloat(),
                 radialInsets = radialInsets,
                 fontScale = resources.configuration.fontScale,
                 panelItemCount = catalog.panelApps.size,
@@ -1095,7 +1110,8 @@ internal class CornerRadialOverlayView(
         )
     }
 
-    private fun systemIconSize(): Float =
+    /** 系统大图标尺寸：布局每次都会问一次，取到后缓存，避免反复拿服务。 */
+    private val cachedSystemIconSize: Float by lazy {
         try {
             context
                 .getSystemService(ActivityManager::class.java)
@@ -1105,6 +1121,9 @@ internal class CornerRadialOverlayView(
         } catch (_: RuntimeException) {
             0f
         }
+    }
+
+    private fun systemIconSize(): Float = cachedSystemIconSize
 
     private data class ExitRequest(val pendingCommit: RadialEntry?, val entryProgress: Float)
 
@@ -1121,6 +1140,9 @@ internal class CornerRadialOverlayView(
         const val SELECTED_ICON_SCALE_GAIN = 0.2f
         const val PANEL_SURFACE_ALPHA = 253f / 255f
         // 24dp 图标在 40dp 圆盘内：点径 3.5、点距 7.125（图标视口单位）。
+        /** 呼出后的静默窗口：屏蔽呼出手势残留的那次抬手。 */
+        const val OPEN_GRACE_MS = 180L
+
         const val MORE_DOT_RADIUS_FRACTION = 1.75f / 24f * 0.6f
         const val MORE_DOT_SPACING_FRACTION = 7.125f / 24f * 0.6f
         const val PANEL_EXPAND_DAMPING = 0.9f
@@ -1171,7 +1193,9 @@ private fun Modifier.panelReveal(
     }
 
 private class RadialImage(entry: RadialEntry) {
-    val icon: ImageBitmap = entry.icon.asImageBitmap()
+    // 绘制侧兜底再裁一次圆：目录那份可能来自缓存或旧的塑形结果，
+    // 这里保证真正交给 Canvas 的位图一定是圆的。
+    val icon: ImageBitmap = IconContentMetrics.circular(entry.icon).asImageBitmap()
     val badge: ImageBitmap? = entry.badge?.asImageBitmap()
     val badgeLeftOffsetFraction: Float = entry.badgeLeftOffsetFraction
 }

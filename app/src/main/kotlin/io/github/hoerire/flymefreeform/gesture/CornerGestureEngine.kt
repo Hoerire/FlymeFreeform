@@ -106,12 +106,19 @@ internal class CornerGestureEngine {
         config: CornerGestureConfig,
     ): GestureAction {
         val activeSide = side ?: return GestureAction.PassThrough
-        if (pointerId != this.pointerId || pointerCount != 1) return cancel()
+        // 只跟随发起手势的那根手指：滑到图标附近时拇指侧面常会多报一根手指，
+        // 以前这里直接 cancel，表现就是"扇形自己关掉"（像断触）。
+        if (pointerId != this.pointerId) return cancel()
 
         val inward = if (activeSide == CornerSide.Left) x - originX else originX - x
         val upward = originY - y
-        if (inward < -config.reverseTolerance || upward < -config.reverseTolerance) {
-            return cancel()
+        // 滑动期间不因反向移动取消：只有抬手或系统取消触摸才结束手势，
+        // 否则滑到图标附近时手指轻微回退，就会出现"划着划着扇形自己没了"。
+        if (!claimed) {
+            val reverseLimit = config.reverseTolerance * 3f
+            if (inward < -reverseLimit || upward < -reverseLimit) {
+                return cancel()
+            }
         }
         if (!claimed) {
             if (inward < config.inwardThreshold || upward < config.upwardThreshold) {

@@ -28,6 +28,10 @@ class MainActivity : ComponentActivity() {
             val state = repository.state.collectAsStateWithLifecycle().value
             val sidebarCatalog = sidebarRepository.state.collectAsStateWithLifecycle().value
             val apps = appRepository.apps.collectAsStateWithLifecycle().value
+            // 选择列表是否列系统应用由设置决定；切换后按新口径重载一次。
+            androidx.compose.runtime.LaunchedEffect(state.settings.showSystemApps) {
+                appRepository.refresh(state.settings.showSystemApps)
+            }
             FlymeFreeformTheme {
                 FlymeFreeformNavHost(
                     state = state,
@@ -39,6 +43,7 @@ class MainActivity : ComponentActivity() {
                     onCornerSidesChange = repository::setCornerSides,
                     onCornerTriggerRangeChange = repository::setCornerTriggerRangeDp,
                     onRadialHitRangeChange = repository::setRadialHitRangeDp,
+                    onRadialIconSizeChange = repository::setRadialIconSizeDp,
                     onOutsideTapCloseModeChange = repository::setOutsideTapCloseMode,
                     onHandleSwipeUpToMiniEnabledChange =
                         repository::setHandleSwipeUpToMiniEnabled,
@@ -48,11 +53,15 @@ class MainActivity : ComponentActivity() {
                     onZoomMaxWindowCountChange = repository::setZoomMaxWindowCount,
                     onZoomAllowAnyAppChange = repository::setZoomAllowAnyApp,
                     onZoomLaunchChange = repository::setZoomLaunch,
+                    onZoomLauncherShortcutChange = repository::setZoomLauncherShortcut,
+                    onZoomLauncherCardChange = repository::setZoomLauncherCard,
+                    onAutoCloseWindowChange = repository::setAutoCloseWindow,
                     onRadialKeepOpenChange = repository::setRadialKeepOpen,
-                    onRadialMaxItemsChange = repository::setRadialMaxItems,
                     onRequestScopes = repository::requestMissingScopes,
                     onPinnedTargetsChange = repository::setPinnedTargets,
                     onBlacklistChange = repository::setBlacklistPackages,
+                    onShowSystemAppsChange = repository::setShowSystemApps,
+                    onZoomExcludedChange = repository::setZoomExcludedPackages,
                 )
             }
         }

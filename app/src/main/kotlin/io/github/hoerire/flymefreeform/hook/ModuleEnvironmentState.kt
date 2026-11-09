@@ -158,17 +158,29 @@ internal class ModuleEnvironmentState(
     }
 
     /**
-     * 指定包是否在排除列表内。
+     * 指定包是否在排除列表内（闸门 2）。
      *
-     * 排除列表的语义是「该应用在前台时不施加任何修改」，因此同时用于两类判定：
-     * 影响当前窗口的操作（窗外关闭、快速上滑）取窗口所属包名，
-     * 影响启动结果的操作（小窗启动、应用准入）取目标包名。
+     * 判定口径统一为**前台包名**：该应用在前台时，模块的全部增强都不施加。
+     * 「某个应用不被浮窗打开」是另一层语义，见 [isZoomExcluded]。
      */
     fun isExcluded(packageName: String?): Boolean =
         configuration.snapshot.isBlacklisted(packageName)
 
+    /** 指定包是否在「禁用浮窗」列表内（闸门 3）：命中即不以任何形式的自由浮窗打开。 */
+    fun isZoomExcluded(packageName: String?): Boolean =
+        configuration.snapshot.isZoomLaunchExcluded(packageName)
+
     /** 当前前台应用是否在排除列表内。 */
     fun isForegroundExcluded(): Boolean = isExcluded(foregroundPackage)
+
+    /**
+     * 当前前台应用是否在「小窗跳转」的排除列表内。
+     *
+     * 语义等同把「小窗跳转」开关关掉，只是范围限定为这些应用在前台的时候；
+     * 因此判定点与全局开关同一处，通知点击、磁贴、中转页抢占一并失效。
+     */
+    fun isForegroundZoomExcluded(): Boolean =
+        configuration.snapshot.isZoomLaunchExcluded(foregroundPackage)
 
     /**
      * 模块是否处于可工作状态，不受暂停策略影响。

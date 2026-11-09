@@ -39,6 +39,18 @@ internal class ProcessConfiguration(
         listeners -= listener
     }
 
+    /**
+     * 强制重读一次磁盘配置。
+     *
+     * 跨进程的 SharedPreferences 监听不一定及时触发，开关刚切换时 snapshot 可能还是旧值；
+     * 拦截路径用它做一次兜底，保证"打开开关就立刻生效"。
+     */
+    fun forceReload() {
+        val current = preferences ?: return
+        runCatching { current.javaClass.getMethod("reload").invoke(current) }
+        refresh(current, false)
+    }
+
     /** 接收经调用方 UID 校验的运行时推送，避免等待目标进程重新加载。 */
     fun override(next: ModuleSettingsSnapshot) {
         isAvailable = true

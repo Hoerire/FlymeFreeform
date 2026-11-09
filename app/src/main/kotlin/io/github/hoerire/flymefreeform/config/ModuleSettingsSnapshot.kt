@@ -8,6 +8,8 @@ internal data class ModuleSettingsSnapshot(
     val rightCornerEnabled: Boolean = ModulePreferences.DEFAULT_CORNER_ENABLED,
     val cornerTriggerRangeDp: Int = ModulePreferences.DEFAULT_CORNER_TRIGGER_RANGE_DP,
     val radialHitRangeDp: Int = ModulePreferences.DEFAULT_RADIAL_HIT_RANGE_DP,
+    /** 扇形图标基准直径（dp）：应用图标、「更多」圆盘与面板图标都按它缩放。 */
+    val radialIconSizeDp: Int = ModulePreferences.DEFAULT_RADIAL_ICON_SIZE_DP,
     val pinsSaved: Boolean = false,
     val pinnedTargets: List<PinnedTarget> = emptyList(),
     val outsideTapCloseMode: OutsideTapCloseMode =
@@ -29,13 +31,29 @@ internal data class ModuleSettingsSnapshot(
      * 关闭后不改写任何启动，全部入口回到系统默认的全屏行为。
      */
     val zoomLaunch: Boolean = ModulePreferences.DEFAULT_ZOOM_LAUNCH,
+    /**
+     * 禁用浮窗：这些应用不会被以任何形式的自由浮窗打开，作为目标、发起方或前台都算。
+     *
+     * 与 [blacklistPackages] 分开存：那份是「暂停模块增强」，这份只关启动改写。
+     */
+    val zoomExcludedPackages: List<String> = emptyList(),
+    /** 桌面长按快捷项转小窗；false 时保持全屏。 */
+    val zoomLauncherShortcut: Boolean = ModulePreferences.DEFAULT_ZOOM_LAUNCHER_SHORTCUT,
+    val autoCloseWindow: Boolean = ModulePreferences.DEFAULT_AUTO_CLOSE_WINDOW,
+    /** 桌面卡片与负一屏转小窗；false 时保持全屏。 */
+    val zoomLauncherCard: Boolean = ModulePreferences.DEFAULT_ZOOM_LAUNCHER_CARD,
+    /** 应用选择列表是否列出系统应用（本机生效，不影响 Hook 判定）。 */
+    val showSystemApps: Boolean = ModulePreferences.DEFAULT_SHOW_SYSTEM_APPS,
     /** 扇形呼出后未选择任何条目时保持显示，不自动收起。 */
     val radialKeepOpen: Boolean = ModulePreferences.DEFAULT_RADIAL_KEEP_OPEN,
-    val radialMaxItems: Int = ModulePreferences.DEFAULT_RADIAL_MAX_ITEMS,
 ) {
 
     fun isBlacklisted(packageName: String?): Boolean =
         packageName != null && blacklistPackages.any { it == packageName }
+
+    /** 该应用在前台时是否等同关闭小窗跳转。 */
+    fun isZoomLaunchExcluded(packageName: String?): Boolean =
+        packageName != null && zoomExcludedPackages.any { it == packageName }
 
     fun isPausedByEnvironment(landscape: Boolean, gameMode: Boolean): Boolean =
         (pauseInLandscape && landscape) || (pauseInGameMode && gameMode)
@@ -54,19 +72,27 @@ internal data class ModuleSettingsSnapshot(
             )
             .putBoolean(ModulePreferences.KEY_ZOOM_ALLOW_ANY_APP, zoomAllowAnyApp)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH, zoomLaunch)
+            .putBoolean(
+                ModulePreferences.KEY_ZOOM_LAUNCHER_SHORTCUT,
+                zoomLauncherShortcut,
+            )
+            .putBoolean(ModulePreferences.KEY_AUTO_CLOSE_WINDOW, autoCloseWindow)
+            .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCHER_CARD, zoomLauncherCard)
+            .putBoolean(ModulePreferences.KEY_SHOW_SYSTEM_APPS, showSystemApps)
             // 旧分项键不再写入，升级后一并清除，避免残留值干扰排查。
             .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_NOTIFICATION)
             .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_CONTROL_CENTER)
             .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_INTER_APP)
             .putBoolean(ModulePreferences.KEY_RADIAL_KEEP_OPEN, radialKeepOpen)
-            .putInt(
-                ModulePreferences.KEY_RADIAL_MAX_ITEMS,
-                ModulePreferences.coerceRadialMaxItems(radialMaxItems),
-            )
             .putString(
                 ModulePreferences.KEY_BLACKLIST_PACKAGES,
                 blacklistPackages.joinToString("\n"),
             )
+            .putString(
+                ModulePreferences.KEY_ZOOM_EXCLUDED_PACKAGES,
+                zoomExcludedPackages.joinToString("\n"),
+            )
+            .putBoolean(ModulePreferences.KEY_ZOOM_EXCLUDED_LINKER_MIGRATED, true)
             .putInt(
                 ModulePreferences.KEY_CORNER_TRIGGER_RANGE_DP,
                 ModulePreferences.coerceCornerTriggerRangeDp(cornerTriggerRangeDp),
@@ -74,6 +100,10 @@ internal data class ModuleSettingsSnapshot(
             .putInt(
                 ModulePreferences.KEY_RADIAL_HIT_RANGE_DP,
                 ModulePreferences.coerceRadialHitRangeDp(radialHitRangeDp),
+            )
+            .putInt(
+                ModulePreferences.KEY_RADIAL_ICON_SIZE_DP,
+                ModulePreferences.coerceRadialIconSizeDp(radialIconSizeDp),
             )
             .putInt(
                 ModulePreferences.KEY_OUTSIDE_TAP_CLOSE_MODE,
@@ -152,6 +182,13 @@ internal data class ModuleSettingsSnapshot(
                 rightCornerEnabled = if (bothCornersDisabled) true else rightEnabled,
                 cornerTriggerRangeDp = cornerTriggerRangeDp,
                 radialHitRangeDp = radialHitRangeDp,
+                radialIconSizeDp =
+                    ModulePreferences.coerceRadialIconSizeDp(
+                        preferences.getInt(
+                            ModulePreferences.KEY_RADIAL_ICON_SIZE_DP,
+                            ModulePreferences.DEFAULT_RADIAL_ICON_SIZE_DP,
+                        ),
+                    ),
                 pinsSaved = pinsSaved,
                 pinnedTargets = pins,
                 outsideTapCloseMode = outsideTapCloseMode,
@@ -171,6 +208,23 @@ internal data class ModuleSettingsSnapshot(
                 blacklistPackages = ModulePreferences.decodePackages(
                     preferences.getString(ModulePreferences.KEY_BLACKLIST_PACKAGES, null),
                 ),
+                zoomExcludedPackages =
+                    ModulePreferences.decodePackages(
+                        preferences.getString(ModulePreferences.KEY_ZOOM_EXCLUDED_PACKAGES, null),
+                    ).let { stored ->
+                        // 设备互联默认屏蔽：老配置一次性补进去；用户手动删掉后写回标记，
+                        // 之后不再自动加回，避免“删了又回来”。
+                        val migrated =
+                            preferences.getBoolean(
+                                ModulePreferences.KEY_ZOOM_EXCLUDED_LINKER_MIGRATED,
+                                false,
+                            )
+                        if (!migrated && ModulePreferences.DEVICE_LINK_PACKAGE !in stored) {
+                            stored + ModulePreferences.DEVICE_LINK_PACKAGE
+                        } else {
+                            stored
+                        }
+                    },
                 zoomMaxWindowCount =
                     ModulePreferences.coerceZoomMaxWindowCount(
                         preferences.getInt(
@@ -183,17 +237,26 @@ internal data class ModuleSettingsSnapshot(
                     ModulePreferences.DEFAULT_ZOOM_ALLOW_ANY_APP,
                 ),
                 zoomLaunch = readZoomLaunch(preferences),
+                autoCloseWindow = preferences.getBoolean(
+                    ModulePreferences.KEY_AUTO_CLOSE_WINDOW,
+                    ModulePreferences.DEFAULT_AUTO_CLOSE_WINDOW,
+                ),
+            zoomLauncherShortcut = preferences.getBoolean(
+                    ModulePreferences.KEY_ZOOM_LAUNCHER_SHORTCUT,
+                    ModulePreferences.DEFAULT_ZOOM_LAUNCHER_SHORTCUT,
+                ),
+                zoomLauncherCard = preferences.getBoolean(
+                    ModulePreferences.KEY_ZOOM_LAUNCHER_CARD,
+                    ModulePreferences.DEFAULT_ZOOM_LAUNCHER_CARD,
+                ),
+                showSystemApps = preferences.getBoolean(
+                    ModulePreferences.KEY_SHOW_SYSTEM_APPS,
+                    ModulePreferences.DEFAULT_SHOW_SYSTEM_APPS,
+                ),
                 radialKeepOpen = preferences.getBoolean(
                     ModulePreferences.KEY_RADIAL_KEEP_OPEN,
                     ModulePreferences.DEFAULT_RADIAL_KEEP_OPEN,
                 ),
-                radialMaxItems =
-                    ModulePreferences.coerceRadialMaxItems(
-                        preferences.getInt(
-                            ModulePreferences.KEY_RADIAL_MAX_ITEMS,
-                            ModulePreferences.DEFAULT_RADIAL_MAX_ITEMS,
-                        ),
-                    ),
             )
         }
 

@@ -4,7 +4,8 @@ package io.github.hoerire.flymefreeform.window
 internal object RadialIconGeometry {
     private const val BASE_SHORT_EDGE_DP = 400f
     private const val BASE_RADIUS_DP = 242f
-    private const val BASE_ICON_DIAMETER_DP = 44f
+    /** 44 dp 基准；设置页「图标大小」默认值与面板图标缩放的比例基准。 */
+    const val BASE_ICON_DIAMETER_DP = 44f
     private const val BASE_ITEM_PADDING_DP = 3.25f
 
     /**
@@ -30,6 +31,8 @@ internal object RadialIconGeometry {
         safeInsets: OverlaySafeInsets,
         itemCount: Int,
         hitRadiusDp: Float? = null,
+        /** 设置页「图标大小」；缺省用 44 dp 基准。 */
+        iconSizeDp: Float = BASE_ICON_DIAMETER_DP,
     ): RadialVisualMetrics {
         require(width.isFinite() && width > 0f && height.isFinite() && height > 0f)
         require(density.isFinite() && density > 0f)
@@ -40,13 +43,16 @@ internal object RadialIconGeometry {
         val pixelsPerBaseDp = density * windowScale
         // 为整个四分之一圆弧保留同一外缘，避免增删条目时安全区适配改变半径。
         // 外缘包含入场回摆和选中外圈；选中不改变图标大小。
+        val iconDp = iconSizeDp.coerceIn(24f, 72f)
+        // 图标变大时半径同比外推，保证 6 格在圆弧上仍不互相贴住。
+        val radiusDp = BASE_RADIUS_DP + (iconDp - BASE_ICON_DIAMETER_DP) / 2f
         val requestedExtent =
-            (BASE_RADIUS_DP + BASE_ICON_DIAMETER_DP * 1.05f / 2f + BASE_ITEM_PADDING_DP +
+            (radiusDp + iconDp * 1.05f / 2f + BASE_ITEM_PADDING_DP +
                 RadialEntryMotion.HORIZONTAL_OVERSHOOT_DP) * pixelsPerBaseDp
         val fitScale = minOf(1f, safeWidth / requestedExtent, safeHeight / requestedExtent)
         val unit = pixelsPerBaseDp * fitScale
-        val diameter = BASE_ICON_DIAMETER_DP * unit
-        val radius = BASE_RADIUS_DP * unit
+        val diameter = iconDp * unit
+        val radius = radiusDp * unit
         val enterRadius =
             if (hitRadiusDp != null && hitRadiusDp > 0f) {
                 hitRadiusDp * density

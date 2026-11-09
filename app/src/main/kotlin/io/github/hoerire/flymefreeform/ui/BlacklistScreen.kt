@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,27 +44,35 @@ import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 排除列表：这些应用在前台时，角落手势不会呼出扇形菜单。
- * 行样式与「扇形应用」页里的列表保持一致。
+ * 包名列表页：排除列表与「禁用浮窗」共用这一套骨架，只有文案与数据源不同。
+ *
+ * 行样式与「扇形应用」页里的列表保持一致；数据由调用方按各自语义取。
  */
 @Composable
-internal fun BlacklistScreen(
+private fun PackageListScreen(
     state: FrameworkConnectionState,
     apps: List<SelectableEntry>,
     onBack: () -> Unit,
     onAddApps: () -> Unit,
-    onBlacklistChange: (List<String>) -> Unit,
+    packages: List<String>,
+    onChange: (List<String>) -> Unit,
+    title: String,
+    addAction: String,
+    addSummary: String,
+    emptyTitle: String,
+    emptySummary: String,
 ) {
-    val blacklist = state.settings.blacklistPackages
+    val blacklist = packages
     val enabled = state.settingsEditable
     val byPackage = remember(apps) {
         apps.filter { it.target is PinnedTarget.App }.associateBy { it.packageName }
     }
     ScreenScaffold(
-        title = stringResource(R.string.blacklist_screen_title),
+        title = title,
         onBack = onBack,
     ) { innerPadding ->
         LazyColumn(
@@ -79,8 +88,8 @@ internal fun BlacklistScreen(
             item(key = "add") {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     BasicComponent(
-                        title = stringResource(R.string.blacklist_add_action),
-                        summary = stringResource(R.string.blacklist_add_summary),
+                        title = addAction,
+                        summary = addSummary,
                         enabled = enabled,
                         onClick = onAddApps,
                     )
@@ -91,8 +100,8 @@ internal fun BlacklistScreen(
                     Column {
                         if (blacklist.isEmpty()) {
                             BasicComponent(
-                                title = stringResource(R.string.blacklist_empty_title),
-                                summary = stringResource(R.string.blacklist_empty_summary),
+                                title = emptyTitle,
+                                summary = emptySummary,
                                 enabled = false,
                             )
                         } else {
@@ -105,7 +114,7 @@ internal fun BlacklistScreen(
                                     endActions = {
                                         IconButton(
                                             onClick = {
-                                                if (enabled) onBlacklistChange(blacklist - pkg)
+                                                if (enabled) onChange(blacklist - pkg)
                                             },
                                         ) {
                                             Icon(
@@ -127,15 +136,71 @@ internal fun BlacklistScreen(
     }
 }
 
-/** 排除列表的应用选择页：与「添加快捷项」一致的行样式，只是独立成页。 */
+/** 排除列表：这些应用在前台时，角落手势不会呼出扇形菜单。 */
 @Composable
-internal fun BlacklistPickerScreen(
+internal fun BlacklistScreen(
     state: FrameworkConnectionState,
     apps: List<SelectableEntry>,
     onBack: () -> Unit,
+    onAddApps: () -> Unit,
     onBlacklistChange: (List<String>) -> Unit,
 ) {
-    val blacklist = state.settings.blacklistPackages
+    PackageListScreen(
+        state = state,
+        apps = apps,
+        onBack = onBack,
+        onAddApps = onAddApps,
+        packages = state.settings.blacklistPackages,
+        onChange = onBlacklistChange,
+        title = stringResource(R.string.blacklist_screen_title),
+        addAction = stringResource(R.string.blacklist_add_action),
+        addSummary = stringResource(R.string.blacklist_add_summary),
+        emptyTitle = stringResource(R.string.blacklist_empty_title),
+        emptySummary = stringResource(R.string.blacklist_empty_summary),
+    )
+}
+
+/**
+ * 「禁用浮窗」：这些应用不会被以任何形式的自由浮窗打开。
+ *
+ * 与黑名单共用列表骨架，但数据独立——黑名单暂停的是模块增强，这份只关启动改写。
+ */
+@Composable
+internal fun ZoomExcludedScreen(
+    state: FrameworkConnectionState,
+    apps: List<SelectableEntry>,
+    onBack: () -> Unit,
+    onAddApps: () -> Unit,
+    onZoomExcludedChange: (List<String>) -> Unit,
+) {
+    PackageListScreen(
+        state = state,
+        apps = apps,
+        onBack = onBack,
+        onAddApps = onAddApps,
+        packages = state.settings.zoomExcludedPackages,
+        onChange = onZoomExcludedChange,
+        title = stringResource(R.string.zoom_excluded_screen_title),
+        addAction = stringResource(R.string.zoom_excluded_add_action),
+        addSummary = stringResource(R.string.zoom_excluded_add_summary),
+        emptyTitle = stringResource(R.string.zoom_excluded_empty_title),
+        emptySummary = stringResource(R.string.zoom_excluded_empty_summary),
+    )
+}
+
+/** 应用选择页：排除列表与「禁用浮窗」共用。 */
+@Composable
+private fun PackagePickerScreen(
+    state: FrameworkConnectionState,
+    apps: List<SelectableEntry>,
+    onBack: () -> Unit,
+    packages: List<String>,
+    onChange: (List<String>) -> Unit,
+    onShowSystemAppsChange: (Boolean) -> Unit,
+    title: String,
+    addedLabel: String,
+) {
+    val blacklist = packages
     val enabled = state.settingsEditable
     var query by remember { mutableStateOf("") }
     val appEntries = remember(apps) { apps.filter { it.target is PinnedTarget.App } }
@@ -151,7 +216,7 @@ internal fun BlacklistPickerScreen(
             }
         }
     ScreenScaffold(
-        title = stringResource(R.string.blacklist_add_action),
+        title = title,
         onBack = onBack,
     ) { innerPadding ->
         LazyColumn(
@@ -174,6 +239,18 @@ internal fun BlacklistPickerScreen(
                     singleLine = true,
                 )
             }
+            item(key = "system") {
+                Card(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    SwitchPreference(
+                        checked = state.settings.showSystemApps,
+                        onCheckedChange = onShowSystemAppsChange,
+                        title = stringResource(R.string.show_system_apps_title),
+                        summary = stringResource(R.string.show_system_apps_summary),
+                        enabled = state.settingsEditable,
+                        startAction = { PreferenceIcon(Icons.Rounded.Widgets, enabled) },
+                    )
+                }
+            }
             item(key = "list") {
                 Card(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                     Column {
@@ -192,7 +269,7 @@ internal fun BlacklistPickerScreen(
                                     endActions = {
                                         if (added) {
                                             Text(
-                                                text = stringResource(R.string.blacklist_added),
+                                                text = addedLabel,
                                                 style = MiuixTheme.textStyles.body2,
                                                 color = MiuixTheme.colorScheme.primary,
                                             )
@@ -200,7 +277,7 @@ internal fun BlacklistPickerScreen(
                                     },
                                     onClick = {
                                         if (!enabled) return@BasicComponent
-                                        onBlacklistChange(
+                                        onChange(
                                             if (added) {
                                                 blacklist - entry.packageName
                                             } else {
@@ -216,6 +293,48 @@ internal fun BlacklistPickerScreen(
             }
         }
     }
+}
+
+/** 排除列表的应用选择页。 */
+@Composable
+internal fun BlacklistPickerScreen(
+    state: FrameworkConnectionState,
+    apps: List<SelectableEntry>,
+    onBack: () -> Unit,
+    onBlacklistChange: (List<String>) -> Unit,
+    onShowSystemAppsChange: (Boolean) -> Unit,
+) {
+    PackagePickerScreen(
+        state = state,
+        apps = apps,
+        onBack = onBack,
+        packages = state.settings.blacklistPackages,
+        onChange = onBlacklistChange,
+        onShowSystemAppsChange = onShowSystemAppsChange,
+        title = stringResource(R.string.blacklist_add_action),
+        addedLabel = stringResource(R.string.blacklist_added),
+    )
+}
+
+/** 「禁用浮窗」的应用选择页。 */
+@Composable
+internal fun ZoomExcludedPickerScreen(
+    state: FrameworkConnectionState,
+    apps: List<SelectableEntry>,
+    onBack: () -> Unit,
+    onZoomExcludedChange: (List<String>) -> Unit,
+    onShowSystemAppsChange: (Boolean) -> Unit,
+) {
+    PackagePickerScreen(
+        state = state,
+        apps = apps,
+        onBack = onBack,
+        packages = state.settings.zoomExcludedPackages,
+        onChange = onZoomExcludedChange,
+        onShowSystemAppsChange = onShowSystemAppsChange,
+        title = stringResource(R.string.zoom_excluded_add_action),
+        addedLabel = stringResource(R.string.blacklist_added),
+    )
 }
 
 @Composable

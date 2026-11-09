@@ -288,7 +288,7 @@ internal class ColorOsAllAppsWindow(
         content.updateBlur(if (exiting) frame.alpha else 1f)
         if (exiting && (frame.alpha <= AllAppsPanelMotion.EXIT_ALPHA_THRESHOLD || elapsed >= AllAppsPanelMotion.MAX_DURATION_MS)) {
             finishExit()
-        } else if (!exiting && ((frame.alpha >= 0.997f && frame.scale >= 0.997f) || elapsed >= AllAppsPanelMotion.MAX_DURATION_MS)) {
+        } else if (!exiting && (elapsed >= AllAppsPanelMotion.ENTER_DURATION_MS || elapsed >= AllAppsPanelMotion.MAX_DURATION_MS)) {
             finishEnter()
         } else {
             root.postOnAnimation(animation)

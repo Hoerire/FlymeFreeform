@@ -78,7 +78,9 @@ class ModuleMain : XposedModule() {
                     "_tap" + settings.outsideTapCloseMode.storedValue +
                     "_vlog" + settings.verboseLogEnabled +
                     "_pins" + settings.pinnedTargets.size +
-                    "_bl" + settings.blacklistPackages.size,
+                    "_bl" + settings.blacklistPackages.size +
+                    // 「禁用浮窗」的条目数：常开 INFO 一行里带上，详细日志关掉也能确认配置读到了。
+                    "_zx" + settings.zoomExcludedPackages.size,
             )
         }
     }

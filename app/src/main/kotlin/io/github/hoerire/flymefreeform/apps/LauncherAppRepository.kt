@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.content.pm.LauncherApps
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -33,6 +34,7 @@ internal class LauncherAppRepository(private val context: Context) {
             ThreadPoolExecutor.DiscardOldestPolicy(),
         )
     private val mutableApps = MutableStateFlow<List<SelectableEntry>>(emptyList())
+    private var includeSystemApps = false
     val apps: StateFlow<List<SelectableEntry>> = mutableApps.asStateFlow()
 
     private val packageReceiver =
@@ -55,11 +57,19 @@ internal class LauncherAppRepository(private val context: Context) {
         context.registerReceiver(packageReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
     }
 
-    fun refresh() {
+    /**
+     * 重新加载候选应用。
+     *
+     * [includeSystemApps] 为真时并入系统应用：桌面图标列表（LauncherApps）只包含有启动图标的应用，
+     * 而「排除列表」「禁用浮窗」都按包名匹配，系统组件往往没有图标也就选不到。
+     * 这里额外扫描带系统标记的包，按包名去重，保留先出现的（带图标的那条）。
+     */
+    fun refresh(includeSystemApps: Boolean = this.includeSystemApps) {
+        this.includeSystemApps = includeSystemApps
         worker.execute {
             val launcherApps = context.getSystemService(LauncherApps::class.java) ?: return@execute
             val collator = Collator.getInstance(Locale.getDefault())
-            mutableApps.value =
+            val launcherEntries =
                 launcherApps
                     .getActivityList(null, Process.myUserHandle())
                     .asSequence()
@@ -76,10 +86,49 @@ internal class LauncherAppRepository(private val context: Context) {
                             null
                         }
                     }
-                    .distinctBy(SelectableEntry::target)
-                    .sortedWith { first, second -> collator.compare(first.label, second.label) }
                     .toList()
+            val systemEntries =
+                if (!includeSystemApps) {
+                    emptyList()
+                } else {
+                    systemAppEntries()
+                }
+            mutableApps.value =
+                (launcherEntries + systemEntries)
+                    .distinctBy(SelectableEntry::packageName)
+                    .sortedWith { first, second -> collator.compare(first.label, second.label) }
         }
+    }
+
+    /**
+     * 系统应用条目。
+     *
+     * 这里**不要求有启动入口**：跨端互联、消息同步这类系统组件本身没有桌面图标，
+     * 但会以调用方身份拉起界面；两个列表都按包名匹配，必须能选到它们。
+     * 没有启动入口的条目只用于「按包名豁免」，不参与扇形可启动应用的挑选。
+     */
+    private fun systemAppEntries(): List<SelectableEntry> {
+        val manager = context.packageManager
+        return manager
+            .getInstalledApplications(0)
+            .asSequence()
+            .filter { it.packageName != context.packageName }
+            .filter {
+                (it.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
+            }
+            .mapNotNull { info ->
+                runCatching {
+                    val component = manager.getLaunchIntentForPackage(info.packageName)?.component
+                    SelectableEntry(
+                        target = PinnedTarget.App(info.packageName, component?.className.orEmpty()),
+                        packageName = info.packageName,
+                        label = manager.getApplicationLabel(info).toString().trim()
+                            .ifEmpty { info.packageName },
+                        icon = manager.getApplicationIcon(info).toBitmap(),
+                    )
+                }.getOrNull()
+            }
+            .toList()
     }
 
     private fun Drawable.toBitmap(): Bitmap {
