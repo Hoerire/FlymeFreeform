@@ -77,8 +77,8 @@ internal class ColorOsFreeformCoordinator(
         },
         // 顶层应用不再以小窗重新打开自己：系统会把现有任务原地改成小窗，且没有过渡动画。
         isForeground = { packageName -> topRunningPackage() == packageName },
-        // 已经有窗口的应用（前台、后台全屏任务、已开的小窗）不再启动；贴边浮标仍可恢复。
-        existingTask = { packageName -> existingTaskOf(packageName) },
+        // 已经有窗口的应用（任何形态）不再启动，见 hasWindowOf。
+        hasWindow = { packageName -> hasWindowOf(packageName) },
     )
     private val sidebar = ColorOsSidebarClient(context, handler, logger)
     private val appCatalog =
@@ -880,22 +880,20 @@ internal class ColorOsFreeformCoordinator(
      * 判据取自焦点显示内容的真实任务树，不依赖任何缓存；读不到时按「没有任务」处理，
      * 保持原行为。
      */
-    private fun existingTaskOf(packageName: String): ExistingTask {
-        val tasks = tasksOfFocusedDisplay() ?: return ExistingTask.None
-        val state = stateOf(packageName, tasks)
-        // 探针：确认任务树到底爬到了几个任务、判成什么形态。
-        debug("SYSTEM_LAUNCH_TASK_WALK_" + packageName + "_" + state.name + "_n" + tasks.size)
-        return state
-    }
-
-    private fun stateOf(packageName: String, tasks: List<Any>): ExistingTask {
-        var bubble = false
-        for (task in tasks) {
-            if (packageOfTask(task) != packageName) continue
-            if (isOrdinaryZoomWindow(task) || !isBubbleTask(task)) return ExistingTask.Window
-            bubble = true
-        }
-        return if (bubble) ExistingTask.Bubble else ExistingTask.None
+    /**
+     * 该包是否已经有窗口（任何形态：前台、后台全屏、小窗、贴边浮标）。
+     *
+     * 判据只有这一条：有窗口就不再启动。已有任务时系统会走 getReusableOptionsForFreeForm，
+     * 复用那个任务并原地改写窗口参数，没有启动动画（实测是瞬间缩小）。
+     *
+     * 任务从焦点显示内容的容器树里取，只沿 DisplayArea / DisplayContent 下钻；
+     * 取不到时返回 false，保持原行为。
+     */
+    private fun hasWindowOf(packageName: String): Boolean {
+        val tasks = tasksOfFocusedDisplay() ?: return false
+        val found = tasks.any { packageOfTask(it) == packageName }
+        debug("SYSTEM_LAUNCH_HAS_WINDOW_" + packageName + "_" + found + "_n" + tasks.size)
+        return found
     }
 
     /** 焦点显示内容下的全部任务；取不到返回 null。 */
@@ -944,32 +942,6 @@ internal class ColorOsFreeformCoordinator(
             collectTasks(child, out, depth + 1)
         }
     }
-
-    /** 是否仍是普通小窗（柔性状态 1）。 */
-    private fun isOrdinaryZoomWindow(task: Any): Boolean =
-        try {
-            val isInFlexibleState = findMethod(controller.javaClass, "isTaskInFlexibleState", 2)
-            (isInFlexibleState.invoke(controller, task, ORDINARY_ZOOM_STATE) as? Boolean) == true
-        } catch (_: ReflectiveOperationException) {
-            false
-        } catch (_: RuntimeException) {
-            false
-        }
-
-    /** 贴边浮标 / 迷你窗：面积不到屏幕一半。 */
-    private fun isBubbleTask(task: Any): Boolean =
-        try {
-            val bounds = findMethod(task.javaClass, "getBounds", 0).invoke(task)
-                as? android.graphics.Rect ?: return false
-            val metrics = context.resources.displayMetrics
-            val screen = metrics.widthPixels.toLong() * metrics.heightPixels
-            val area = bounds.width().toLong() * bounds.height()
-            area > 0 && area * 2 < screen
-        } catch (_: ReflectiveOperationException) {
-            false
-        } catch (_: RuntimeException) {
-            false
-        }
 
     /** 任务所属包：优先取 baseIntent 的组件，退化取 realActivity。 */
     private fun packageOfTask(task: Any): String? =
@@ -1033,9 +1005,6 @@ internal class ColorOsFreeformCoordinator(
 
         /** 最近任务校验的最小间隔。 */
         const val RECENTS_CHECK_INTERVAL_MS = 2_000L
-
-        /** 厂商柔性状态里的「普通小窗」；迷你窗/贴边浮标是别的取值。 */
-        const val ORDINARY_ZOOM_STATE = 1
 
         /** 任务树下钻深度：实测 DisplayContent 下还套着 5 层以上 DisplayArea。 */
         const val MAX_TASK_WALK_DEPTH = 12

@@ -39,14 +39,13 @@ internal class ColorOsFreeformLauncher(
      */
     private val isForeground: (String) -> Boolean = { false },
     /**
-     * 目标包当前的任务形态。
+     * 该包是否已经有窗口。
      *
-     * 已有任务的包再走一次小窗启动，命中的是系统的 getReusableOptionsForFreeForm：
+     * 已有任务再走一次小窗启动，命中的是系统的 getReusableOptionsForFreeForm：
      * 复用那个任务、原地改写窗口参数，没有启动动画（实测是瞬间缩小）。
-     * 因此「已有窗口」一律不响应；贴边浮标例外，仍走
-     * [io.github.hoerire.flymefreeform.hook.FloatingTaskRestorer] 恢复成小窗。
+     * 所以只要有窗口就不启动，不看窗口是什么形态。
      */
-    private val existingTask: (String) -> ExistingTask = { ExistingTask.None },
+    private val hasWindow: (String) -> Boolean = { false },
 ) {
     /** 详细日志：仅在「详细日志」开启时输出，与其他模块日志同一出口。 */
     private fun debug(code: String) {
@@ -58,13 +57,9 @@ internal class ColorOsFreeformLauncher(
             debug("SYSTEM_LAUNCH_SKIP_FOREGROUND_" + requested.packageName)
             return FreeformLaunchResult.AlreadyForeground
         }
-        when (existingTask(requested.packageName)) {
-            ExistingTask.Window -> {
-                debug("SYSTEM_LAUNCH_SKIP_HAS_WINDOW_" + requested.packageName)
-                return FreeformLaunchResult.AlreadyOpen
-            }
-            // 浮标交给下面的 FloatingTaskRestorer 恢复；没有任务就是真正的冷启动。
-            ExistingTask.Bubble, ExistingTask.None -> Unit
+        if (hasWindow(requested.packageName)) {
+            debug("SYSTEM_LAUNCH_SKIP_HAS_WINDOW_" + requested.packageName)
+            return FreeformLaunchResult.AlreadyOpen
         }
         var component = requested
         var reason = unavailableReason(component)
@@ -254,18 +249,6 @@ internal class ColorOsFreeformLauncher(
         const val LAUNCH_AT_RIGHT = 14
         const val ZOOM_MANAGER_CLASS = "com.oplus.zoomwindow.OplusZoomWindowManager"
     }
-}
-
-/** 目标包当前已有的任务形态。 */
-internal enum class ExistingTask {
-    /** 没有任务：真正的冷启动，会走完整的小窗启动动画。 */
-    None,
-
-    /** 已被收成贴边浮标 / 迷你窗：仍允许用扇形恢复成小窗。 */
-    Bubble,
-
-    /** 已有正常形态的窗口：前台任务、后台全屏任务，或已经开着的小窗。 */
-    Window,
 }
 
 internal sealed interface FreeformLaunchResult {
