@@ -876,6 +876,11 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun bringWindowToFront(packageName: String): Boolean {
         val tasks = tasksOfFocusedDisplay() ?: return false
+        // 贴边浮标 / 迷你窗：任务还在但不在屏幕上，新启动会沿用它的旧小尺寸（表现为迷你窗），
+        // 所以先按「点浮标」的方式恢复成普通小窗。
+        tasks.firstOrNull { packageOfTask(it) == packageName && isMiniOrFloating(it) }?.let { task ->
+            if (restoreMiniWindow(task, packageName)) return true
+        }
         val task = tasks.firstOrNull { packageOfTask(it) == packageName && isTaskVisible(it) }
             ?: return false
         return try {
@@ -939,6 +944,53 @@ internal class ColorOsFreeformCoordinator(
             collectTasks(child, out, depth + 1)
         }
     }
+
+    /** 任务是否被收成了贴边浮标 / 迷你窗：面积不到屏幕一半。 */
+    private fun isMiniOrFloating(task: Any): Boolean =
+        try {
+            val bounds = findMethod(task.javaClass, "getBounds", 0).invoke(task)
+                as? android.graphics.Rect ?: return false
+            val metrics = context.resources.displayMetrics
+            val screen = metrics.widthPixels.toLong() * metrics.heightPixels
+            val area = bounds.width().toLong() * bounds.height()
+            area > 0 && area * 2 < screen
+        } catch (_: ReflectiveOperationException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
+
+    /**
+     * 把浮标 / 迷你窗恢复成普通小窗。
+     *
+     * 走厂商的 ExitFlexibleTaskToFullStrategy（与"点浮标"同一条路径，实测结果是恢复成小窗，
+     * 不是全屏）。只在任务不可见、且面积小于半屏时调用。
+     */
+    private fun restoreMiniWindow(task: Any, packageName: String): Boolean =
+        try {
+            val strategyClass = Class.forName(
+                "com.android.server.wm.ExitFlexibleTaskToFullStrategy",
+                false,
+                task.javaClass.classLoader,
+            )
+            val constructor = strategyClass.declaredConstructors.firstOrNull { candidate ->
+                candidate.parameterTypes.size == 2 &&
+                    candidate.parameterTypes[1] == Boolean::class.javaPrimitiveType
+            } ?: return false
+            constructor.isAccessible = true
+            val strategy = constructor.newInstance(task, true)
+            val inner = findMethod(controller.javaClass, "exitFlexibleTaskWindowInnerLocked", 1)
+            val atms = readField(controller, "mAtms")
+            val lock = atms?.javaClass?.getMethod("getGlobalLock")?.invoke(atms)
+            val action = Runnable { inner.invoke(controller, strategy) }
+            if (lock != null) synchronized(lock) { action.run() } else action.run()
+            debug("SYSTEM_LAUNCH_RESTORE_MINI_" + packageName)
+            true
+        } catch (_: ReflectiveOperationException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
 
     /** 任务此刻是否在屏幕上可见。 */
     private fun isTaskVisible(task: Any): Boolean =
