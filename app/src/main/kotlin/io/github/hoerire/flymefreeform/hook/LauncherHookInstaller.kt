@@ -215,6 +215,7 @@ internal class LauncherHookInstaller(
 
     private fun reportPageState(launcher: Context) {
         val blocked = isLauncherSystemPage(launcher)
+        ModuleLog.debug(TAG) { "LAUNCHER_PAGE_CALC_" + blocked }
         // 直接写系统设置：system_server 在按下瞬间读它，避免广播排队造成的几十毫秒误差。
         runCatching {
             android.provider.Settings.System.putInt(
@@ -251,11 +252,9 @@ internal class LauncherHookInstaller(
         runCatching {
             val stateManager = launcher.javaClass.getMethod("getStateManager").invoke(launcher)
             val state = stateManager?.javaClass?.getMethod("getState")?.invoke(stateManager)
-            val overview = launcher.javaClass.classLoader
-                ?.loadClass("com.android.launcher3.LauncherState")
-                ?.getField("OVERVIEW")
-                ?.get(null)
-            if (state != null && overview != null && state === overview) return true
+            // 用状态名判断，而不是实例相等：多任务还可能是 OVERVIEW_MODAL_TASK 等状态。
+            val stateName = runCatching { state?.toString().orEmpty() }.getOrDefault("")
+            if (stateName.contains("OVERVIEW", ignoreCase = true)) return true
             // 负一屏：桌面自带 isAssistantScreenVisible()，比"负页码"可靠。
             // （实测负一屏是 com.coloros.assistantscreen 的独立窗口，不占 Workspace 页。）
             findMethod(launcher.javaClass, "isAssistantScreenVisible", 0)
