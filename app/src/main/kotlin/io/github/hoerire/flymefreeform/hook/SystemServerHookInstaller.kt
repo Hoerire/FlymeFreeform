@@ -50,6 +50,8 @@ internal class SystemServerHookInstaller(
                     val result = chain.proceed()
                     val controller = chain.thisObject
                     if (controller != null && bound.compareAndSet(false, true)) {
+                        // ActivityManager 此时已就绪，注册桌面页面状态的接收器。
+                        installLauncherPageReceiver()
                         ColorOsFreeformCoordinator(
                             controller = controller,
                             classLoader = classLoader,
@@ -103,7 +105,6 @@ internal class SystemServerHookInstaller(
                     chain.proceed()
                 }
             module.log(Log.INFO, TAG, "SYSTEM_FOREGROUND_OBSERVER_INSTALLED")
-            installLauncherPageReceiver()
         } catch (exception: ReflectiveOperationException) {
             module.log(Log.WARN, TAG, "SYSTEM_FOREGROUND_OBSERVER_UNAVAILABLE", exception)
         } catch (exception: LinkageError) {

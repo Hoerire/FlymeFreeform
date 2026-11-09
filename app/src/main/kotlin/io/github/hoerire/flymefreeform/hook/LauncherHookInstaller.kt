@@ -142,7 +142,19 @@ internal class LauncherHookInstaller(
     private val pageReporterStarted = AtomicBoolean(false)
 
     /** 注册桌面状态监听，并在状态变化时把"是否系统页面"上报给 system_server。 */
-    private fun installPageReporter(launcher: Context) {
+    /** 从当前 Context 解析出真正的 Launcher 实例（手势入口的 owner 是 TouchInteractionService）。 */
+    private fun resolveLauncher(context: Context): Context? {
+        if (context.javaClass.name.endsWith("Launcher")) return context
+        return runCatching {
+            val launcherClass = context.javaClass.classLoader
+                .loadClass("com.android.launcher3.Launcher")
+            launcherClass.getMethod("getLauncher", Context::class.java)
+                .invoke(null, context) as? Context
+        }.getOrNull()
+    }
+
+    private fun installPageReporter(owner: Context) {
+        val launcher = resolveLauncher(owner) ?: return
         if (!pageReporterStarted.compareAndSet(false, true)) return
         runCatching {
             val stateManager = launcher.javaClass.getMethod("getStateManager").invoke(launcher)
@@ -210,7 +222,7 @@ internal class LauncherHookInstaller(
     private fun shouldSuppress(owner: Context, event: MotionEvent): Boolean {
         // 多任务界面与负一屏不响应扇形手势；同时把状态上报给 system_server（手势判定在那里）。
         installPageReporter(owner)
-        if (isLauncherSystemPage(owner)) return false
+        resolveLauncher(owner)?.let { if (isLauncherSystemPage(it)) return false }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             resetStream()
             val config = createEligibleConfig(owner, event) ?: return false
