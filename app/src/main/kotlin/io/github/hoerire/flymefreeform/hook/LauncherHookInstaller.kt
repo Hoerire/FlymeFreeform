@@ -141,6 +141,34 @@ internal class LauncherHookInstaller(
                     }
                 module.log(Log.INFO, TAG, "LAUNCHER_PAGE_RESUME_HOOK_INSTALLED", null)
             }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_RESUME_HOOK_FAILED", it) }
+            // 上滑手势一开始就置位：等状态切到 OVERVIEW 会晚 600 ms，
+            // 这段时间里斜滑仍能呼出扇形，属于误触。
+            runCatching {
+                val handlerClass = target.inputMethod.declaringClass.classLoader
+                    .loadClass("com.android.quickstep.AbsSwipeUpHandler")
+                module.hook(handlerClass.getMethod("onGestureStarted"))
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .setId("flymefreeform.launcher.swipe_start")
+                    .intercept { chain ->
+                        val result = chain.proceed()
+                        launcherRef?.let { publishBlocked(it, true) }
+                        result
+                    }
+                runCatching {
+                    val end = handlerClass.declaredMethods.firstOrNull {
+                        it.name == "endRunningWindowAnim" && it.parameterTypes.size == 1
+                    } ?: return@runCatching
+                    module.hook(end)
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .setId("flymefreeform.launcher.swipe_end")
+                        .intercept { chain ->
+                            val result = chain.proceed()
+                            launcherRef?.let { reportPageState(it) }
+                            result
+                        }
+                }
+                module.log(Log.INFO, TAG, "LAUNCHER_SWIPE_HOOK_INSTALLED", null)
+            }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_SWIPE_HOOK_FAILED", it) }
             module.log(Log.INFO, TAG, "LAUNCHER_CORNER_INPUT_HOOK_INSTALLED")
         } catch (exception: IllegalArgumentException) {
             module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_HOOK_REJECTED", exception)
@@ -157,6 +185,9 @@ internal class LauncherHookInstaller(
      * 负一屏对应 Workspace 的负页码。命中时我们完全不接管手势，交回桌面自己处理。
      */
     private val pageReporterStarted = AtomicBoolean(false)
+
+    /** 供上滑 hook 使用：注册时缓存的 Launcher 实例。 */
+    @Volatile private var launcherRef: Context? = null
 
     /** 注册桌面状态监听，并在状态变化时把"是否系统页面"上报给 system_server。 */
     /** 从当前 Context 解析出真正的 Launcher 实例（手势入口的 owner 是 TouchInteractionService）。 */
@@ -179,6 +210,7 @@ internal class LauncherHookInstaller(
             return
         }
         if (!pageReporterStarted.compareAndSet(false, true)) return
+        launcherRef = launcher
         runCatching {
             val stateManager = launcher.javaClass.getMethod("getStateManager").invoke(launcher)
             val listenerClass = launcher.javaClass.classLoader.loadClass(
@@ -211,6 +243,25 @@ internal class LauncherHookInstaller(
             module.log(Log.INFO, TAG, "LAUNCHER_PAGE_REPORTER_INSTALLED", null)
         }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_REPORTER_FAILED", it) }
         reportPageState(launcher)
+    }
+
+    /** 直接发布指定状态（用于上滑开始这类"已知要进入多任务"的时刻）。 */
+    private fun publishBlocked(launcher: Context, blocked: Boolean) {
+        runCatching {
+            android.provider.Settings.System.putInt(
+                launcher.contentResolver,
+                io.github.hoerire.flymefreeform.config.ModulePreferences.KEY_LAUNCHER_PAGE_BLOCKED,
+                if (blocked) 1 else 0,
+            )
+            launcher.sendBroadcast(
+                android.content.Intent(
+                    io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_LAUNCHER_PAGE_STATE,
+                ).putExtra(
+                    io.github.hoerire.flymefreeform.config.ModulePreferences.EXTRA_LAUNCHER_BLOCKED,
+                    blocked,
+                ),
+            )
+        }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_PUBLISH_FAILED", it) }
     }
 
     private fun reportPageState(launcher: Context) {
