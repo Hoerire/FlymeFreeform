@@ -1,21 +1,18 @@
 package io.github.hoerire.flymefreeform.logic
 
 /**
- * 目标应用此刻的窗口形态。
+ * 目标应用此刻在屏幕上的状态，只分两类，用于扇形启动决策。
  *
- * ColorOS 的三种小窗形态共享同一个任务对象，区别只在厂商状态与 surface 表现：
- * - [SmallWindow]：普通小窗，可见，可拖动可缩放
- * - [MiniWindow]：迷你窗（右上角那种小窗），可见，但 Task 边界仍是满屏
- * - [EdgeBubble]：贴边浮标，不可见，任务已移出柔性表
- * - [BackgroundTask]：后台全屏任务（被收窗或退到后台），不是小窗
- *
- * 形态判定只能依赖厂商状态值与可见性，**不能**依赖 Task 边界：实测迷你窗的
- * Task.getBounds() 仍是 1272x2800（与后台全屏任务完全相同）。
+ * 迷你窗、贴边浮标都属系统行为，模块不干预，因此不在此建模：
+ * 它们不可见时按 [BackgroundTask] 处理，走正常小窗启动；系统按自己的规则呈现。
  */
 enum class WindowForm {
+    /** 该包没有任务。 */
     None,
-    SmallWindow,
-    MiniWindow,
-    EdgeBubble,
+
+    /** 该包有可见任务（前台全屏或屏幕上开着的小窗），此时不应重新启动。 */
+    VisibleWindow,
+
+    /** 有任务但不可见（后台、被收窗、被收成迷你或浮标），按正常小窗启动。 */
     BackgroundTask,
 }

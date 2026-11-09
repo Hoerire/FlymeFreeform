@@ -878,30 +878,8 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun bringWindowToFront(packageName: String): Boolean {
         val tasks = tasksOfFocusedDisplay() ?: return false
-        // 贴边浮标 / 迷你窗：任务不可见、且 Task 尺寸仍是窗口尺寸（小于显示区域）。
-        // 探针实测：小窗/迷你窗 = 1272x2261，普通后台全屏任务 = 1272x2800；
-        // 变成迷你窗后任务已被移出柔性表，面积也远超半屏，所以只能按尺寸判。
-        tasks.firstOrNull { each ->
-            packageOfTask(each) == packageName &&
-                !isTaskVisible(each) &&
-                isWindowedSize(each)
-        }?.let { task ->
-            if (restoreMiniWindow(task, packageName)) return true
-        }
         val task = tasks.firstOrNull { packageOfTask(it) == packageName && isTaskVisible(it) }
-            ?: run {
-                // 探针：没人匹配时把任务树里的包名与可见性打出来，便于定位为什么没命中。
-                debug(
-                    "SYSTEM_LAUNCH_NO_MATCH_" + packageName + "_" +
-                        tasks.joinToString("|") { each ->
-                            (packageOfTask(each) ?: "?") +
-                                ":v" + (if (isTaskVisible(each)) 1 else 0) +
-                                ":s" + zoomStateOf(each) +
-                                ":" + boundsOf(each)
-                        },
-                )
-                return false
-            }
+            ?: return false
         return try {
             val moveToFront = findMethod(task.javaClass, "moveToFront", 1)
             val atms = readField(controller, "mAtms")
@@ -963,87 +941,6 @@ internal class ColorOsFreeformCoordinator(
             collectTasks(child, out, depth + 1)
         }
     }
-
-    /**
-     * 任务的小窗状态值（厂商 `getFlexibleZoomState()`）。
-     *
-     * 三条形态共用这一个 int：普通小窗 / 迷你窗 / 贴边浮标。数值不靠猜，先打进探针，
-     * 由实测三次点击确定映射后再据此分流。
-     */
-    private fun zoomStateOf(task: Any): String =
-        try {
-            val wrapper = findMethod(task.javaClass, "getWrapper", 0).invoke(task) ?: return "?"
-            val ext = findMethod(wrapper.javaClass, "getExtImpl", 0).invoke(wrapper) ?: return "?"
-            (findMethod(ext.javaClass, "getFlexibleZoomState", 0).invoke(ext) as? Int)?.toString() ?: "?"
-        } catch (_: ReflectiveOperationException) {
-            "?"
-        } catch (_: RuntimeException) {
-            "?"
-        }
-
-    /** 探针用：任务的边界尺寸，取不到返回 "?"。 */
-    private fun boundsOf(task: Any): String =
-        try {
-            val bounds = findMethod(task.javaClass, "getBounds", 0).invoke(task)
-                as? android.graphics.Rect ?: return "?"
-            bounds.width().toString() + "x" + bounds.height()
-        } catch (_: ReflectiveOperationException) {
-            "?"
-        } catch (_: RuntimeException) {
-            "?"
-        }
-
-    /**
-     * 任务是否处于窗口尺寸（小窗 / 迷你窗 / 浮标），而不是满屏的后台任务。
-     *
-     * 判据：Task 边界小于显示区域。实测小窗与迷你窗都是 1272x2261，普通全屏任务是 1272x2800。
-     * 注意浮标只缩 surface，Task 边界不会继续变小，所以不能用"面积不到半屏"。
-     */
-    private fun isWindowedSize(task: Any): Boolean =
-        try {
-            val bounds = findMethod(task.javaClass, "getBounds", 0).invoke(task)
-                as? android.graphics.Rect ?: return false
-            val metrics = context.resources.displayMetrics
-            bounds.width() in 1 until metrics.widthPixels || bounds.height() in 1 until metrics.heightPixels
-        } catch (_: ReflectiveOperationException) {
-            false
-        } catch (_: RuntimeException) {
-            false
-        }
-
-    /**
-     * 把浮标 / 迷你窗恢复成普通小窗。
-     *
-     * 走厂商的 ExitFlexibleTaskToFullStrategy（与"点浮标"同一条路径，实测结果是恢复成小窗，
-     * 不是全屏）。只在任务不可见、且面积小于半屏时调用。
-     */
-    private fun restoreMiniWindow(task: Any, packageName: String): Boolean =
-        try {
-            val strategyClass = Class.forName(
-                "com.android.server.wm.ExitFlexibleTaskToFullStrategy",
-                false,
-                task.javaClass.classLoader,
-            )
-            val constructor = strategyClass.declaredConstructors.firstOrNull { candidate ->
-                candidate.parameterTypes.size == 2 &&
-                    candidate.parameterTypes[1] == Boolean::class.javaPrimitiveType
-            } ?: return false
-            constructor.isAccessible = true
-            val strategy = constructor.newInstance(task, true)
-            val inner = findMethod(controller.javaClass, "exitFlexibleTaskWindowInnerLocked", 1)
-            val atms = readField(controller, "mAtms")
-            val lock = atms?.javaClass?.getMethod("getGlobalLock")?.invoke(atms)
-            val action = Runnable { inner.invoke(controller, strategy) }
-            if (lock != null) synchronized(lock) { action.run() } else action.run()
-            debug(
-                "SYSTEM_LAUNCH_RESTORE_MINI_" + packageName + "_b" + boundsOf(task),
-            )
-            true
-        } catch (_: ReflectiveOperationException) {
-            false
-        } catch (_: RuntimeException) {
-            false
-        }
 
     /** 任务此刻是否在屏幕上可见。 */
     private fun isTaskVisible(task: Any): Boolean =

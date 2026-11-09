@@ -4,34 +4,22 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * 契约测试：把 ARCHITECTURE.md 里契约的纯逻辑部分钉住。
- *
- * 这些用例的价值不是覆盖率，而是让“行为”可读：改判据时这里必须同步改，
- * 否则 CI 失败——不用装到手机上试才知道。
+ * 契约测试：把 ARCHITECTURE.md 契约 B 的纯逻辑部分钉住。
+ * 改判据时必须同步改这里，否则 CI 失败。
  */
 class FanLaunchPolicyTest {
     @Test
-    fun 可见普通小窗只前置不重启() {
-        assertEquals(FanLaunchAction.FrontExisting, FanLaunchPolicy.decide(WindowForm.SmallWindow))
+    fun 有可见窗口时只前置不重启() {
+        assertEquals(FanLaunchAction.FrontExisting, FanLaunchPolicy.decide(WindowForm.VisibleWindow))
     }
 
     @Test
-    fun 迷你窗恢复成普通小窗() {
-        assertEquals(FanLaunchAction.RestoreToWindow, FanLaunchPolicy.decide(WindowForm.MiniWindow))
-    }
-
-    @Test
-    fun 贴边浮标恢复成普通小窗() {
-        assertEquals(FanLaunchAction.RestoreToWindow, FanLaunchPolicy.decide(WindowForm.EdgeBubble))
-    }
-
-    @Test
-    fun 后台全屏任务按冷启动处理() {
+    fun 后台任务按正常小窗启动() {
         assertEquals(FanLaunchAction.LaunchAsZoom, FanLaunchPolicy.decide(WindowForm.BackgroundTask))
     }
 
     @Test
-    fun 没有任务是冷启动() {
+    fun 没有任务是小窗启动() {
         assertEquals(FanLaunchAction.LaunchAsZoom, FanLaunchPolicy.decide(WindowForm.None))
     }
 }
