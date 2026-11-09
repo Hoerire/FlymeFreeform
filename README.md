@@ -2,7 +2,7 @@
   <img src="app/src/main/res/drawable-nodpi/ic_launcher_mark.png" width="112" alt="Flyme 小窗" />
 </p>
 
-<h1 align="center">Flyme 小窗（FlymeFreeform）</h1>
+<h1 align="center">Flyme 小窗</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/ROM-ColorOS-00A862" alt="面向 ColorOS" />

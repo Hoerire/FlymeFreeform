@@ -494,7 +494,6 @@ internal class ColorOsFreeformCoordinator(
         morePanelActive = false
         overlayAtLeft = side == io.github.hoerire.flymefreeform.gesture.CornerSide.Left
         overlayShownAt = android.os.SystemClock.uptimeMillis()
-        // 扇形不再依赖「最近应用」，呼出时不做任何目录刷新，避免呼出卡顿。
         val hitRangeDp = lastSettings.radialHitRangeDp
         debug(
             "SYSTEM_OVERLAY_HIT_RANGE_" + hitRangeDp + "DP_" +
