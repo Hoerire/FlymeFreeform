@@ -878,13 +878,13 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun bringWindowToFront(packageName: String): Boolean {
         val tasks = tasksOfFocusedDisplay() ?: return false
-        // 贴边浮标 / 迷你窗：任务还在柔性表里、但不在屏幕上，新启动会沿用它的旧小尺寸
-        // （表现为迷你窗），所以先按「点浮标」的方式恢复成普通小窗。
-        // 判据用柔性表成员 + 不可见：浮标只缩 surface，Task.getBounds() 仍是原尺寸，按面积判不出来。
+        // 贴边浮标 / 迷你窗：任务不可见、且 Task 尺寸仍是窗口尺寸（小于显示区域）。
+        // 探针实测：小窗/迷你窗 = 1272x2261，普通后台全屏任务 = 1272x2800；
+        // 变成迷你窗后任务已被移出柔性表，面积也远超半屏，所以只能按尺寸判。
         tasks.firstOrNull { each ->
             packageOfTask(each) == packageName &&
                 !isTaskVisible(each) &&
-                (isFlexibleMember(each) || isMiniOrFloating(each))
+                isWindowedSize(each)
         }?.let { task ->
             if (restoreMiniWindow(task, packageName)) return true
         }
@@ -896,7 +896,6 @@ internal class ColorOsFreeformCoordinator(
                         tasks.joinToString("|") { each ->
                             (packageOfTask(each) ?: "?") +
                                 ":v" + (if (isTaskVisible(each)) 1 else 0) +
-                                ":f" + (if (isFlexibleMember(each)) 1 else 0) +
                                 ":" + boundsOf(each)
                         },
                 )
@@ -976,24 +975,18 @@ internal class ColorOsFreeformCoordinator(
             "?"
         }
 
-    /** 任务是否登记在厂商的柔性任务表里（小窗、迷你窗、浮标都是）。 */
-    private fun isFlexibleMember(task: Any): Boolean =
-        try {
-            val members = readField(controller, "mFlexibleTasks") as? Iterable<*> ?: return false
-            synchronized(members) { members.any { it === task } }
-        } catch (_: RuntimeException) {
-            false
-        }
-
-    /** 任务是否被收成了贴边浮标 / 迷你窗：面积不到屏幕一半。 */
-    private fun isMiniOrFloating(task: Any): Boolean =
+    /**
+     * 任务是否处于窗口尺寸（小窗 / 迷你窗 / 浮标），而不是满屏的后台任务。
+     *
+     * 判据：Task 边界小于显示区域。实测小窗与迷你窗都是 1272x2261，普通全屏任务是 1272x2800。
+     * 注意浮标只缩 surface，Task 边界不会继续变小，所以不能用"面积不到半屏"。
+     */
+    private fun isWindowedSize(task: Any): Boolean =
         try {
             val bounds = findMethod(task.javaClass, "getBounds", 0).invoke(task)
                 as? android.graphics.Rect ?: return false
             val metrics = context.resources.displayMetrics
-            val screen = metrics.widthPixels.toLong() * metrics.heightPixels
-            val area = bounds.width().toLong() * bounds.height()
-            area > 0 && area * 2 < screen
+            bounds.width() in 1 until metrics.widthPixels || bounds.height() in 1 until metrics.heightPixels
         } catch (_: ReflectiveOperationException) {
             false
         } catch (_: RuntimeException) {
@@ -1025,9 +1018,7 @@ internal class ColorOsFreeformCoordinator(
             val action = Runnable { inner.invoke(controller, strategy) }
             if (lock != null) synchronized(lock) { action.run() } else action.run()
             debug(
-                "SYSTEM_LAUNCH_RESTORE_MINI_" + packageName +
-                    "_f" + (if (isFlexibleMember(task)) 1 else 0) +
-                    "_b" + boundsOf(task),
+                "SYSTEM_LAUNCH_RESTORE_MINI_" + packageName + "_b" + boundsOf(task),
             )
             true
         } catch (_: ReflectiveOperationException) {
