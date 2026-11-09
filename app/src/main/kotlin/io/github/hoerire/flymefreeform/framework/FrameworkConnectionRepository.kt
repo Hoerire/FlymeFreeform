@@ -193,18 +193,16 @@ internal class FrameworkConnectionRepository(private val context: Context) {
                 val confirmed = previous.copy(settings = next, isUpdating = false, issue = null)
                 activeConnection = connection.copy(confirmedState = confirmed)
                 mutableState.value = confirmed
-                if (next.pinsSaved != previous.settings.pinsSaved ||
-                    next.pinnedTargets != previous.settings.pinnedTargets
-                ) {
-                    notifyPinnedTargetsChanged(next)
-                }
+                // 任何设置变更都推送一次：跨进程 SharedPreferences 的变更监听不可靠，
+                // 只推固定项会让"详细日志""自动收窗"这类开关停留在旧快照里。
+                notifySettingsChanged(next)
             } else {
                 isolateFailedConnection(connection, previous)
             }
         }
     }
 
-    private fun notifyPinnedTargetsChanged(settings: ModuleSettingsSnapshot) {
+    private fun notifySettingsChanged(settings: ModuleSettingsSnapshot) {
         val intent = Intent(ModulePreferences.ACTION_PINNED_TARGETS_CHANGED).apply {
             putExtra(
                 ModulePreferences.EXTRA_PINNED_TARGETS,

@@ -49,6 +49,8 @@ internal class ColorOsSidebarEntryEndpoint(
                 sentFromUid != moduleUid()
             ) return
             val encoded = intent.getStringExtra(ModulePreferences.EXTRA_PINNED_TARGETS) ?: return
+            // 广播现在覆盖全部设置变更：先重读磁盘快照，再叠上本次推送的固定项。
+            configuration.forceReload()
             configuration.override(
                 configuration.snapshot.copy(
                     enabled = intent.getBooleanExtra(
