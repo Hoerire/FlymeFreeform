@@ -154,7 +154,15 @@ internal class LauncherHookInstaller(
                     .setId("flymefreeform.launcher.swipe_start")
                     .intercept { chain ->
                         val result = chain.proceed()
-                        launcherRef?.let { publishBlocked(it, true) }
+                        // 证据：命中时是否拿得到 Context（launcherRef 在应用上滑时可能为空）。
+                        val ctx = launcherRef ?: appContext()
+                        module.log(
+                            Log.DEBUG,
+                            TAG,
+                            "LAUNCHER_SWIPE_STARTED_ctx" + (ctx != null),
+                            null,
+                        )
+                        ctx?.let { publishBlocked(it, true) }
                         result
                     }
                 runCatching {
@@ -247,6 +255,13 @@ internal class LauncherHookInstaller(
         }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_REPORTER_FAILED", it) }
         reportPageState(launcher)
     }
+
+    private fun appContext(): Context? =
+        runCatching {
+            Class.forName("android.app.ActivityThread")
+                .getMethod("currentApplication")
+                .invoke(null) as? Context
+        }.getOrNull()
 
     /** 直接发布指定状态（用于上滑开始这类"已知要进入多任务"的时刻）。 */
     private fun publishBlocked(launcher: Context, blocked: Boolean) {
