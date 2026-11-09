@@ -39,6 +39,13 @@ internal class ModuleEnvironmentState(
 
     /** 当前前台 Activity 的类名，用于识别多任务 / 最近任务界面。 */
     @Volatile private var foregroundActivity: String? = null
+
+    /** 桌面是否处于多任务 / 负一屏（由桌面进程上报）。 */
+    @Volatile private var launcherSystemPage = false
+
+    fun updateLauncherSystemPage(blocked: Boolean) {
+        launcherSystemPage = blocked
+    }
     @Volatile private var keyguardRecheckNeeded = true
     private var lastObservation: Observation? = null
     private var lastFailureAt = -10_000L
@@ -152,8 +159,8 @@ internal class ModuleEnvironmentState(
 
     fun isGestureAllowed(refreshKeyguard: Boolean = false): Boolean {
         if (refreshKeyguard && keyguardRecheckNeeded) refreshKeyguardState()
-        // 多任务 / 负一屏等系统页面不响应呼出手势。
-        if (isSystemPanelForeground()) return false
+        // 多任务 / 负一屏等系统页面不响应呼出手势（桌面内部页面由桌面进程上报）。
+        if (launcherSystemPage || isSystemPanelForeground()) return false
         return isModuleAllowed() && gestureNavigation && !keyguardLocked
     }
 

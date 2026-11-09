@@ -139,6 +139,60 @@ internal class LauncherHookInstaller(
      * 只能从桌面进程里读：多任务对应 LauncherState.OVERVIEW，
      * 负一屏对应 Workspace 的负页码。命中时我们完全不接管手势，交回桌面自己处理。
      */
+    private val pageReporterStarted = AtomicBoolean(false)
+
+    /** 注册桌面状态监听，并在状态变化时把"是否系统页面"上报给 system_server。 */
+    private fun installPageReporter(launcher: Context) {
+        if (!pageReporterStarted.compareAndSet(false, true)) return
+        runCatching {
+            val stateManager = launcher.javaClass.getMethod("getStateManager").invoke(launcher)
+            val listenerClass = launcher.javaClass.classLoader.loadClass(
+                "com.android.launcher3.statemanager.StateManager$StateListener",
+            )
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                listenerClass.classLoader,
+                arrayOf(listenerClass),
+            ) { _, method, _ ->
+                if (method.name.startsWith("onState")) reportPageState(launcher)
+                null
+            }
+            stateManager?.javaClass
+                ?.getMethod("addStateListener", listenerClass)
+                ?.invoke(stateManager, proxy)
+            // 负一屏是桌面的一个翻页，不触发状态切换，这里单独跟一下页码变化。
+            runCatching {
+                val pagedView = launcher.javaClass.classLoader.loadClass("com.android.launcher3.PagedView")
+                val setCurrentPage =
+                    pagedView.getMethod("setCurrentPage", Int::class.javaPrimitiveType)
+                module.hook(setCurrentPage)
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .setId("flymefreeform.launcher.page_state")
+                    .intercept { chain ->
+                        val result = chain.proceed()
+                        reportPageState(launcher)
+                        result
+                    }
+            }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_HOOK_FAILED", it) }
+            module.log(Log.INFO, TAG, "LAUNCHER_PAGE_REPORTER_INSTALLED", null)
+        }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_REPORTER_FAILED", it) }
+        reportPageState(launcher)
+    }
+
+    private fun reportPageState(launcher: Context) {
+        val blocked = isLauncherSystemPage(launcher)
+        runCatching {
+            launcher.sendBroadcast(
+                android.content.Intent(
+                    io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_LAUNCHER_PAGE_STATE,
+                ).putExtra(
+                    io.github.hoerire.flymefreeform.config.ModulePreferences.EXTRA_LAUNCHER_BLOCKED,
+                    blocked,
+                ),
+            )
+            ModuleLog.debug(TAG) { "LAUNCHER_PAGE_REPORT_" + blocked }
+        }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_REPORT_FAILED", it) }
+    }
+
     private fun isLauncherSystemPage(launcher: Context): Boolean =
         runCatching {
             val stateManager = launcher.javaClass.getMethod("getStateManager").invoke(launcher)
@@ -154,7 +208,8 @@ internal class LauncherHookInstaller(
         }.getOrDefault(false)
 
     private fun shouldSuppress(owner: Context, event: MotionEvent): Boolean {
-        // 多任务界面与负一屏不响应扇形手势。
+        // 多任务界面与负一屏不响应扇形手势；同时把状态上报给 system_server（手势判定在那里）。
+        installPageReporter(owner)
         if (isLauncherSystemPage(owner)) return false
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             resetStream()

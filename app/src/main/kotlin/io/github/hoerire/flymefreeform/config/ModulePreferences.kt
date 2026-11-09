@@ -41,6 +41,11 @@ internal object ModulePreferences {
     const val KEY_ZOOM_LAUNCHER_SHORTCUT = "zoom_launcher_shortcut_v1"
 
     /** 窗口超过数量限制时，自动关闭旧窗口而不是收成贴边浮标。 */
+    /** 桌面页面状态：桌面进程在进入多任务/负一屏时通知 system_server 暂停扇形手势。 */
+    const val ACTION_LAUNCHER_PAGE_STATE =
+        "io.github.hoerire.flymefreeform.action.LAUNCHER_PAGE_STATE"
+    const val EXTRA_LAUNCHER_BLOCKED = "launcher_blocked"
+
     /** 侧边栏进程就绪：由模块在侧边栏进程内发出，system_server 收到后才去读目录。 */
     const val ACTION_SIDEBAR_READY = "io.github.hoerire.flymefreeform.action.SIDEBAR_READY"
 

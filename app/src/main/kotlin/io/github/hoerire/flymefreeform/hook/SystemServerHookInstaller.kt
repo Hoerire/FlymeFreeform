@@ -103,11 +103,48 @@ internal class SystemServerHookInstaller(
                     chain.proceed()
                 }
             module.log(Log.INFO, TAG, "SYSTEM_FOREGROUND_OBSERVER_INSTALLED")
+            installLauncherPageReceiver()
         } catch (exception: ReflectiveOperationException) {
             module.log(Log.WARN, TAG, "SYSTEM_FOREGROUND_OBSERVER_UNAVAILABLE", exception)
         } catch (exception: LinkageError) {
             module.log(Log.WARN, TAG, "SYSTEM_FOREGROUND_OBSERVER_LINKAGE_FAILED", exception)
         }
+    }
+
+    /** 接收桌面进程上报的页面状态：多任务 / 负一屏时暂停扇形手势。 */
+    private fun installLauncherPageReceiver() {
+        runCatching {
+            val context = Class.forName("android.app.ActivityThread")
+                .getMethod("currentActivityThread")
+                .invoke(null)
+                ?.let { thread ->
+                    thread.javaClass.getMethod("getSystemContext").invoke(thread) as? android.content.Context
+                } ?: return
+            context.registerReceiver(
+                object : android.content.BroadcastReceiver() {
+                    override fun onReceive(receiver: android.content.Context?, intent: android.content.Intent?) {
+                        if (intent?.action !=
+                            io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_LAUNCHER_PAGE_STATE
+                        ) {
+                            return
+                        }
+                        val blocked = intent.getBooleanExtra(
+                            io.github.hoerire.flymefreeform.config.ModulePreferences.EXTRA_LAUNCHER_BLOCKED,
+                            false,
+                        )
+                        environment.updateLauncherSystemPage(blocked)
+                        module.log(Log.DEBUG, TAG, "LAUNCHER_PAGE_STATE_" + blocked, null)
+                    }
+                },
+                android.content.IntentFilter(
+                    io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_LAUNCHER_PAGE_STATE,
+                ),
+                null,
+                null,
+                android.content.Context.RECEIVER_EXPORTED,
+            )
+            module.log(Log.INFO, TAG, "LAUNCHER_PAGE_RECEIVER_INSTALLED", null)
+        }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_RECEIVER_FAILED", it) }
     }
 
     private fun readField(instance: Any?, name: String): Any? {
