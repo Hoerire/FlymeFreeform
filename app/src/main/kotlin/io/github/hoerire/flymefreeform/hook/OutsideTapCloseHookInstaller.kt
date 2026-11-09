@@ -191,6 +191,16 @@ internal class OutsideTapCloseHookInstaller(
                     it,
                 )
             }
+        // 独立安装：只负责把"被新启动顶掉的收窗"从过渡动画目标里剔除，失败不影响关闭本身。
+        runCatching { installSkipReplaceCloseAnim(classLoader) }
+            .onFailure {
+                module.log(
+                    Log.WARN,
+                    TAG,
+                    "ZOOM_REPLACE_TO_CLOSE_SKIP_ANIM_FAILED_" + it.javaClass.simpleName + "_" + it.message,
+                    it,
+                )
+            }
     }
 
     /**
@@ -265,7 +275,8 @@ internal class OutsideTapCloseHookInstaller(
                             fieldInHierarchy(current.javaClass, "mTask")?.get(current)
                         }.getOrNull()
                         val back = task?.let { runCatching { backConstructor.newInstance(it, true) }.getOrNull() }
-                        if (back != null) {
+                        if (task != null && back != null) {
+                            ReplaceCloseMarker.mark(task)
                             module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE", null)
                             return@intercept chain.proceed(arrayOf(back))
                         }
@@ -275,6 +286,44 @@ internal class OutsideTapCloseHookInstaller(
             }
         module.log(Log.INFO, TAG, "ZOOM_REPLACE_TO_CLOSE_INSTALLED", null)
     }
+
+    /**
+     * 把「被新启动顶掉」的那次收窗从过渡动画目标里剔除。
+     *
+     * 关闭本身仍走 ExitFlexibleTaskToBackStrategy，只是这条画面变化不再排进过渡动画，
+     * 于是启动的 TRANSIT_ZOOM_OPEN 独占屏幕，不再与新窗口的退场动画并行。
+     * 只认 ReplaceCloseMarker 记录过的任务；点窗外、标题栏按钮、拖边缘这些独立关闭
+     * 不经过替换分支，动画与原厂一致。
+     *
+     * 判据来自 TransitionController 自身的语义：isFlexibleTaskNeedRemoveAnim 返回 true
+     * 表示把该条 change 从动画目标集合里移除（源码里的日志是 "updateAnimTargetIfNeed …
+     * remove it" / "remove current task that is custom animating"），因此这里返回 true
+     * 只影响「播不播动画」，不改任何退出状态机。
+     */
+    private fun installSkipReplaceCloseAnim(loader: ClassLoader) {
+        val controllerClass = loader.loadClass(TRANSITION_CONTROLLER_CLASS)
+        val target = controllerClass.declaredMethods.firstOrNull { candidate ->
+            candidate.name == "isFlexibleTaskNeedRemoveAnim" && candidate.parameterTypes.size == 3
+        } ?: run {
+            module.log(Log.WARN, TAG, "ZOOM_REPLACE_TO_CLOSE_SKIP_ANIM_NO_METHOD", null)
+            return
+        }
+        target.isAccessible = true
+        module
+            .hook(target)
+            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+            .setId("flymefreeform.system.replace_close_skip_anim")
+            .intercept { chain ->
+                val changed = chain.args.getOrNull(2)
+                if (changed != null && ReplaceCloseMarker.matches(changed)) {
+                    module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_SKIP_ANIM", null)
+                    return@intercept true
+                }
+                chain.proceed()
+            }
+        module.log(Log.INFO, TAG, "ZOOM_REPLACE_TO_CLOSE_SKIP_ANIM_INSTALLED", null)
+    }
+
     /** 沿继承链找字段（厂商把字段放在父类上）。 */
     private fun fieldInHierarchy(start: Class<*>, name: String): java.lang.reflect.Field? {
         var type: Class<*>? = start
@@ -862,6 +911,9 @@ internal class OutsideTapCloseHookInstaller(
         const val ORDINARY_ZOOM_STATE = 1
         const val SCALE_TOLERANCE = 0.02f
         const val FAILURE_LOG_INTERVAL_MS = 10_000L
+
+        const val TRANSITION_CONTROLLER_CLASS =
+            "com.android.server.wm.FlexibleTaskTransitionController"
     }
 }
 
@@ -911,6 +963,55 @@ private fun Method.invokeUnwrapped(instance: Any?, vararg arguments: Any?): Any?
     } catch (exception: InvocationTargetException) {
         throw exception.targetException
     }
+/**
+ * 记录「被新启动顶掉」的那次收窗，供过渡控制器剔除它的退场动画。
+ *
+ * 写入点是 exitFlexibleTaskWindowInnerLocked 的替换分支，读取点是
+ * FlexibleTaskTransitionController 的动画目标计算，两者同进程、时间差在毫秒级，
+ * 所以用任务 id + 时间窗识别，不跨进程、不落盘。
+ */
+internal object ReplaceCloseMarker {
+    /** 识别时间窗：只覆盖同一次启动的过渡计算。 */
+    private const val WINDOW_MS = 2_000L
+
+    @Volatile
+    private var markedTask: Any? = null
+
+    @Volatile
+    private var markedTaskId: Int = -1
+
+    @Volatile
+    private var markedAt = 0L
+
+    fun mark(target: Any) {
+        markedTask = target
+        markedTaskId = runCatching { taskIdOf(target) ?: -1 }.getOrDefault(-1)
+        markedAt = SystemClock.uptimeMillis()
+    }
+
+    fun matches(candidate: Any): Boolean {
+        val at = markedAt
+        if (at == 0L || SystemClock.uptimeMillis() - at > WINDOW_MS) return false
+        if (candidate === markedTask) return true
+        val expected = markedTaskId
+        if (expected < 0) return false
+        return runCatching { taskIdOf(candidate) == expected }.getOrDefault(false)
+    }
+
+    private fun taskIdOf(task: Any): Int? {
+        var type: Class<*>? = task.javaClass
+        while (type != null) {
+            val field = runCatching { type.getDeclaredField("mTaskId") }.getOrNull()
+            if (field != null) {
+                field.isAccessible = true
+                return field.getInt(task)
+            }
+            type = type.superclass
+        }
+        return null
+    }
+}
+
 /**
  * 缓存 system_server 的 FlexibleTaskController，并提供"把浮标恢复成小窗"。
  *
