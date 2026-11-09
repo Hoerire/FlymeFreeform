@@ -867,15 +867,17 @@ internal class ColorOsFreeformCoordinator(
       catch (_: RuntimeException) { null }
 
     /**
-     * 把该包已有的窗口提到前台，不重新启动。
+     * 该包此刻是否有可见窗口；有就把它提到前台，不重新启动。
      *
-     * 扇形对「已经开着」的应用没有「再开一个」的语义，但也不能点了没反应：
-     * 直接前置已有任务，形态（全屏 / 小窗）保持不变——重新走小窗启动反而会被系统
-     * 原地改写成小窗且没有动画。找不到任务时返回 false，调用方按冷启动处理。
+     * 判据是「可见」，不是「任务存在」：收窗只是把任务退到后台，任务对象仍在任务树里，
+     * 按任务存在判定会让被收过窗的应用永远打不开。有可见窗口时重新启动，会被系统
+     * 原地改写成小窗且没有动画（getReusableOptionsForFreeForm），所以只做前置；
+     * 没有可见窗口（应用在后台、或刚被收窗）时返回 false，调用方按正常小窗启动。
      */
     private fun bringWindowToFront(packageName: String): Boolean {
         val tasks = tasksOfFocusedDisplay() ?: return false
-        val task = tasks.firstOrNull { packageOfTask(it) == packageName } ?: return false
+        val task = tasks.firstOrNull { packageOfTask(it) == packageName && isTaskVisible(it) }
+            ?: return false
         return try {
             val moveToFront = findMethod(task.javaClass, "moveToFront", 1)
             val atms = readField(controller, "mAtms")
@@ -937,6 +939,16 @@ internal class ColorOsFreeformCoordinator(
             collectTasks(child, out, depth + 1)
         }
     }
+
+    /** 任务此刻是否在屏幕上可见。 */
+    private fun isTaskVisible(task: Any): Boolean =
+        try {
+            findMethod(task.javaClass, "isVisible", 0).invoke(task) as? Boolean ?: false
+        } catch (_: ReflectiveOperationException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
 
     /** 任务所属包：优先取 baseIntent 的组件，退化取 realActivity。 */
     private fun packageOfTask(task: Any): String? =
