@@ -85,8 +85,20 @@ internal class SystemUiGestureMonitor(
                 MONITOR_NAME + ":" + context.packageName,
                 displayId,
             )
-        val channel = getInputChannel.invoke(created) as? InputChannel
+        val rawChannel = getInputChannel.invoke(created)
+        module.log(
+            Log.INFO,
+            TAG,
+            "CORNER_MONITOR_CHANNEL_class=" + (rawChannel?.javaClass?.name ?: "null") +
+                "_loader=" + (rawChannel?.javaClass?.classLoader?.javaClass?.name ?: "null") +
+                "_stubLoader=" + (InputChannel::class.java.classLoader?.javaClass?.name ?: "boot"),
+        )
+        val channel = rawChannel as? InputChannel
         if (channel == null) {
+            // 关键：monitor 已经在系统侧注册了一条通道，拿不到可用 channel 就必须把它关掉，
+            // 否则这条通道永远没有接收者，下一次触摸会被 InputDispatcher 判 5 秒超时，
+            // 直接把 SystemUI 打成 not responding 并杀掉（实机崩溃循环就是这么来的）。
+            releaseQuietly(rawChannel)
             worker.quitSafely()
             module.log(Log.WARN, TAG, "CORNER_MONITOR_CHANNEL_MISSING")
             return
@@ -179,6 +191,16 @@ internal class SystemUiGestureMonitor(
         if (now - lastPilferFailureAt < PILFER_LOG_INTERVAL_MS) return
         lastPilferFailureAt = now
         module.log(Log.WARN, TAG, "CORNER_MONITOR_PILFER_FAILED", exception)
+    }
+
+    /** 释放系统侧的 monitor 通道；失败也不能抛，调用点只关心"尽力关掉"。 */
+    private fun releaseQuietly(channel: Any?) {
+        if (channel == null) return
+        try {
+            channel.javaClass.getMethod("dispose").invoke(channel)
+        } catch (_: ReflectiveOperationException) {
+        } catch (_: RuntimeException) {
+        }
     }
 
     private fun resolveDisplayId(): Int =
