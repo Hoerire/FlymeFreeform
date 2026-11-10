@@ -115,6 +115,22 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setZoomLaunch(enabled: Boolean) =
         updateSettings { it.copy(zoomLaunch = enabled) }
 
+    // 小窗跳转的五个细分场景，各自独立存盘。
+    fun setZoomLaunchNotice(enabled: Boolean) =
+        updateSettings { it.copy(zoomLaunchNotice = enabled) }
+
+    fun setZoomLaunchHeadsUp(enabled: Boolean) =
+        updateSettings { it.copy(zoomLaunchHeadsUp = enabled) }
+
+    fun setZoomLaunchControlCenter(enabled: Boolean) =
+        updateSettings { it.copy(zoomLaunchControlCenter = enabled) }
+
+    fun setZoomLaunchInterApp(enabled: Boolean) =
+        updateSettings { it.copy(zoomLaunchInterApp = enabled) }
+
+    fun setZoomLaunchSidebar(enabled: Boolean) =
+        updateSettings { it.copy(zoomLaunchSidebar = enabled) }
+
     /** 桌面长按快捷项是否转小窗。 */
     fun setZoomLauncherShortcut(enabled: Boolean) =
         updateSettings { it.copy(zoomLauncherShortcut = enabled) }

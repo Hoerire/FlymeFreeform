@@ -41,6 +41,11 @@ internal fun ZoomOptionsScreen(
     onZoomMaxWindowCountChange: (Int) -> Unit,
     onZoomAllowAnyAppChange: (Boolean) -> Unit,
     onZoomLaunchChange: (Boolean) -> Unit,
+    onZoomLaunchNoticeChange: (Boolean) -> Unit,
+    onZoomLaunchHeadsUpChange: (Boolean) -> Unit,
+    onZoomLaunchControlCenterChange: (Boolean) -> Unit,
+    onZoomLaunchInterAppChange: (Boolean) -> Unit,
+    onZoomLaunchSidebarChange: (Boolean) -> Unit,
     onZoomLauncherShortcutChange: (Boolean) -> Unit,
     onZoomLauncherCardChange: (Boolean) -> Unit,
     onAutoCloseWindowChange: (Boolean) -> Unit,
@@ -119,12 +124,44 @@ internal fun ZoomOptionsScreen(
                     enabled = subEnabled,
                     startAction = { PreferenceIcon(Icons.Rounded.LockOpen, enabled) },
                 )
-                // 小窗跳转＝把启动改成自由浮窗，图标直接用「画中画」这个通用小窗符号。
+                // 小窗跳转按场景拆开：原来那一个开关现在由下面五项分别控制。
                 SwitchPreference(
-                    checked = state.settings.zoomLaunch,
-                    onCheckedChange = onZoomLaunchChange,
-                    title = stringResource(R.string.zoom_launch_title),
-                    summary = stringResource(R.string.zoom_launch_summary),
+                    checked = state.settings.zoomLaunchNotice,
+                    onCheckedChange = onZoomLaunchNoticeChange,
+                    title = stringResource(R.string.zoom_launch_notice_title),
+                    summary = stringResource(R.string.zoom_launch_notice_summary),
+                    enabled = subEnabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, enabled) },
+                )
+                SwitchPreference(
+                    checked = state.settings.zoomLaunchHeadsUp,
+                    onCheckedChange = onZoomLaunchHeadsUpChange,
+                    title = stringResource(R.string.zoom_launch_heads_up_title),
+                    summary = stringResource(R.string.zoom_launch_heads_up_summary),
+                    enabled = subEnabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, enabled) },
+                )
+                SwitchPreference(
+                    checked = state.settings.zoomLaunchControlCenter,
+                    onCheckedChange = onZoomLaunchControlCenterChange,
+                    title = stringResource(R.string.zoom_launch_control_center_title),
+                    summary = stringResource(R.string.zoom_launch_control_center_summary),
+                    enabled = subEnabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, enabled) },
+                )
+                SwitchPreference(
+                    checked = state.settings.zoomLaunchInterApp,
+                    onCheckedChange = onZoomLaunchInterAppChange,
+                    title = stringResource(R.string.zoom_launch_inter_app_title),
+                    summary = stringResource(R.string.zoom_launch_inter_app_summary),
+                    enabled = subEnabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, enabled) },
+                )
+                SwitchPreference(
+                    checked = state.settings.zoomLaunchSidebar,
+                    onCheckedChange = onZoomLaunchSidebarChange,
+                    title = stringResource(R.string.zoom_launch_sidebar_title),
+                    summary = stringResource(R.string.zoom_launch_sidebar_summary),
                     enabled = subEnabled,
                     startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, enabled) },
                 )

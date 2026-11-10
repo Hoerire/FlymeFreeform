@@ -38,6 +38,12 @@ internal object ModulePreferences {
     /** 小窗交互总开关：关闭时下列各项一律不介入，避免与其他模块抢同一批入口。 */
     const val KEY_ZOOM_INTERACTION_ENABLED = "zoom_interaction_enabled"
     const val KEY_ZOOM_LAUNCH = "zoom_launch"
+    /** 小窗跳转细分场景：通知中心点击、通知横幅、控制中心磁贴、应用互跳、侧边栏。 */
+    const val KEY_ZOOM_LAUNCH_NOTICE = "zoom_launch_notice_v2"
+    const val KEY_ZOOM_LAUNCH_HEADS_UP = "zoom_launch_heads_up_v2"
+    const val KEY_ZOOM_LAUNCH_CONTROL_CENTER = "zoom_launch_control_center_v2"
+    const val KEY_ZOOM_LAUNCH_INTER_APP = "zoom_launch_inter_app_v2"
+    const val KEY_ZOOM_LAUNCH_SIDEBAR = "zoom_launch_sidebar_v2"
 
     /** 桌面长按快捷项是否转小窗；关闭后保持系统默认全屏。 */
     const val KEY_ZOOM_LAUNCHER_SHORTCUT = "zoom_launcher_shortcut_v1"

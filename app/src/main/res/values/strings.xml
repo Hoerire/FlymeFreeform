@@ -81,6 +81,16 @@
     <string name="zoom_allow_any_app_summary">原本不支持自由浮窗的应用也能以小窗打开</string>
     <string name="zoom_launch_title">小窗跳转</string>
     <string name="zoom_launch_summary">在更多场景下使用自由浮窗打开</string>
+    <string name="zoom_launch_notice_title">通知中心</string>
+    <string name="zoom_launch_notice_summary">点通知时以小窗打开对应应用</string>
+    <string name="zoom_launch_heads_up_title">通知横幅</string>
+    <string name="zoom_launch_heads_up_summary">横幅展开时直接以小窗呈现</string>
+    <string name="zoom_launch_control_center_title">控制中心</string>
+    <string name="zoom_launch_control_center_summary">控制中心磁贴长按打开的页面用小窗</string>
+    <string name="zoom_launch_inter_app_title">应用跳转</string>
+    <string name="zoom_launch_inter_app_summary">应用之间互相拉起时改以小窗打开</string>
+    <string name="zoom_launch_sidebar_title">侧边栏</string>
+    <string name="zoom_launch_sidebar_summary">侧边栏里点开的条目以小窗打开</string>
     <string name="zoom_launcher_shortcut_title">快捷方式</string>
     <string name="zoom_launcher_shortcut_summary">长按桌面快捷项时以浮窗打开</string>
     <string name="auto_close_window_title">自动收窗</string>

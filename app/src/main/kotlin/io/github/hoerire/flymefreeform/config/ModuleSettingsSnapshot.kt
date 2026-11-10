@@ -39,6 +39,16 @@ internal data class ModuleSettingsSnapshot(
      * 关闭后不改写任何启动，全部入口回到系统默认的全屏行为。
      */
     val zoomLaunch: Boolean = ModulePreferences.DEFAULT_ZOOM_LAUNCH,
+    /** 小窗跳转·通知中心：点通知以小窗打开。 */
+    val zoomLaunchNotice: Boolean = true,
+    /** 小窗跳转·通知横幅：横幅直接展开成小窗。 */
+    val zoomLaunchHeadsUp: Boolean = true,
+    /** 小窗跳转·控制中心：磁贴长按打开的页面。 */
+    val zoomLaunchControlCenter: Boolean = true,
+    /** 小窗跳转·应用跳转：一个应用拉起另一个应用时改小窗。 */
+    val zoomLaunchInterApp: Boolean = true,
+    /** 小窗跳转·侧边栏：侧边栏点开的条目以小窗打开。 */
+    val zoomLaunchSidebar: Boolean = true,
     /**
      * 禁用浮窗：这些应用不会被以任何形式的自由浮窗打开，作为目标、发起方或前台都算。
      *
@@ -62,6 +72,11 @@ internal data class ModuleSettingsSnapshot(
 
     val zoomAllowAnyAppEffective: Boolean get() = zoomInteractionActive && zoomAllowAnyApp
     val zoomLaunchEffective: Boolean get() = zoomInteractionActive && zoomLaunch
+    val zoomLaunchNoticeEffective: Boolean get() = zoomInteractionActive && zoomLaunchNotice
+    val zoomLaunchHeadsUpEffective: Boolean get() = zoomInteractionActive && zoomLaunchHeadsUp
+    val zoomLaunchControlCenterEffective: Boolean get() = zoomInteractionActive && zoomLaunchControlCenter
+    val zoomLaunchInterAppEffective: Boolean get() = zoomInteractionActive && zoomLaunchInterApp
+    val zoomLaunchSidebarEffective: Boolean get() = zoomInteractionActive && zoomLaunchSidebar
     val zoomLauncherShortcutEffective: Boolean get() = zoomInteractionActive && zoomLauncherShortcut
     val zoomLauncherCardEffective: Boolean get() = zoomInteractionActive && zoomLauncherCard
     val autoCloseWindowEffective: Boolean get() = zoomInteractionActive && autoCloseWindow
@@ -98,6 +113,11 @@ internal data class ModuleSettingsSnapshot(
             )
             .putBoolean(ModulePreferences.KEY_ZOOM_ALLOW_ANY_APP, zoomAllowAnyApp)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH, zoomLaunch)
+            .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_NOTICE, zoomLaunchNotice)
+            .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_HEADS_UP, zoomLaunchHeadsUp)
+            .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_CONTROL_CENTER, zoomLaunchControlCenter)
+            .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_INTER_APP, zoomLaunchInterApp)
+            .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_SIDEBAR, zoomLaunchSidebar)
             .putBoolean(
                 ModulePreferences.KEY_ZOOM_LAUNCHER_SHORTCUT,
                 zoomLauncherShortcut,
@@ -207,9 +227,23 @@ internal data class ModuleSettingsSnapshot(
                     ModulePreferences.KEY_ZOOM_INTERACTION_ENABLED,
                     ModulePreferences.DEFAULT_ZOOM_INTERACTION_ENABLED,
                 )
+            // 旧版只有一个「小窗跳转」开关：升级后五个细分场景一律继承它的值，
+            // 用户不需要重新点一遍；之后各处再独立调整。
+            val legacyZoomLaunch =
+                preferences.getBoolean(
+                    ModulePreferences.KEY_ZOOM_LAUNCH,
+                    ModulePreferences.DEFAULT_ZOOM_LAUNCH,
+                )
+            fun scene(key: String): Boolean =
+                preferences.getBoolean(key, legacyZoomLaunch)
             return ModuleSettingsSnapshot(
                 enabled = enabled,
                 zoomInteractionEnabled = zoomInteractionEnabled,
+                zoomLaunchNotice = scene(ModulePreferences.KEY_ZOOM_LAUNCH_NOTICE),
+                zoomLaunchHeadsUp = scene(ModulePreferences.KEY_ZOOM_LAUNCH_HEADS_UP),
+                zoomLaunchControlCenter = scene(ModulePreferences.KEY_ZOOM_LAUNCH_CONTROL_CENTER),
+                zoomLaunchInterApp = scene(ModulePreferences.KEY_ZOOM_LAUNCH_INTER_APP),
+                zoomLaunchSidebar = scene(ModulePreferences.KEY_ZOOM_LAUNCH_SIDEBAR),
                 leftCornerEnabled = if (bothCornersDisabled) true else leftEnabled,
                 rightCornerEnabled = if (bothCornersDisabled) true else rightEnabled,
                 cornerTriggerRangeDp = cornerTriggerRangeDp,
