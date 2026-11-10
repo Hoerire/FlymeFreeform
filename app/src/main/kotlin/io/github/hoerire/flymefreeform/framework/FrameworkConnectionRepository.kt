@@ -98,6 +98,10 @@ internal class FrameworkConnectionRepository(private val context: Context) {
             it.copy(radialIconSizeDp = ModulePreferences.coerceRadialIconSizeDp(value))
         }
 
+    /** 小窗交互总开关（「轻量打开」）。默认关闭，关闭时整页能力都不介入系统。 */
+    fun setZoomInteractionEnabled(enabled: Boolean) =
+        updateSettings { it.copy(zoomInteractionEnabled = enabled) }
+
     fun setZoomMaxWindowCount(count: Int) =
         updateSettings {
             it.copy(
