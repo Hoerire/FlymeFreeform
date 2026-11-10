@@ -127,6 +127,11 @@ internal class ActivityStarterZoomInjector(
                     ModuleLog.debug(TAG) { "ZOOM_SKIP_PREEMPT_NO_INTENT_" + stage }
                     return false
                 }
+        // 分享流程同样不走抢占：这条通道会重发一次启动，中转页的生命周期更保不住。
+        if (intent.action in SHARE_FLOW_ACTIONS) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_SHARE_FLOW_PREEMPT_" + stage }
+            return false
+        }
         val pendingIntent = request?.let { readField(it, "originatingPendingIntent") }
         val callingPackage =
             request?.let { readField(it, "callingPackage") as? String }.orEmpty()
@@ -544,6 +549,14 @@ internal class ActivityStarterZoomInjector(
             return null
         }
 
+        // 分享类意图属于"流程界面"：目标通常是应用的中转页（如 QQ 的 JumpActivity），
+        // 分享流程依赖它的生命周期。把它开成小窗后，退场时要么被系统收成贴边浮标，
+        // 要么被收窗关掉，两条路都会让"点了分享跳不过去"。与文件选择、授权页同一口径，一律全屏。
+        if (intent.action in SHARE_FLOW_ACTIONS) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIPPED_SHARE_FLOW_" + intent.action }
+            return null
+        }
+
         // 携带 resultTo 的跨应用启动：调用方在等待结果。
         // 本方法只补 ActivityOptions，不另起一次启动，结果回传链路保持完整。
         //
@@ -892,6 +905,15 @@ internal class ActivityStarterZoomInjector(
         const val SUPPRESSED_LAUNCHER_ORIGIN = "launcher_suppressed"
 
         /** 文件选择与文档选取类动作：始终全屏。 */
+        /** 分享流程相关动作：一律保持全屏，不参与小窗改写。 */
+        val SHARE_FLOW_ACTIONS =
+            setOf(
+                "android.intent.action.SEND",
+                "android.intent.action.SEND_MULTIPLE",
+                "android.intent.action.SENDTO",
+                "android.intent.action.CHOOSER",
+            )
+
         val PICKER_ACTIONS =
             setOf(
                 "android.intent.action.GET_CONTENT",
