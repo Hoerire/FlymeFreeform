@@ -57,6 +57,7 @@ internal fun FlymeFreeformNavHost(
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
     onVerboseLogChange: (Boolean) -> Unit,
+    onZoomInteractionEnabledChange: (Boolean) -> Unit,
     onZoomMaxWindowCountChange: (Int) -> Unit,
     onZoomAllowAnyAppChange: (Boolean) -> Unit,
     onZoomLaunchChange: (Boolean) -> Unit,
@@ -172,6 +173,7 @@ internal fun FlymeFreeformNavHost(
             ZoomOptionsScreen(
                 state = state,
                 onBack = popBackStack,
+                onZoomInteractionEnabledChange = onZoomInteractionEnabledChange,
                 onZoomMaxWindowCountChange = onZoomMaxWindowCountChange,
                 onZoomAllowAnyAppChange = onZoomAllowAnyAppChange,
                 onZoomLaunchChange = onZoomLaunchChange,
