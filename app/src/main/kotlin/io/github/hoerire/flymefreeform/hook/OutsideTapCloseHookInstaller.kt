@@ -210,10 +210,6 @@ internal class OutsideTapCloseHookInstaller(
      * 用户手动拖到边缘走的是拖拽入口，不经过这两处，因此不会被误伤。
      * 命中时把 ToFloat（exitTo:5，变浮标）换成 ToBack（exitTo:6，真关闭）。
      */
-    /** 延迟收窗：等新窗口出现后再执行原退场逻辑。 */
-    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var pendingClose: Runnable? = null
-
     private fun installReplaceToClose(loader: ClassLoader) {
         val controllerClass = loader.loadClass(FLEXIBLE_TASK_CONTROLLER_CLASS)
         val baseClass = loader.loadClass(ABS_EXIT_STRATEGY_CLASS)
@@ -289,20 +285,11 @@ internal class OutsideTapCloseHookInstaller(
                         }.getOrNull()
                         val back = task?.let { runCatching { backConstructor.newInstance(it, true) }.getOrNull() }
                         if (task != null && back != null) {
-                            // 退场逻辑不变（同样是 ToBack + 隐藏 surface），只是推迟 500 ms：
-                            // 让新窗口先出现并铺开，旧窗再退，观感上才不是"凭空消失"。
-                            val controller = chain.thisObject
-                            module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_DELAYED", null)
-                            val previous = pendingClose
-                            if (previous != null) mainHandler.removeCallbacks(previous)
-                            val closeAction = Runnable {
-                                module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE", null)
-                                runCatching { innerLocked.invoke(controller, back) }
-                                hideClosingSurface(task)
-                            }
-                            pendingClose = closeAction
-                            mainHandler.postDelayed(closeAction, CLOSE_DELAY_MS)
-                            return@intercept chain.proceed()
+                            module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE", null)
+                            val result = chain.proceed(arrayOf(back))
+                            // 被动收窗不留画面：退场动画在新应用之上播，只能当帧抹掉。
+                            hideClosingSurface(task)
+                            return@intercept result
                         }
                     }
                 }
@@ -931,8 +918,6 @@ internal class OutsideTapCloseHookInstaller(
         const val FLEXIBLE_TASK_CONTROLLER_CLASS = "com.android.server.wm.FlexibleTaskController"
         const val ABS_EXIT_STRATEGY_CLASS = "com.android.server.wm.AbsFlexibleTaskExitStrategy"
         const val EXIT_TO_FLOAT_STRATEGY_CLASS = "com.android.server.wm.ExitFlexibleTaskToFloatStrategy"
-        /** 新窗口出现后到执行退场的间隔。 */
-        const val CLOSE_DELAY_MS = 500L
         const val EXIT_TO_BACK_STRATEGY_CLASS = "com.android.server.wm.ExitFlexibleTaskToBackStrategy"
         const val TASK_CLASS = "com.android.server.wm.Task"
         const val TASK_EXT_CLASS = "com.android.server.wm.TaskExtImpl"
