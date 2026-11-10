@@ -299,8 +299,15 @@ internal class ColorOsFreeformCoordinator(
             SystemServerGestureMonitor(
                 context = context,
                 onEvent = { event ->
-                    enqueuePointerEvent(event, generation)
-                    shouldStartPilfer(event)
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN && pilferSessionActive) {
+                        // 必须在入队之前挡掉：一旦进了 enqueue，gate 会 begin 新流、主线程处理时
+                        // 又被 return，末尾的 ignore(stream) 会把后续 MOVE 全部丢掉，
+                        // 于是 HIT_ENTER 再不出现，菜单就定格了（23:26:40 实机日志）。
+                        trace("SYSTEM_GESTURE_DOWN_IGNORED_IN_SESSION")
+                    } else {
+                        enqueuePointerEvent(event, generation)
+                        shouldStartPilfer(event)
+                    }
                 },
                 logger = logger,
             )
@@ -510,13 +517,6 @@ internal class ColorOsFreeformCoordinator(
                 trace("SYSTEM_GESTURE_SKIPPED_ENV_" + environmentRejectionReason())
             }
             cancelActiveGesture()
-            return
-        }
-        if (event.actionMasked == MotionEvent.ACTION_DOWN && pilferSessionActive) {
-            // 抢流会话进行中又收到 DOWN：系统重发或第二根手指误报，不是新流。
-            // 走 begin()+down() 会把正在进行的扇形打回 Armed，之后再也产生不了 Update，
-            // 表现就是"菜单卡住、不能选、不能滑"（23:19:00 实机日志正是这样）。
-            trace("SYSTEM_GESTURE_DOWN_IGNORED_IN_SESSION")
             return
         }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
