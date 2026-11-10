@@ -36,6 +36,7 @@ internal class SystemServerHookInstaller(
             environment,
         ).install(classLoader)
         NotificationEnqueueProbe(module).install(classLoader)
+        UahInputSuppressor(module, configuration, environment).install(classLoader)
         installForegroundObserver(classLoader)
         try {
             // 厂商初始化入口只能反射定位；缺失时保留系统启动流程。
