@@ -39,6 +39,10 @@ internal class SystemUiHookInstaller(
                     if (context != null && bound.compareAndSet(false, true)) {
                         // 通知点击小窗：改 Bundle（含剥离 remote 转场），让窗口不被横幅压住。
                         NotifBundleHook(module, configuration).install(classLoader)
+                        runCatching { FlexibleMenuEntryInstaller(module).install(classLoader) }
+                            .onFailure { exception ->
+                                module.log(Log.WARN, TAG, "FLEXIBLE_MENU_INSTALL_FAILED", exception)
+                            }
                         startInputMonitor(context)
                     }
                     result
