@@ -50,7 +50,7 @@ internal class HandleSwipeUpHookInstaller(
                     val originalResult = chain.proceed()
                     val originalMode = (originalResult as? Number)?.toInt() ?: return@intercept originalResult
                     val settings = configuration.snapshot
-                    if (!settings.handleSwipeUpToMiniEnabled ||
+                    if (!settings.handleSwipeUpToMiniEffective ||
                         !environment.isModuleActive() ||
                         environment.isForegroundExcluded()
                     ) {
