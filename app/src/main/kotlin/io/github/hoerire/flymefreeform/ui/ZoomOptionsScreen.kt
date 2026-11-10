@@ -65,16 +65,14 @@ internal fun ZoomOptionsScreen(
     ) {
         item(key = "options") {
             Card(modifier = Modifier.fillMaxWidth()) {
-                // 总开关「轻量打开」：默认关，关闭时下面每一项都灰掉且不介入系统。
-                // 「窗外关闭」不受它控制，所以放在它上面、独立可调。
+                // 快速上滑转迷你：独立项，不受「轻量打开」控制，放在最上面。
                 SwitchPreference(
-                    checked = master,
-                    onCheckedChange = onZoomInteractionEnabledChange,
-                    title = stringResource(R.string.zoom_interaction_title),
-                    summary = stringResource(R.string.zoom_interaction_summary),
-                    // 总开关只看模块总开关，不受自己影响。
+                    checked = state.settings.handleSwipeUpToMiniEnabled,
+                    onCheckedChange = onHandleSwipeUpToMiniEnabledChange,
+                    title = stringResource(R.string.handle_swipe_up_to_mini_title),
+                    summary = stringResource(R.string.handle_swipe_up_to_mini_summary),
                     enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.TouchApp, enabled) },
+                    startAction = { PreferenceIcon(Icons.Rounded.SwipeUp, enabled) },
                 )
                 OverlaySpinnerPreference(
                     items = outsideTapItems,
@@ -87,6 +85,16 @@ internal fun ZoomOptionsScreen(
                     onSelectedIndexChange = { index ->
                         outsideTapModes.getOrNull(index)?.let(onOutsideTapCloseModeChange)
                     },
+                )
+                // 总开关「轻量打开」：默认关，关闭时它下面每一项都灰掉且不介入系统。
+                SwitchPreference(
+                    checked = master,
+                    onCheckedChange = onZoomInteractionEnabledChange,
+                    title = stringResource(R.string.zoom_interaction_title),
+                    summary = stringResource(R.string.zoom_interaction_summary),
+                    // 总开关只看模块总开关，不受自己影响。
+                    enabled = enabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.TouchApp, enabled) },
                 )
                 RemoteDpSliderPreference(
                     icon = Icons.Rounded.Widgets,
@@ -145,14 +153,6 @@ internal fun ZoomOptionsScreen(
                     summary = stringResource(R.string.zoom_launcher_card_summary),
                     enabled = subEnabled,
                     startAction = { PreferenceIcon(Icons.Rounded.Widgets, enabled) },
-                )
-                SwitchPreference(
-                    checked = state.settings.handleSwipeUpToMiniEnabled,
-                    onCheckedChange = onHandleSwipeUpToMiniEnabledChange,
-                    title = stringResource(R.string.handle_swipe_up_to_mini_title),
-                    summary = stringResource(R.string.handle_swipe_up_to_mini_summary),
-                    enabled = subEnabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.SwipeUp, enabled) },
                 )
                 // 禁用浮窗＝列表内应用不以任何形式的自由浮窗打开，图标用「四角括号」画全屏边界。
                 ArrowPreference(

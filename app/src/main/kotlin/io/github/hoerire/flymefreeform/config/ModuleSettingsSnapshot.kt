@@ -65,7 +65,8 @@ internal data class ModuleSettingsSnapshot(
     val zoomLauncherShortcutEffective: Boolean get() = zoomInteractionActive && zoomLauncherShortcut
     val zoomLauncherCardEffective: Boolean get() = zoomInteractionActive && zoomLauncherCard
     val autoCloseWindowEffective: Boolean get() = zoomInteractionActive && autoCloseWindow
-    val handleSwipeUpToMiniEffective: Boolean get() = zoomInteractionActive && handleSwipeUpToMiniEnabled
+    /** 快速上滑转迷你独立于「轻量打开」，只跟模块总开关走。 */
+    val handleSwipeUpToMiniEffective: Boolean get() = enabled && handleSwipeUpToMiniEnabled
     val zoomMaxWindowCountEffective: Int
         get() = if (zoomInteractionActive) zoomMaxWindowCount else ModulePreferences.DEFAULT_ZOOM_MAX_WINDOW_COUNT
 
