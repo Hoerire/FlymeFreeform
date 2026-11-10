@@ -162,6 +162,19 @@ internal class ColorOsFreeformCoordinator(
     private var movePosted = false
     private var lastOverlayFailureLogAt = -OVERLAY_FAILURE_LOG_INTERVAL_MS
 
+    /** 由 SystemUI 的菜单项触发：没有手势坐标，用右下角作为扇形锚点。 */
+    fun showRadialFromMenu() {
+        handler.post {
+            val metrics = context.resources.displayMetrics
+            debug("SYSTEM_RADIAL_FROM_MENU")
+            showOverlay(
+                io.github.hoerire.flymefreeform.gesture.CornerSide.Right,
+                metrics.widthPixels - 1f,
+                metrics.heightPixels - 1f,
+            )
+        }
+    }
+
     fun start() {
         // 识屏宿主被限制后台运行会让三条入口同时失效；开机纠正一次，之后省电策略再改也不会失效。
         ScreenIdentifyAppOps.ensure(context)
