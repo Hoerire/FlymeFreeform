@@ -545,6 +545,9 @@ internal class ColorOsFreeformCoordinator(
                     trace("SYSTEM_GESTURE_COMMIT")
                     view?.finishGesture()
                 }
+                // 收场不交给 UI 回调：首次呼出时 Compose 还没热，completeRadialExit 的回调会丢，
+                // 浮层就挂在屏幕上不消失（实测最长 8.8s，用户看到的就是"卡住"）。
+                armCloseGuard(view)
             }
             // 手势被判取消时不要立刻收起：交给抬手（Commit）或系统 ACTION_CANCEL 决定，
             // 否则滑动过程中一旦被判取消，扇形就会自己消失。
@@ -860,6 +863,23 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
+    /**
+     * 纯 handler 计时兜底：不依赖 Compose 动画回调，超时就把浮层强制撤掉。
+     * 只撤"当时那一份"，新浮层已经换上去时不动它。
+     */
+    private fun armCloseGuard(view: CornerRadialOverlayView?) {
+        if (view == null) return
+        handler.postDelayed(
+            {
+                if (overlay === view) {
+                    trace("SYSTEM_OVERLAY_CLOSE_GUARD")
+                    removeOverlay(immediate = true)
+                }
+            },
+            OVERLAY_CLOSE_GUARD_MS,
+        )
+    }
+
     private fun cancelActiveGesture() {
         activeGestureConfig = null
         gestureEngine.cancel()
@@ -1103,6 +1123,7 @@ internal class ColorOsFreeformCoordinator(
     private companion object {
         const val CATALOG_THREAD_NAME = "FlymeFreeform-Catalog"
         const val MONITOR_NAME = "flymefreeform-corner"
+        const val OVERLAY_CLOSE_GUARD_MS = 600L
         // 窗口层级实测：APPLICATION_OVERLAY=111000，INPUT_METHOD=131000。
         // 用 APPLICATION_OVERLAY 时键盘一弹出就盖住扇形，故选输入法对话框层（141000），
         // 只压在键盘之上，仍低于状态栏等更高层系统窗口。被系统拒绝时回落到 APPLICATION_OVERLAY。
