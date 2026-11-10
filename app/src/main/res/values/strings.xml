@@ -74,6 +74,13 @@
     <string name="zoom_limit_removed_title">小窗交互</string>
     <string name="zoom_interaction_title">轻量打开</string>
     <string name="zoom_interaction_summary">总开关：关闭时下面各项都不介入系统，也不会与其他模块冲突</string>
+    <string name="zoom_master_on_summary">已开启 · 下面三组按各自的开关生效</string>
+    <string name="zoom_master_off_summary">已关闭 · 所有小窗增强都不介入系统</string>
+    <string name="zoom_group_launch_title">应用启动</string>
+    <string name="zoom_group_window_title">窗口行为</string>
+    <string name="zoom_group_gesture_title">手势与关闭</string>
+    <string name="zoom_group_locked_hint">「轻量打开」关闭时整组不生效</string>
+    <string name="zoom_group_gesture_hint">这两项不随「轻量打开」总开关变化</string>
     <string name="zoom_options_summary">小窗数量、启动场景与窗口操作</string>
     <string name="zoom_max_windows_title">小窗数量</string>
     <string name="zoom_max_windows_summary">同时存在的自由浮窗个数</string>

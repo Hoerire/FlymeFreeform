@@ -53,7 +53,6 @@ class MainActivity : ComponentActivity() {
                     onZoomInteractionEnabledChange = repository::setZoomInteractionEnabled,
                     onZoomMaxWindowCountChange = repository::setZoomMaxWindowCount,
                     onZoomAllowAnyAppChange = repository::setZoomAllowAnyApp,
-                    onZoomLaunchChange = repository::setZoomLaunch,
                     onZoomLaunchNoticeChange = repository::setZoomLaunchNotice,
                     onZoomLaunchHeadsUpChange = repository::setZoomLaunchHeadsUp,
                     onZoomLaunchControlCenterChange = repository::setZoomLaunchControlCenter,
