@@ -200,21 +200,6 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
                         if (data == null || itemType(item) == 0) {
                             // 工具（截屏/录屏这类取屏入口）与现造快捷方式都先收起面板、等窗口提交
                             // 不可见帧后再执行，否则取屏工具会把手里的面板一起截进画面。
-                            // 静态工具（截屏、扫一扫这类）需要先收面板再 handle，否则会把面板
-                            // 一起截进画面；动态条目（最近文件等）既不在 mTools 里，也没有
-                            // 包名/动作可代发，它依赖面板仍然可见时的系统点击实现，因此
-                            // 必须原样交回适配器，不能塞进"先收后执行"的通道。
-                            // 「最近文件和文档」是侧边栏的内嵌页面，不是独立应用；
-                            // 我们在同一个卡片里盖一层自己的列表，行为上等于打开该页面。
-                            if (alias == "recent_files") {
-                                panelLog("PANEL_RECENT_FILES_PAGE")
-                                return@newProxyInstance showRecentFiles()
-                            }
-                            val ours = hasStaticTool(alias) || canLaunchByOurselves(item)
-                            if (!ours && index != null) {
-                                panelLog("PANEL_ENTRY_NATIVE_" + (alias ?: "?"))
-                                return@newProxyInstance invokeClick.call(original, index, clickType)
-                            }
                             onClick(true) { launchEntry(alias, item) }
                             return@newProxyInstance nativeUnit
                         }
@@ -328,18 +313,10 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
             panelLog("PANEL_TOOL_MISSING_" + alias)
             false
         } else {
-            panelLog("PANEL_TOOL_CLASS_" + alias + "_" + tool.javaClass.simpleName)
             PanelToolLaunchBridge.arm(toolTargetPackage(tool))
-            try {
-                tool.javaClass.getMethod("handle").invoke(tool)
-                panelLog("PANEL_TOOL_HANDLED_" + alias)
-                true
-            } catch (t: Throwable) {
-                val cause = (t as? java.lang.reflect.InvocationTargetException)?.targetException ?: t
-                panelLog("PANEL_TOOL_THROW_" + alias + "_" + cause.javaClass.simpleName + "_" + (cause.message ?: "-"))
-                PanelToolLaunchBridge.cancel()
-                false
-            }
+            tool.javaClass.getMethod("handle").invoke(tool)
+            panelLog("PANEL_TOOL_HANDLED_" + alias)
+            true
         }
     } catch (t: Throwable) {
         PanelToolLaunchBridge.cancel()
@@ -366,52 +343,6 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
      * 1. 工具（type=0，如微信扫一扫/支付宝付款码）调它自己的 `handle()`，系统就是这么做；
      * 2. 应用快捷方式按 pkg/activity 或 intentString 启动。
      */
-
-    /** 该 alias 是否是 ToolEntryHelper.mTools 里的静态工具（只查表，不执行）。 */
-    private fun hasStaticTool(alias: String?): Boolean {
-        if (alias.isNullOrEmpty()) return false
-        return try {
-            val helper = Class.forName(
-                "com.oplus.smartsidebar.panelview.edgepanel.data.entrybeans.ToolEntryHelper",
-                false,
-                view.javaClass.classLoader,
-            )
-            val instance = helper.getMethod("getActiveInstance").invoke(null)
-            val field = helper.getDeclaredField("mTools").apply { isAccessible = true }
-            (field.get(instance) as? Map<*, *>)?.containsKey(alias) == true
-        } catch (_: Throwable) {
-            false
-        }
-    }
-
-    /** 条目自身是否带有包名/动作，能由我们直接代发（现造快捷方式走这条路）。 */
-    private fun canLaunchByOurselves(item: Any?): Boolean {
-        val bean = try {
-            item?.javaClass?.getMethod("getEntryBean")?.invoke(item)
-        } catch (_: Throwable) {
-            null
-        } ?: return false
-        val cls = bean.javaClass
-        val pkg = runCatching { cls.getMethod("getPkg").invoke(bean) as? String }.getOrNull()
-        val activity = runCatching { cls.getMethod("getActivity").invoke(bean) as? String }.getOrNull()
-        if (!pkg.isNullOrEmpty() && !activity.isNullOrEmpty()) return true
-        val uri = runCatching { cls.getMethod("getIntentString").invoke(bean) as? String }.getOrNull()
-        return !uri.isNullOrEmpty()
-    }
-
-
-    /**
-     * 「最近文件和文档」：收起面板后由独立窗口承载。
-     *
-     * 不能在面板卡片上叠层——那样看到的是"面板上盖了一层遮罩"，不是这个页面的形态。
-     */
-    private fun showRecentFiles(): Boolean {
-        panelLog("PANEL_RECENT_FILES_WINDOW")
-        runCatching { RecentFilesWindow.show(context) }
-        closeAction?.invoke()
-        return true
-    }
-
     private fun launchEntry(alias: String?, item: Any?): Boolean {
         if (!alias.isNullOrEmpty() && launchTool(alias)) return true
         panelLog("PANEL_TOOL_FALLBACK_" + (alias ?: "?"))
