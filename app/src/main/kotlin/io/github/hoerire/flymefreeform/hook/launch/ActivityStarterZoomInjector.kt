@@ -456,7 +456,7 @@ internal class ActivityStarterZoomInjector(
         // 全局搜索（桌面下拉）必须最先短路：桌面是以 startActivityForResult 拉起搜索页的，
         // 特征与「桌面卡片」完全一致，一旦让桌面判定先跑就会被改成浮窗。
         if (intent.action == ACTION_GLOBAL_SEARCH) {
-            ModuleLog.debug(TAG) { "ZOOM_SKIP_GLOBAL_SEARCH" }
+            ModuleLog.info("ZOOM_SKIP_GLOBAL_SEARCH")
             return null
         }
         // 桌面快捷项与卡片是**独立开关**：即使「小窗跳转」关闭，也按各自开关决定，
@@ -469,19 +469,19 @@ internal class ActivityStarterZoomInjector(
             launcherOriginReason(intent, desktopTarget, callingPackage, realCallingUid, requestRealUid, hasResultTo)
                 ?.let { reason ->
                     if (reason != SUPPRESSED_LAUNCHER_ORIGIN) return reason
-                    ModuleLog.debug(TAG) { "ZOOM_SKIP_DESKTOP_ORIGIN_DISABLED_" + desktopTarget }
+                    ModuleLog.info("ZOOM_SCENE_CARD_OR_SHORTCUT_OFF_" + desktopTarget)
                     return null
                 }
         }
         // 「小窗跳转」是其余启动入口的改写开关：关闭时全部回到系统默认的全屏行为。
         if (!configuration.snapshot.zoomInteractionActive) {
-            ModuleLog.debug(TAG) { "ZOOM_SKIP_SWITCH_OFF" }
+            ModuleLog.info("ZOOM_SCENES_ALL_OFF")
             return null
         }
         // 闸门 2（排除列表）：该应用在前台时停用模块全部增强，判定点与全局开关并列，
         // 因此通知点击、磁贴、中转页抢占、应用互跳全部一并失效。
         if (environment?.isForegroundExcluded() == true) {
-            ModuleLog.debug(TAG) { "ZOOM_SKIP_BLACKLIST_FOREGROUND" }
+            ModuleLog.info("ZOOM_SKIP_BLACKLIST_FOREGROUND")
             return null
         }
         // 闸门 3（禁用浮窗）：该列表内的应用在前台时，任何启动都不改写。
@@ -500,7 +500,7 @@ internal class ActivityStarterZoomInjector(
         // 必须放在桌面「卡片」判定之前：桌面是用 startActivityForResult 拉起搜索页的
         // （cp=桌面、rt=1、action 非 MAIN），正好命中卡片分支，会被开成小窗。
         if (intent.action == ACTION_GLOBAL_SEARCH) {
-            ModuleLog.debug(TAG) { "ZOOM_SKIP_GLOBAL_SEARCH" }
+            ModuleLog.info("ZOOM_SKIP_GLOBAL_SEARCH")
             return null
         }
         // 通知点击经 PendingIntent 下发，发起方为 SystemUI。
@@ -679,7 +679,7 @@ internal class ActivityStarterZoomInjector(
             target !in LAUNCHER_CARD_SKIP
         ) {
             if (!configuration.snapshot.zoomLauncherCardEffective) {
-                ModuleLog.debug(TAG) { "ZOOM_SKIP_LAUNCHER_CARD_DISABLED_" + target }
+                ModuleLog.info("ZOOM_SCENE_CARD_OFF_" + target)
                 return SUPPRESSED_LAUNCHER_ORIGIN
             }
             return "launcher_card"
@@ -705,7 +705,7 @@ internal class ActivityStarterZoomInjector(
                 (realCallingUid == launcherUid || requestRealUid == launcherUid)
         if (fromShortcut && !hasResultTo && target !in SKIP_TARGETS) {
             if (!configuration.snapshot.zoomLauncherShortcutEffective) {
-                ModuleLog.debug(TAG) { "ZOOM_SKIP_LAUNCHER_SHORTCUT_DISABLED_" + target }
+                ModuleLog.info("ZOOM_SCENE_SHORTCUT_OFF_" + target)
                 return SUPPRESSED_LAUNCHER_ORIGIN
             }
             return "launcher_shortcut"

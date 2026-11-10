@@ -55,7 +55,10 @@ internal class NotifBundleHook(
 
     private fun rewriteBundle(starter: Any?, args: List<Any?>) {
         val settings = configuration.snapshot
-        if (!settings.zoomLaunchHeadsUpEffective) return
+        if (!settings.zoomLaunchHeadsUpEffective) {
+            ModuleLog.info("ZOOM_SCENE_HEADS_UP_OFF")
+            return
+        }
         val bundle = args.getOrNull(0) as? Bundle ?: return
         val entry = args.getOrNull(1)
         val pkg = packageOf(entry)

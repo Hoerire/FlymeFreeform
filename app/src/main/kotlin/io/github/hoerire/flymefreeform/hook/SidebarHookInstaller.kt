@@ -272,7 +272,10 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
      */
     private fun applyToolLaunchZoom(intent: Intent?, options: Bundle?) {
         if (intent == null || options == null) return
-        if (!configuration.snapshot.zoomLaunchSidebarEffective) return
+        if (!configuration.snapshot.zoomLaunchSidebarEffective) {
+            module.log(Log.INFO, TAG, "ZOOM_SCENE_SIDEBAR_OFF")
+            return
+        }
         val target = intent.component?.packageName ?: intent.getPackage() ?: return
         if (!PanelToolLaunchBridge.apply(target, options)) return
         io.github.hoerire.flymefreeform.log.ModuleLog.debug("FFLAUNCH") { "PANEL_TOOL_ZOOM_" + target }

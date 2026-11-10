@@ -7,6 +7,7 @@ import android.util.Log
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.hoerire.flymefreeform.gesture.HandleSwipeUpModeRemapper
+import io.github.hoerire.flymefreeform.log.ModuleLog
 import java.lang.reflect.Field
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
@@ -50,10 +51,12 @@ internal class HandleSwipeUpHookInstaller(
                     val originalResult = chain.proceed()
                     val originalMode = (originalResult as? Number)?.toInt() ?: return@intercept originalResult
                     val settings = configuration.snapshot
-                    if (!settings.handleSwipeUpToMiniEffective ||
-                        !environment.isModuleActive() ||
-                        environment.isForegroundExcluded()
-                    ) {
+                    if (!settings.handleSwipeUpToMiniEffective) {
+                        ModuleLog.info("ZOOM_SCENE_SWIPE_UP_OFF")
+                        return@intercept originalResult
+                    }
+                    if (!environment.isModuleActive() || environment.isForegroundExcluded()) {
+                        ModuleLog.info("ZOOM_SCENE_SWIPE_UP_BLOCKED")
                         return@intercept originalResult
                     }
                     val actionFlag = (chain.getArg(1) as? Number)?.toInt() ?: return@intercept originalResult

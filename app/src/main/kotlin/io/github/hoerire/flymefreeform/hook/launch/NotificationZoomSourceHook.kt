@@ -5,6 +5,7 @@ import android.util.Log
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.hoerire.flymefreeform.hook.ProcessConfiguration
+import io.github.hoerire.flymefreeform.log.ModuleLog
 
 /**
  * 通知点击入口。
@@ -210,7 +211,9 @@ internal class NotificationZoomSourceHook(
 
     private fun enabled(): Boolean {
         val settings = configuration.snapshot
-        return settings.zoomLaunchNoticeEffective
+        val on = settings.zoomLaunchNoticeEffective
+        if (!on) ModuleLog.info("ZOOM_SCENE_NOTICE_OFF")
+        return on
     }
 
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())

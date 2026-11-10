@@ -75,6 +75,17 @@ class ModuleMain : XposedModule() {
                     "_zcount" + settings.zoomMaxWindowCount +
                     "_zapp" + settings.zoomAllowAnyApp +
                     "_zlaunch" + settings.zoomLaunch +
+                    // 小窗跳转五个场景 + 桌面两入口 + 手势，逐个列出来：
+                    // 哪个功能不生效时，先看这一行就知道是开关没开还是 hook 没装上。
+                    "_scnN" + settings.zoomLaunchNotice +
+                    "_scnH" + settings.zoomLaunchHeadsUp +
+                    "_scnC" + settings.zoomLaunchControlCenter +
+                    "_scnI" + settings.zoomLaunchInterApp +
+                    "_scnS" + settings.zoomLaunchSidebar +
+                    "_scnSh" + settings.zoomLauncherShortcut +
+                    "_scnCd" + settings.zoomLauncherCard +
+                    "_scnAc" + settings.autoCloseWindow +
+                    "_scnSu" + settings.handleSwipeUpToMiniEnabled +
                     "_keep" + settings.radialKeepOpen +
                     "_tap" + settings.outsideTapCloseMode.storedValue +
                     "_vlog" + settings.verboseLogEnabled +
