@@ -22,6 +22,7 @@ import io.github.hoerire.flymefreeform.config.PinnedTargetCodec
 import io.github.hoerire.flymefreeform.gesture.AdaptiveCornerGestureConfig
 import io.github.hoerire.flymefreeform.gesture.CornerGestureConfig
 import io.github.hoerire.flymefreeform.gesture.CornerGestureEngine
+import io.github.hoerire.flymefreeform.gesture.CornerTriggerRegion
 import io.github.hoerire.flymefreeform.gesture.GestureAction
 import io.github.hoerire.flymefreeform.gesture.GesturePhase
 import io.github.hoerire.flymefreeform.gesture.PointerStreamGate
@@ -151,6 +152,8 @@ internal class ColorOsFreeformCoordinator(
     // 才认定为流已断，按取消收场。见 [scheduleCancelWatch]。
     private var cancelWatchToken = 0L
     private var cancelWatchScheduled = false
+    /** 当前这条指针流是不是从角落起手的；monitor 线程读写。 */
+    @Volatile private var cornerStream = false
     private var overlay: CornerRadialOverlayView? = null
     private var morePanelActive = false
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
@@ -298,6 +301,28 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
+    /**
+     * 这次按下是否落在角落热区。
+     *
+     * 只用来决定"这条流要不要继续处理"，与引擎判定同一套参数，保证两边判断一致。
+     * 必须在 monitor 线程调用，避免每帧都跨线程。
+     */
+    private fun isInCornerZone(event: MotionEvent): Boolean {
+        val settings = lastSettings
+        if (!settings.enabled) return false
+        if (!environmentState.isGestureAllowed()) return false
+        val metrics = context.resources.displayMetrics
+        return CornerTriggerRegion.detectSide(
+            x = event.x,
+            y = event.y,
+            displayWidth = metrics.widthPixels.toFloat(),
+            displayHeight = metrics.heightPixels.toFloat(),
+            radius = CornerTriggerRegion.radiusPx(settings.cornerTriggerRangeDp, metrics.density),
+            leftEnabled = settings.leftCornerEnabled,
+            rightEnabled = settings.rightCornerEnabled,
+        ) != null
+    }
+
     private fun registerPointerListener() {
         if (pointerRegistered) return
         val generation = pointerGeneration
@@ -306,8 +331,18 @@ internal class ColorOsFreeformCoordinator(
             SystemServerGestureMonitor(
                 context = context,
                 onEvent = { event ->
-                    enqueuePointerEvent(event, generation)
-                    shouldStartPilfer(event)
+                    // 只处理从角落起手的流：桌面左右滑、应用内普通滑动都不在角区，
+                    // 这里直接放行，连 MotionEvent 复制和主线程投递都省掉。
+                    // 之前每一帧都 obtain+post，桌面滑动时整页抖动就是这个开销造成的。
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                        cornerStream = isInCornerZone(event)
+                    }
+                    if (!cornerStream) {
+                        false
+                    } else {
+                        enqueuePointerEvent(event, generation)
+                        shouldStartPilfer(event)
+                    }
                 },
                 logger = logger,
             )
