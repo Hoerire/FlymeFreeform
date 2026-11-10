@@ -176,10 +176,55 @@ internal class ColorOsFreeformCoordinator(
             configuration.observe {
                 handler.post { applySettings(configuration.snapshot) }
             }
+            prewarmOverlay()
         }
         logger(Log.INFO, "SYSTEM_GESTURE_COORDINATOR_READY", null)
     }
 
+
+    /**
+     * 预热浮层：把 Compose 的一次性成本（类加载、Skia、字体、首次组合与布局）挪到开机后的空闲时段。
+     *
+     * 首次呼出时现创建的话，首帧要 400ms 上下才出来（日志实测 SHOWN → 第一条 HIT_ENTER 空了 457ms），
+     * 用户看到的就是一张冻住的图：不能选、不能滑，只能等抬手后点空白关掉。
+     * 这里拿一个 1×1、几乎全透明、不可触摸的窗口把整条链路走一遍，400ms 后移除。
+     * 只是优化，任何一步失败都吞掉，不影响真手势。
+     */
+    private fun prewarmOverlay() {
+        var view: CornerRadialOverlayView? = null
+        try {
+            view = CornerRadialOverlayView(context, this, ::debug)
+            val params = createOverlayParams(focusable = false)
+            params.width = 1
+            params.height = 1
+            params.alpha = 0.01f
+            windowManager.addView(view, params)
+            view.begin(
+                side = io.github.hoerire.flymefreeform.gesture.CornerSide.Right,
+                catalog = catalogSnapshot,
+                x = 0f,
+                y = 0f,
+                hitRangeDp = lastSettings.radialHitRangeDp,
+                iconSizeDp = lastSettings.radialIconSizeDp,
+                keepOpen = false,
+            )
+            trace("SYSTEM_OVERLAY_PREWARM_STARTED")
+        } catch (_: Throwable) {
+            // 预热失败不影响真手势。
+        }
+        val warm = view ?: return
+        handler.postDelayed(
+            {
+                try {
+                    warm.disposeOverlay()
+                    windowManager.removeViewImmediate(warm)
+                } catch (_: Throwable) {
+                }
+                trace("SYSTEM_OVERLAY_PREWARM_DONE")
+            },
+            OVERLAY_PREWARM_LIFETIME_MS,
+        )
+    }
 
     private fun registerPackageObserver() {
         try {
@@ -1104,6 +1149,7 @@ internal class ColorOsFreeformCoordinator(
     private companion object {
         const val CATALOG_THREAD_NAME = "FlymeFreeform-Catalog"
         const val MONITOR_NAME = "flymefreeform-corner"
+        const val OVERLAY_PREWARM_LIFETIME_MS = 400L
         // 窗口层级实测：APPLICATION_OVERLAY=111000，INPUT_METHOD=131000。
         // 用 APPLICATION_OVERLAY 时键盘一弹出就盖住扇形，故选输入法对话框层（141000），
         // 只压在键盘之上，仍低于状态栏等更高层系统窗口。被系统拒绝时回落到 APPLICATION_OVERLAY。
