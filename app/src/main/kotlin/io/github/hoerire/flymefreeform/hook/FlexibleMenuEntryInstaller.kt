@@ -27,9 +27,14 @@ internal class FlexibleMenuEntryInstaller(
         hookItemClick(managerClass)
     }
 
-    /** 任意一个 append* 执行完就补一项；用标题去重，避免重复弹出时叠加。 */
+    /**
+     * 菜单构建入口：16 是 initPopupList()，17 是 initPopupList(Z)；两者都存在。
+     * 构建完成后补一项（用标题去重，重复弹出不叠加）。
+     */
     private fun hookAppend(managerClass: Class<*>) {
         val append = managerClass.declaredMethods.firstOrNull { method ->
+            method.name == "initPopupList"
+        } ?: managerClass.declaredMethods.firstOrNull { method ->
             method.name.startsWith("append") && method.parameterTypes.size == 3
         } ?: run {
             module.log(Log.WARN, TAG, "FLEXIBLE_MENU_APPEND_UNAVAILABLE", null)
