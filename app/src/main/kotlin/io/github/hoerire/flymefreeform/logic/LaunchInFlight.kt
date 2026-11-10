@@ -19,4 +19,18 @@ internal object LaunchInFlight {
         val at = lastAt
         return at > 0 && android.os.SystemClock.uptimeMillis() - at <= WINDOW_MS
     }
+
+    /**
+     * 取用一次启动标记：命中后立即失效。
+     *
+     * 一次启动只允许收掉一个窗口。否则"打开应用后立刻划成迷你窗"这种连续退出会反复
+     * 命中同一个标记，把迷你窗也当成被顶掉的窗口收掉（实测 16:32:02–04 连续三次）。
+     */
+    fun consume(): Boolean {
+        val at = lastAt
+        if (at <= 0) return false
+        if (android.os.SystemClock.uptimeMillis() - at > WINDOW_MS) return false
+        lastAt = 0
+        return true
+    }
 }
