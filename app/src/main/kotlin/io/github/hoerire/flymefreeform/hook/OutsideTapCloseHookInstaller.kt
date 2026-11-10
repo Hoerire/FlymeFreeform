@@ -5,8 +5,6 @@ import android.content.Context
 import android.graphics.Rect
 import android.graphics.Region
 import android.graphics.RegionIterator
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.InputDevice
@@ -212,53 +210,9 @@ internal class OutsideTapCloseHookInstaller(
      * 用户手动拖到边缘走的是拖拽入口，不经过这两处，因此不会被误伤。
      * 命中时把 ToFloat（exitTo:5，变浮标）换成 ToBack（exitTo:6，真关闭）。
      */
-
-    // 延迟收窗：保留系统退场动画，等新应用铺开后再关旧窗。
-    private val mainHandler = Handler(Looper.getMainLooper())
-    @Volatile private var pendingTask: Any? = null
-    @Volatile private var pendingController: Any? = null
-    private var pendingBackCtor: java.lang.reflect.Constructor<*>? = null
-    private var pendingInnerLocked: Method? = null
-    private val deferredClose = Runnable { performDeferredClose("TIMEOUT") }
-
-    /** 关闭挂起的旧窗；[reason] 只用于日志（TRANSITION / TIMEOUT）。 */
-    private fun performDeferredClose(reason: String) {
-        val task = pendingTask
-        val controller = pendingController
-        val ctor = pendingBackCtor
-        val inner = pendingInnerLocked
-        pendingTask = null
-        pendingController = null
-        pendingBackCtor = null
-        pendingInnerLocked = null
-        mainHandler.removeCallbacks(deferredClose)
-        if (task == null || controller == null || ctor == null || inner == null) return
-        val back = runCatching { ctor.newInstance(task, true) }.getOrNull() ?: return
-        runCatching { inner.invoke(controller, back) }
-        module.log(Log.DEBUG, TAG, "ZOOM_CLOSE_DEFERRED_EXECUTED_" + reason, null)
-    }
-
-    /** 新应用铺开（transition 结束）后立刻收旧窗。 */
-    private fun installDeferredTrigger(loader: ClassLoader) {
-        runCatching {
-            val controllerClass = loader.loadClass("com.android.server.wm.TransitionController")
-            val finish = controllerClass.declaredMethods.firstOrNull {
-                it.name == "finishTransition" && it.parameterTypes.size == 1
-            } ?: return
-            module
-                .hook(finish)
-                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.system.close_after_transition")
-                .intercept { chain ->
-                    val result = chain.proceed()
-                    if (pendingTask != null) {
-                        mainHandler.post { performDeferredClose("TRANSITION") }
-                    }
-                    result
-                }
-            module.log(Log.INFO, TAG, "ZOOM_CLOSE_AFTER_TRANSITION_INSTALLED", null)
-        }.onFailure { module.log(Log.WARN, TAG, "ZOOM_CLOSE_AFTER_TRANSITION_FAILED", it) }
-    }
+    /** 延迟收窗：等新窗口出现后再执行原退场逻辑。 */
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingClose: Runnable? = null
 
     private fun installReplaceToClose(loader: ClassLoader) {
         val controllerClass = loader.loadClass(FLEXIBLE_TASK_CONTROLLER_CLASS)
@@ -284,7 +238,6 @@ internal class OutsideTapCloseHookInstaller(
                     module.log(Log.WARN, TAG, "ZOOM_REPLACE_TO_CLOSE_NO_CTOR", null)
                     return
                 }
-        installDeferredTrigger(loader)
         module
             .hook(innerLocked)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -301,17 +254,22 @@ internal class OutsideTapCloseHookInstaller(
                 }
                 if (isFloatExit && configuration.snapshot.autoCloseWindow) {
                     val frames = Throwable().stackTrace
-                    // 只认"新的小窗正在加入"这一个条件：新增小窗必经 addFlexibleTask(Task)；
-                    // 超出数量上限另走 updateTaskMaxNum*。迷你窗的变形、桌面点开全屏应用、
-                    // 分享中转页退场都不会经过这两条，因此一律保持系统原策略。
-                    val newWindowJoining = frames.any { it.methodName.contains("addFlexibleTask") }
-                    val overLimit = frames.any { frame ->
+                    // 系统的「谁该退出」判定有两条入口：超出数量上限（updateTaskMaxNum* /
+                    // handleFlexibleExChange）与统一裁决（determineFlexibleTaskToExit /
+                    // setLastFlexibleTaskToExit*）。冷启动新窗口走的是后者——
+                    // 实测 23:30:00 那次只出现 determineFlexibleTaskToExit:2376，
+                    // 早先只认前者，于是判据不成立、原样放行，旧窗被收成浮标。
+                    val fromLimit = frames.any { frame ->
                         val name = frame.methodName
-                        name.contains("updateTaskMaxNum") || name.contains("handleFlexibleExChange")
+                        name.contains("updateTaskMaxNum") ||
+                            name.contains("handleFlexibleExChange") ||
+                            name.contains("determineFlexibleTaskToExit") ||
+                            name.contains("setLastFlexibleTaskToExit")
                     }
-                    val fromLimit = newWindowJoining || overLimit
-                    // 判据收窄到"新小窗加入 / 超出上限"两件事；其余形态（迷你窗变形、全屏应用启动、
-                    // 分享中转页退场）原样交给系统，不替换成关闭。
+                    // 不再判断"这次退出是不是启动引起的"：入口太多（扇形、更多面板、桌面、
+                    // 通知、应用内跳转），而用户的规则只有一条——不允许窗口被收成贴边浮标。
+                    // 判据只看这次退出是不是系统自己的"该谁退出"裁决（determine*/updateTaskMaxNum*），
+                    // 用户拖到边缘走的拖拽入口不经过这里。
                     val decision = ClosePolicy.decide(
                         autoCloseEnabled = true,
                         isFloatExitStrategy = isFloatExit,
@@ -329,16 +287,19 @@ internal class OutsideTapCloseHookInstaller(
                         val task = runCatching {
                             fieldInHierarchy(current.javaClass, "mTask")?.get(current)
                         }.getOrNull()
-                        if (task != null) {
-                            // 先让系统按原策略播完退场动画，等新应用铺开（transition 结束）后再关旧窗；
-                            // 兜底 900 ms，避免个别机型没有 transition 回调时窗口留在原地。
-                            pendingTask = task
-                            pendingController = chain.thisObject
-                            pendingBackCtor = backConstructor
-                            pendingInnerLocked = innerLocked
-                            module.log(Log.DEBUG, TAG, "ZOOM_CLOSE_DEFERRED", null)
-                            mainHandler.removeCallbacks(deferredClose)
-                            mainHandler.postDelayed(deferredClose, DEFERRED_CLOSE_TIMEOUT_MS)
+                        val back = task?.let { runCatching { backConstructor.newInstance(it, true) }.getOrNull() }
+                        if (task != null && back != null) {
+                            // 退场逻辑不变（同样是 ToBack + 隐藏 surface），只是推迟 500 ms：
+                            // 让新窗口先出现并铺开，旧窗再退，观感上才不是"凭空消失"。
+                            val controller = chain.thisObject
+                            module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_DELAYED", null)
+                            pendingClose?.let(mainHandler::removeCallbacks)
+                            pendingClose = Runnable {
+                                module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE", null)
+                                runCatching { innerLocked.invoke(controller, back) }
+                                hideClosingSurface(task)
+                            }
+                            mainHandler.postDelayed(pendingClose, CLOSE_DELAY_MS)
                             return@intercept chain.proceed()
                         }
                     }
@@ -362,9 +323,37 @@ internal class OutsideTapCloseHookInstaller(
      * 只在「超限替换」分支调用；点窗外、标题栏按钮、拖边缘等独立关闭不经过这里，
      * 退场动画与原厂一致。
      */
-
-
-
+    private fun hideClosingSurface(task: Any) {
+        try {
+            val surface = task.javaClass.getMethod("getSurfaceControl").invoke(task)
+                as? android.view.SurfaceControl
+            val transaction = task.javaClass.getMethod("getSyncTransaction").invoke(task)
+                as? android.view.SurfaceControl.Transaction
+            if (surface == null || transaction == null || !surface.isValid) {
+                module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_HIDE_SKIPPED", null)
+                return
+            }
+            // SurfaceControl.Transaction#hide 是 @hide 成员，编译期不可见，只能反射调用。
+            val hide = transaction.javaClass.getMethod("hide", android.view.SurfaceControl::class.java)
+            hide.invoke(transaction, surface)
+            transaction.apply()
+            module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_SURFACE_HIDDEN", null)
+        } catch (exception: ReflectiveOperationException) {
+            module.log(
+                Log.WARN,
+                TAG,
+                "ZOOM_REPLACE_TO_CLOSE_HIDE_FAILED_" + exception.javaClass.simpleName + "_" + exception.message,
+                exception,
+            )
+        } catch (exception: RuntimeException) {
+            module.log(
+                Log.WARN,
+                TAG,
+                "ZOOM_REPLACE_TO_CLOSE_HIDE_FAILED_" + exception.javaClass.simpleName + "_" + exception.message,
+                exception,
+            )
+        }
+    }
 
     /** 沿继承链找字段（厂商把字段放在父类上）。 */
     private fun fieldInHierarchy(start: Class<*>, name: String): java.lang.reflect.Field? {
@@ -940,8 +929,8 @@ internal class OutsideTapCloseHookInstaller(
         const val FLEXIBLE_TASK_CONTROLLER_CLASS = "com.android.server.wm.FlexibleTaskController"
         const val ABS_EXIT_STRATEGY_CLASS = "com.android.server.wm.AbsFlexibleTaskExitStrategy"
         const val EXIT_TO_FLOAT_STRATEGY_CLASS = "com.android.server.wm.ExitFlexibleTaskToFloatStrategy"
-        /** 没有 transition 回调时的兜底时长：动画约 300 ms，留一倍余量。 */
-        const val DEFERRED_CLOSE_TIMEOUT_MS = 900L
+        /** 新窗口出现后到执行退场的间隔。 */
+        const val CLOSE_DELAY_MS = 500L
         const val EXIT_TO_BACK_STRATEGY_CLASS = "com.android.server.wm.ExitFlexibleTaskToBackStrategy"
         const val TASK_CLASS = "com.android.server.wm.Task"
         const val TASK_EXT_CLASS = "com.android.server.wm.TaskExtImpl"
