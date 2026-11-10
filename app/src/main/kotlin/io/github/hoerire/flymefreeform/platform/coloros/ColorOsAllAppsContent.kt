@@ -322,10 +322,18 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
             panelLog("PANEL_TOOL_MISSING_" + alias)
             false
         } else {
+            panelLog("PANEL_TOOL_CLASS_" + alias + "_" + tool.javaClass.simpleName)
             PanelToolLaunchBridge.arm(toolTargetPackage(tool))
-            tool.javaClass.getMethod("handle").invoke(tool)
-            panelLog("PANEL_TOOL_HANDLED_" + alias)
-            true
+            try {
+                tool.javaClass.getMethod("handle").invoke(tool)
+                panelLog("PANEL_TOOL_HANDLED_" + alias)
+                true
+            } catch (t: Throwable) {
+                val cause = (t as? java.lang.reflect.InvocationTargetException)?.targetException ?: t
+                panelLog("PANEL_TOOL_THROW_" + alias + "_" + cause.javaClass.simpleName + "_" + (cause.message ?: "-"))
+                PanelToolLaunchBridge.cancel()
+                false
+            }
         }
     } catch (t: Throwable) {
         PanelToolLaunchBridge.cancel()
