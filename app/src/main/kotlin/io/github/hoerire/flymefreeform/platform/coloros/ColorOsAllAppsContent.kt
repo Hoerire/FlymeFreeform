@@ -400,30 +400,17 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
     }
 
 
-    /** 在卡片里盖一层「最近文件和文档」页面；返回 false 表示无法展示，交回原流程。 */
+    /**
+     * 「最近文件和文档」：收起面板后由独立窗口承载。
+     *
+     * 不能在面板卡片上叠层——那样看到的是"面板上盖了一层遮罩"，不是这个页面的形态。
+     */
     private fun showRecentFiles(): Boolean {
-        val host = card ?: return false
-        existingRecentPage?.let { host.removeView(it) }
-        val page = RecentFilesPage(context).build {
-            existingRecentPage?.let { host.removeView(it) }
-            existingRecentPage = null
-        }
-        existingRecentPage = page
-        page.elevation = host.resources.displayMetrics.density * 12f
-        host.addView(page, FrameLayout.LayoutParams(-1, -1))
-        page.bringToFront()
-        page.post {
-            panelLog(
-                "PANEL_RECENT_FILES_SHOWN children=" + host.childCount +
-                    " size=" + page.width + "x" + page.height +
-                    " visible=" + (page.visibility == View.VISIBLE) +
-                    " alpha=" + page.alpha,
-            )
-        }
+        panelLog("PANEL_RECENT_FILES_WINDOW")
+        runCatching { RecentFilesWindow.show(context) }
+        closeAction?.invoke()
         return true
     }
-
-    private var existingRecentPage: View? = null
 
     private fun launchEntry(alias: String?, item: Any?): Boolean {
         if (!alias.isNullOrEmpty() && launchTool(alias)) return true
