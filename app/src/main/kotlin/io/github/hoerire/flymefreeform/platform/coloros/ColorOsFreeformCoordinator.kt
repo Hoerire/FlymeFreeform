@@ -22,6 +22,7 @@ import io.github.hoerire.flymefreeform.config.PinnedTargetCodec
 import io.github.hoerire.flymefreeform.gesture.AdaptiveCornerGestureConfig
 import io.github.hoerire.flymefreeform.gesture.CornerGestureConfig
 import io.github.hoerire.flymefreeform.gesture.CornerGestureEngine
+import io.github.hoerire.flymefreeform.gesture.CornerTriggerRegion
 import io.github.hoerire.flymefreeform.gesture.GestureAction
 import io.github.hoerire.flymefreeform.gesture.GesturePhase
 import io.github.hoerire.flymefreeform.gesture.PointerStreamGate
@@ -135,6 +136,7 @@ internal class ColorOsFreeformCoordinator(
     @Volatile
     private var catalogSnapshot = AppCatalogSnapshot()
     private var pointerListener: Any? = null
+    private var gestureMonitor: SystemServerGestureMonitor? = null
     @Volatile
     private var pointerRegistered = false
     @Volatile
@@ -244,6 +246,27 @@ internal class ColorOsFreeformCoordinator(
     private fun registerPointerListener() {
         if (pointerRegistered) return
         val generation = pointerGeneration
+        // 首选进程内 gesture monitor：pilfer 之后事件仍留在 system_server，扇形判定不断流。
+        val monitor =
+            SystemServerGestureMonitor(
+                context = context,
+                onEvent = { event ->
+                    enqueuePointerEvent(event, generation)
+                    shouldPilferCorner(event)
+                },
+                logger = logger,
+            )
+        if (monitor.start(MONITOR_NAME + ":" + context.packageName)) {
+            gestureMonitor = monitor
+            pointerRegistered = true
+            debug("SYSTEM_POINTER_LISTENER_REGISTERED")
+            return
+        }
+        registerWindowPointerListener(generation)
+    }
+
+    /** monitor 建不起来时的退路：WMS 指针监听（只观察，不抢流）。 */
+    private fun registerWindowPointerListener(generation: Long) {
         try {
             // 系统指针监听仅有隐藏接口；注册失败由本方法回退，不影响系统输入。
             @SuppressLint("PrivateApi")
@@ -352,8 +375,10 @@ internal class ColorOsFreeformCoordinator(
         pointerGeneration++
         pointerStreamGate.reset()
         clearPendingMove()
-        val listener = pointerListener ?: return
         pointerRegistered = false
+        gestureMonitor?.stop()
+        gestureMonitor = null
+        val listener = pointerListener ?: return
         try {
             val windowManagerService = readWindowManagerService()
             val unregister = findMethod(windowManagerService.javaClass, "unregisterPointerEventListener", 2)
@@ -381,6 +406,30 @@ internal class ColorOsFreeformCoordinator(
             GesturePhase.Armed, GesturePhase.Revealing, GesturePhase.Selecting -> true
             else -> false
         }
+
+    /**
+     * 角区按下当帧决定是否 pilfer。
+     *
+     * 只有"单指、落在角区、功能开启、环境允许"才抢流；其余一律放行，让系统照常处理上滑。
+     * 这条判定和 [handlePointerEvent] 用的是同一套参数，避免两处不一致。
+     */
+    private fun shouldPilferCorner(event: MotionEvent): Boolean {
+        if (event.actionMasked != MotionEvent.ACTION_DOWN) return false
+        if (event.pointerCount != 1) return false
+        if (event.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER) return false
+        val settings = lastSettings
+        if (!settings.enabled) return false
+        if (!environmentState.isGestureAllowed()) return false
+        val metrics = context.resources.displayMetrics
+        return CornerTriggerRegion.detectSide(
+            x = event.rawX,
+            y = event.rawY,
+            displayWidth = metrics.widthPixels.toFloat(),
+            displayHeight = metrics.heightPixels.toFloat(),
+            radius = CornerTriggerRegion.radiusPx(settings.cornerTriggerRangeDp, metrics.density),
+            leftEnabled = settings.leftCornerEnabled,
+            rightEnabled = settings.rightCornerEnabled,
+        ) != null
 
     private fun handlePointerEvent(event: MotionEvent) {
         val settings = lastSettings
@@ -1020,6 +1069,7 @@ internal class ColorOsFreeformCoordinator(
 
     private companion object {
         const val CATALOG_THREAD_NAME = "FlymeFreeform-Catalog"
+        const val MONITOR_NAME = "flymefreeform-corner"
         // 窗口层级实测：APPLICATION_OVERLAY=111000，INPUT_METHOD=131000。
         // 用 APPLICATION_OVERLAY 时键盘一弹出就盖住扇形，故选输入法对话框层（141000），
         // 只压在键盘之上，仍低于状态栏等更高层系统窗口。被系统拒绝时回落到 APPLICATION_OVERLAY。
