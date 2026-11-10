@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.ElectricalServices
+import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.PowerSettingsNew
@@ -495,6 +496,18 @@ private fun AboutCard(
             },
             startAction = { PreferenceIcon(Icons.Rounded.Info) },
         )
+        ArrowPreference(
+            title = stringResource(R.string.about_feedback_title),
+            summary = stringResource(R.string.about_feedback_summary),
+            onClick = {
+                try {
+                    uriHandler.openUri(FEEDBACK_GROUP_URL)
+                } catch (_: IllegalArgumentException) {
+                } catch (_: ActivityNotFoundException) {
+                }
+            },
+            startAction = { PreferenceIcon(Icons.Rounded.Forum) },
+        )
         SwitchPreference(
             checked = state.settings.verboseLogEnabled,
             onCheckedChange = onVerboseLogChange,
@@ -592,6 +605,9 @@ private data class FrameworkPresentation(val label: String, val summary: String)
 
 private const val OWN_REPO_URL = "https://github.com/Hoerire/FlymeFreeform"
 private const val UPSTREAM_REPO_URL = "https://github.com/Mangi-11/FlymeFreeform"
+
+/** 交流反馈：QQ 群邀请链接，点击后交给系统/QQ 打开。 */
+private const val FEEDBACK_GROUP_URL = "https://qm.qq.com/q/OrRJTQDcsw"
 
 private const val RadialBaseShortEdgeDp = 400f
 private const val RadialBaseArcRadiusDp = 242f

@@ -107,6 +107,8 @@
 
     <string name="about_version_title">版本</string>
     <string name="about_version_format">%1$s (%2$s)</string>
+    <string name="about_feedback_title">交流反馈</string>
+    <string name="about_feedback_summary">点击加入 QQ 群</string>
     <string name="about_own_repo_title">项目地址</string>
     <string name="about_own_repo_summary">Hoerire/FlymeFreeform</string>
     <string name="about_upstream_title">上游地址</string>
