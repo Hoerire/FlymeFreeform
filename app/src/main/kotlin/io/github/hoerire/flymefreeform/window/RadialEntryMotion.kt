@@ -19,14 +19,34 @@ internal object RadialEntryMotion {
     private const val EXPANSION_MILLIS = 130f
     private const val REBOUND_MILLIS = 250f
 
-    private val fade = CubicMotionCurve(0.33f, 0f, 0.67f, 1f)
-    private val expandRotation = CubicMotionCurve(0.24f, 0.17f, 0.53f, 0.82f)
-    private val expandScale = CubicMotionCurve(0.24f, 0.74f, 0.53f, 0.92f)
-    private val expandPosition = CubicMotionCurve(0.24f, 0.55f, 0.53f, 0.8f)
+    // 主扩张走 Material 3 emphasized decelerate：前段铺开得快，末段稳稳停住，
+    // 与系统窗口/侧边栏的进场节奏一致。
+    private val fade =
+        CubicMotionCurve(
+            SystemMotion.EMPHASIZED_DECELERATE_X1,
+            SystemMotion.EMPHASIZED_DECELERATE_Y1,
+            SystemMotion.EMPHASIZED_DECELERATE_X2,
+            SystemMotion.EMPHASIZED_DECELERATE_Y2,
+        )
+    private val expandRotation = CubicMotionCurve(0.05f, 0.55f, 0.1f, 1f)
+    private val expandScale =
+        CubicMotionCurve(
+            SystemMotion.EMPHASIZED_DECELERATE_X1,
+            SystemMotion.EMPHASIZED_DECELERATE_Y1,
+            SystemMotion.EMPHASIZED_DECELERATE_X2,
+            SystemMotion.EMPHASIZED_DECELERATE_Y2,
+        )
+    private val expandPosition =
+        CubicMotionCurve(
+            SystemMotion.EMPHASIZED_DECELERATE_X1,
+            SystemMotion.EMPHASIZED_DECELERATE_Y1,
+            SystemMotion.EMPHASIZED_DECELERATE_X2,
+            SystemMotion.EMPHASIZED_DECELERATE_Y2,
+        )
     private val reboundRotation = CubicMotionCurve(0.19f, -7.6f, 0.48f, 1f)
     private val reboundScale = CubicMotionCurve(0.19f, 0.31f, 0.48f, 1f)
     private val reboundPosition = CubicMotionCurve(0.19f, 1.23f, 0.67f, 1f)
-    private val selection = CubicMotionCurve(0.33f, 0f, 0.66f, 1f)
+    private val selection = CubicMotionCurve(0.2f, 0f, 0f, 1f)
 
     fun sample(linearProgress: Float): RadialEntryVisuals {
         val elapsed = linearProgress.coerceIn(0f, 1f) * DURATION_MILLIS

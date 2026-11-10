@@ -327,7 +327,10 @@ internal class CornerRadialOverlayView(
             remember(layout.itemCenters.size) {
                 List(layout.itemCenters.size) { Animatable(0f) }
             }
-        val animationsEnabled = remember { ValueAnimator.areAnimatorsEnabled() }
+        // 动画时长跟系统的「动画时长缩放」走：缩放为 0 时直接跳到终态，
+        // 缩放大于 1 时同比例拉长，避免模块动画比系统窗口动画先结束。
+        val motionScale = remember { SystemMotion.durationScale() }
+        val animationsEnabled = remember { SystemMotion.animationsRunning(motionScale) }
 
         val exitRequest = exitRequestState.value
         LaunchedEffect(panelModeState.value, exitRequest, backdropOnlyState.value) {
@@ -337,7 +340,12 @@ internal class CornerRadialOverlayView(
             } else {
                 entryProgress.animateTo(
                     targetValue = 1f,
-                    animationSpec = tween(RadialEntryMotion.DURATION_MILLIS.toInt(), easing = LinearEasing),
+                    animationSpec =
+                        tween(
+                            durationMillis =
+                                SystemMotion.scaledMillis(RadialEntryMotion.DURATION_MILLIS, motionScale),
+                            easing = LinearEasing,
+                        ),
                 )
             }
             // 入场动画结束事件：抬手判定只读这个标志，不做任何时间计算。
@@ -418,7 +426,8 @@ internal class CornerRadialOverlayView(
                     targetValue = 1f,
                     animationSpec =
                         tween(
-                            durationMillis = RadialDismissMotion.DURATION_MILLIS.toInt(),
+                            durationMillis =
+                                SystemMotion.scaledMillis(RadialDismissMotion.DURATION_MILLIS, motionScale),
                             easing = LinearEasing,
                         ),
                 )
