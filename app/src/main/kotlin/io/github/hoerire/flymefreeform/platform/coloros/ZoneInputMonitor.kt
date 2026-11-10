@@ -23,6 +23,7 @@ internal class ZoneInputMonitor(
     private val report: (Int, String, Throwable?) -> Unit,
 ) {
     private var monitor: InputMonitor? = null
+    private var inputThread: android.os.HandlerThread? = null
     private var receiver: InputEventReceiver? = null
     private val handler = Handler(Looper.getMainLooper())
 
@@ -39,10 +40,17 @@ internal class ZoneInputMonitor(
                 ?: error("monitor is null")
             monitor = created
             val channel = created.getInputChannel() ?: error("no input channel")
-            receiver = object : InputEventReceiver(channel, Looper.getMainLooper()) {
+            // 独立线程：主线程在开机/切换瞬间会被占住，挂在主 Looper 上的 receiver 会被
+            // InputDispatcher 判为 not responsive（实测日志）。
+            val thread = android.os.HandlerThread("FlymeFreeform-zone-input").apply { start() }
+            inputThread = thread
+            receiver = object : InputEventReceiver(channel, thread.looper) {
                 override fun onInputEvent(event: InputEvent) {
-                    handle(event)
-                    finishInputEvent(event, false)
+                    try {
+                        handle(event)
+                    } finally {
+                        runCatching { finishInputEvent(event, false) }
+                    }
                 }
             }
             report(Log.INFO, "SYSTEM_ZONE_MONITOR_READY", null)
@@ -74,6 +82,8 @@ internal class ZoneInputMonitor(
         runCatching { monitor?.dispose() }
         receiver = null
         monitor = null
+        runCatching { inputThread?.quitSafely() }
+        inputThread = null
         handler.removeCallbacksAndMessages(null)
     }
 
