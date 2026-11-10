@@ -79,6 +79,7 @@ internal class SystemServerHookInstaller(
      * InputFilter 通过 LocalServices 拿到 system_server 内的 InputManagerService 实例再反射设置；
      * 拿不到就只记日志，不影响系统。
      */
+    @SuppressLint("BlockedPrivateApi", "PrivateApi")
     private fun installInputFilter(classLoader: ClassLoader) {
         runCatching {
             // 不按名字加载 services.jar 里的类：从 LocalServices 的注册表按类名找实例，
