@@ -96,7 +96,7 @@ internal class NavigationInterceptionHook(
     }
 
     /** 在参数里找承载矩形的那一项，挖角后写回；找不到就原样放行。 */
-    private fun carve(args: Array<Any?>) {
+    private fun carve(args: List<Any?>) {
         val settings = configuration.snapshot
         if (!settings.enabled) return
         if (!settings.leftCornerEnabled && !settings.rightCornerEnabled) return
@@ -112,7 +112,9 @@ internal class NavigationInterceptionHook(
         // 没有真的变少，说明这块区域本来就不覆盖角落：不写回，避免无谓扰动。
         if (carved.size == rects.size) return
         val restored = writeRectangles(original, carved) ?: return
-        args[index] = restored
+        // chain.args 是只读视图时放弃写回，交给系统原样处理。
+        val mutable = args as? MutableList<Any?> ?: return
+        mutable[index] = restored
         ModuleLog.info("NAV_REGION_CARVED_" + rects.size + "_TO_" + carved.size)
     }
 
