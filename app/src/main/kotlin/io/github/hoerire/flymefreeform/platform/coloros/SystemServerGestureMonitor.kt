@@ -57,6 +57,8 @@ internal class SystemServerGestureMonitor(
     private var receiver: InputEventReceiver? = null
     private var pilferCount = 0L
     private var pilferActive = false
+    private var downCount = 0L
+    private var moveCount = 0L
 
     /** 建 monitor；返回 false 表示没建起来，调用方自行回退。 */
     fun start(name: String): Boolean {
@@ -134,6 +136,27 @@ internal class SystemServerGestureMonitor(
      * 引擎已经 Activate 的那一帧才抢，抬手/取消时复位。
      */
     private fun dispatch(event: MotionEvent, pilferMethod: Method): Boolean {
+        // 诊断：只记数量，不改行为。用来判断 pilfer 之后 monitor 到底还收不收得到 MOVE。
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downCount++
+                logger(Log.INFO, "MONITOR_DOWN_" + downCount, null)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                moveCount++
+                if (moveCount % MOVE_TRACE_INTERVAL == 1L) {
+                    logger(Log.INFO, "MONITOR_MOVE_ALIVE_" + moveCount, null)
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                logger(
+                    Log.INFO,
+                    "MONITOR_SESSION_END_" + (if (pilferActive) "PILFERED" else "PASSIVE") +
+                        "_down=" + downCount + "_move=" + moveCount,
+                    null,
+                )
+            }
+        }
         val wantsPilfer = onEvent(event)
         if (wantsPilfer && !pilferActive) {
             val instance = monitor ?: return false
@@ -171,6 +194,7 @@ internal class SystemServerGestureMonitor(
     private companion object {
         const val MONITOR_TAG = "FlymeFreeform"
         const val THREAD_NAME = "FlymeFreeform-corner-system"
+        const val MOVE_TRACE_INTERVAL = 30L
         val INPUT_MONITOR_CLASS: Class<*> = Class.forName("android.view.InputMonitor")
     }
 }
