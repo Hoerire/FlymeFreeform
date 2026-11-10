@@ -58,6 +58,10 @@ internal class SystemUiGestureMonitor(
     private var receiver: InputEventReceiver? = null
     private var lastPilferFailureAt = -PILFER_LOG_INTERVAL_MS
     private var pilferCount = 0L
+    // 诊断：判断 SystemUI 侧 pilfer 之后还能不能持续收到 MOVE。
+    private var downCount = 0L
+    private var moveCount = 0L
+    private var pilfered = false
 
     fun start() {
         settings = configuration.snapshot
@@ -116,6 +120,30 @@ internal class SystemUiGestureMonitor(
 
     /** 监视器通道的回调；无论走哪条分支都必须 finishInputEvent。 */
     private fun dispatch(event: InputEvent) {
+        val diagnostic = event as? MotionEvent
+        if (diagnostic != null) {
+            when (diagnostic.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downCount++
+                    module.log(Log.INFO, TAG, "SUI_DOWN_" + downCount)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    moveCount++
+                    if (moveCount % MOVE_TRACE_INTERVAL == 1L) {
+                        module.log(Log.INFO, TAG, "SUI_MOVE_ALIVE_" + moveCount)
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    module.log(
+                        Log.INFO,
+                        TAG,
+                        "SUI_SESSION_END_" + (if (pilfered) "PILFERED" else "PASSIVE") +
+                            "_down=" + downCount + "_move=" + moveCount,
+                    )
+                    pilfered = false
+                }
+            }
+        }
         var handled = false
         try {
             handled = handle(event)
@@ -167,6 +195,7 @@ internal class SystemUiGestureMonitor(
         return try {
             pilferPointers.invoke(monitorInstance)
             pilferCount++
+            pilfered = true
             module.log(
                 Log.INFO,
                 TAG,
@@ -214,6 +243,7 @@ internal class SystemUiGestureMonitor(
         const val TAG = "FlymeFreeform"
         const val MONITOR_NAME = "flymefreeform-corner"
         const val PILFER_LOG_INTERVAL_MS = 10_000L
+        const val MOVE_TRACE_INTERVAL = 30L
         val INPUT_MONITOR_CLASS: Class<*> = Class.forName("android.view.InputMonitor")
     }
 }
