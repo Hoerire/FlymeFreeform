@@ -92,12 +92,16 @@ internal class SystemServerHookInstaller(
     private fun installInputFilterAttempt(classLoader: ClassLoader, remaining: Int) {
         val resolved = runCatching {
             val localServices = Class.forName("com.android.server.LocalServices", false, classLoader)
-            val field = localServices.getDeclaredField("sLocalServiceObjects").apply { isAccessible = true }
-            val services = field.get(null) as? Map<*, *> ?: error("no local services")
-            // 不同版本包名不同（com.android.server.input / android.hardware.input），按简单类名匹配。
-            val ims = services.values.firstOrNull {
-                it?.javaClass?.simpleName == "InputManagerService"
-            } ?: error("InputManagerService not found")
+            // 用 LocalServices 自身的加载器去取 IMS：services.jar 里的类只在这个加载器可见。
+            val imsClass = Class.forName(
+                "com.android.server.input.InputManagerService",
+                false,
+                localServices.classLoader,
+            )
+            val ims = localServices
+                .getMethod("getService", Class::class.java)
+                .invoke(null, imsClass)
+                ?: error("InputManagerService not registered yet")
             val setter = ims.javaClass.methods.firstOrNull {
                 it.name == "setInputFilter" && it.parameterTypes.size == 1
             } ?: error("no setInputFilter")
