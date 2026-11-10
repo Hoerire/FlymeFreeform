@@ -56,11 +56,6 @@ internal class SystemUiCornerInputMonitor(
         View::class.java.getDeclaredMethod("getViewRootImpl").apply {
             isAccessible = true
         }
-    private val injectInputEventMethod: Method =
-        InputManager::class.java
-            .getMethod("injectInputEvent", android.view.InputEvent::class.java, Int::class.javaPrimitiveType)
-            .apply { isAccessible = true }
-
     private val pilferPointersMethod: Method =
         InputManager::class.java.getDeclaredMethod("pilferPointers", IBinder::class.java).apply {
             isAccessible = true
@@ -132,22 +127,7 @@ internal class SystemUiCornerInputMonitor(
     }
 
     private fun addBinding(side: CornerSide, size: Int) {
-        val params = createLayoutParams(side, size)
-        var view: CornerGestureView? = null
-        // 补发点击期间把本窗口临时设为不可触摸，否则注入的事件又被自己吃掉。
-        val toggleTouchable: (Boolean) -> Unit = { touchable ->
-            val target = view
-            if (target != null) {
-                params.flags =
-                    if (touchable) {
-                        params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-                    } else {
-                        params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                    }
-                runCatching { windowManager.updateViewLayout(target, params) }
-            }
-        }
-        val created =
+        val view =
             CornerGestureView(
                 context = context,
                 side = side,
@@ -155,15 +135,11 @@ internal class SystemUiCornerInputMonitor(
                 rangeDp = settings.cornerTriggerRangeDp,
                 canClaim = { canClaim(side) },
                 pilfer = ::pilfer,
-                injectTap = ::injectTap,
-                toggleTouchable = toggleTouchable,
                 onStreamFinished = ::finishStream,
             )
-        view = created
-        val attached = created
         try {
-            windowManager.addView(attached, params)
-            bindings[side] = CornerBinding(attached, size)
+            windowManager.addView(view, createLayoutParams(side, size))
+            bindings[side] = CornerBinding(view, size)
         } catch (exception: ReflectiveOperationException) {
             module.log(Log.WARN, TAG, "SYSTEMUI_CORNER_SPY_ADD_FAILED", exception)
         } catch (exception: RuntimeException) {
@@ -190,12 +166,6 @@ internal class SystemUiCornerInputMonitor(
                 CornerSide.Right -> settings.rightCornerEnabled
             } &&
             environmentState.isGestureAllowed(refreshKeyguard = true)
-
-
-    /** 通过 InputManager 向系统补发一次触摸（SystemUI 为 system uid，具备 INJECT_EVENTS）。 */
-    private fun injectTap(event: MotionEvent): Boolean = runCatching {
-        injectInputEventMethod.invoke(inputManager, event, INPUT_EVENT_MODE_ASYNC) as? Boolean == true
-    }.getOrDefault(false)
 
     private fun pilfer(view: View): Boolean =
         try {
@@ -246,7 +216,10 @@ internal class SystemUiCornerInputMonitor(
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
             setFitInsetsTypes(0)
             setTrustedOverlayMethod.invoke(this)
-            // 不设 INPUT_FEATURE_SPY：SPY 只旁观不消费，系统手势链会收到同一批事件。
+            inputFeaturesField.setInt(
+                this,
+                inputFeaturesField.getInt(this) or INPUT_FEATURE_SPY,
+            )
         }
 
     private fun ensureMainThread() {
@@ -268,8 +241,6 @@ internal class SystemUiCornerInputMonitor(
         var rangeDp: Int,
         private val canClaim: () -> Boolean,
         private val pilfer: (View) -> Boolean,
-        private val injectTap: (MotionEvent) -> Boolean,
-        private val toggleTouchable: (Boolean) -> Unit,
         private val onStreamFinished: () -> Unit,
     ) : View(context) {
         private val gestureEngine = CornerGestureEngine()
@@ -277,14 +248,8 @@ internal class SystemUiCornerInputMonitor(
         private val density = context.resources.displayMetrics.density
         private var activeConfig: CornerGestureConfig? = null
         private var activePointerId = -1
-        private var replayingUntil = 0L
         private var tracking = false
         private var pilferAttempted = false
-        /** 本次触摸是否已经发展成扇形手势（Activate）；没有则抬手时补发一次点击。 */
-        private var activated = false
-        private var downRawX = 0f
-        private var downRawY = 0f
-        private var downAtMs = 0L
 
         val streamActive: Boolean
             get() = tracking
@@ -295,8 +260,6 @@ internal class SystemUiCornerInputMonitor(
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
-            // 补发的点击会再次进入本窗口，忽略掉避免自我循环。
-            if (android.os.SystemClock.uptimeMillis() < replayingUntil) return true
             if (!event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)) {
                 val wasActive = tracking
                 resetTracking()
@@ -336,10 +299,6 @@ internal class SystemUiCornerInputMonitor(
                         if (gestureEngine.phase == GesturePhase.Armed) {
                             activeConfig = config
                             tracking = true
-                            activated = false
-                            downRawX = event.rawX
-                            downRawY = event.rawY
-                            downAtMs = event.downTime
                         }
                     }
                 }
@@ -365,7 +324,10 @@ internal class SystemUiCornerInputMonitor(
                             } else {
                                 gestureEngine.cancel()
                             }
-                        if (!activated && action is GestureAction.Activate) activated = true
+                        if (!pilferAttempted && action is GestureAction.Activate) {
+                            pilferAttempted = true
+                            pilfer(this)
+                        }
                     }
                 }
 
@@ -375,48 +337,16 @@ internal class SystemUiCornerInputMonitor(
 
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL -> {
-                    val wasTracking = tracking
-                    val claimed = activated
                     if (event.actionMasked == MotionEvent.ACTION_UP && tracking) {
                         gestureEngine.up(event.getPointerId(event.actionIndex))
                     }
                     resetTracking()
                     onStreamFinished()
-                    // 窗口消费了整条触摸流，普通点击不会再传给下层应用。没发展成扇形手势的，
-                    // 松手时按原点补发一次点击，把点击还给下面的应用（长按/拖拽仍然无法还原）。
-                    if (wasTracking && !claimed && event.actionMasked == MotionEvent.ACTION_UP) {
-                        replayTap()
-                    }
                 }
 
                 else -> Unit
             }
             return true
-        }
-
-
-        /** 补发一次点击：DOWN + UP，坐标用最初按下的位置。 */
-        private fun replayTap() {
-            replayingUntil = android.os.SystemClock.uptimeMillis() + REPLAY_GUARD_MS
-            val downTime = downAtMs.takeIf { it > 0 } ?: android.os.SystemClock.uptimeMillis()
-            val at = android.os.SystemClock.uptimeMillis()
-            val down = MotionEvent.obtain(downTime, at, MotionEvent.ACTION_DOWN, downRawX, downRawY, 0)
-            val up = MotionEvent.obtain(downTime, at + 20, MotionEvent.ACTION_UP, downRawX, downRawY, 0)
-            toggleTouchable(false)
-            postDelayed(
-                {
-                    val ok = runCatching { injectTap(down) && injectTap(up) }.getOrDefault(false)
-                    down.recycle()
-                    up.recycle()
-                    postDelayed({ toggleTouchable(true) }, REPLAY_RESTORE_MS)
-                    Log.println(
-                        if (ok) Log.INFO else Log.WARN,
-                        "FlymeFreeform",
-                        if (ok) "SYSTEMUI_CORNER_TAP_REPLAYED" else "SYSTEMUI_CORNER_TAP_REPLAY_FAILED",
-                    )
-                },
-                REPLAY_DELAY_MS,
-            )
         }
 
         fun resetTracking() {
@@ -430,12 +360,7 @@ internal class SystemUiCornerInputMonitor(
 
     private companion object {
         const val TAG = "FlymeFreeform"
-        const val INPUT_EVENT_MODE_ASYNC = 0
-        const val REPLAY_GUARD_MS = 300L
-        /** 先切不可触摸、再注入，之间留一点时间让窗口属性生效。 */
-        const val REPLAY_DELAY_MS = 40L
-        /** 注入后恢复可触摸的延时。 */
-        const val REPLAY_RESTORE_MS = 250L
+        const val INPUT_FEATURE_SPY = 1 shl 2
         const val CORNER_GESTURE_WINDOW_TYPE = 2024
         const val CORNER_INPUT_CHANNEL_TITLE = "FlymeFreeform-corner-input"
         const val PILFER_FAILURE_LOG_INTERVAL_MS = 10_000L
