@@ -912,12 +912,9 @@ internal class ColorOsFreeformCoordinator(
         }
 
     /**
-     * 容器树里收集 Task。
-     *
-     * 真实层级比想象深：ROOT → Display → WindowedMagnification → HideDisplayCutout →
-     * OneHanded → AppZoomOut → Leaf → … → TaskDisplayArea → Task（dumpsys activity containers
-     * 可见）。早先按 4 层截断，一个任务都爬不到，「已有窗口」判定永远为假。
-     * 现在只沿 DisplayArea / DisplayContent 下钻，跳过窗口节点，深度放宽到 [MAX_TASK_WALK_DEPTH]。
+     * 容器树里收集 Task。实际层级有 8 层左右（ROOT → Display → 若干 DisplayArea →
+     * TaskDisplayArea → Task），早先按 4 层截断，一个任务都爬不到。这里只沿
+     * DisplayArea / DisplayContent 下钻，跳过窗口节点。
      */
     private fun collectTasks(container: Any, out: MutableList<Any>, depth: Int) {
         if (depth > MAX_TASK_WALK_DEPTH) return
