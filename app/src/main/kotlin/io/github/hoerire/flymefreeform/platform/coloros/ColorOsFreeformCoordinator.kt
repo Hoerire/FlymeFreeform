@@ -966,6 +966,29 @@ internal class ColorOsFreeformCoordinator(
         logOverlayFailure("SYSTEM_OVERLAY_DISPOSE_FAILED", throwable)
     }
 
+    /**
+     * 底部手势区的高度（像素）。
+     *
+     * 保持挂起的浮层要把这一条让给系统，否则从底部上滑会被窗口吃掉（用户实测）。
+     * 优先读系统 navigation_bar_height（手势导航下就是那条手势区），读不到才用兜底值；
+     * 再补一点余量，盖住系统实际判定的吸附边界。
+     */
+    private fun bottomGestureInsetPx(metrics: android.util.DisplayMetrics): Int {
+        val resources = context.resources
+        val identifier = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        val systemHeight =
+            if (identifier > 0) {
+                runCatching { resources.getDimensionPixelSize(identifier) }.getOrDefault(0)
+            } else {
+                0
+            }
+        return if (systemHeight > 0) {
+            systemHeight + (4 * metrics.density).toInt()
+        } else {
+            (BOTTOM_GESTURE_INSET_DP * metrics.density).toInt()
+        }
+    }
+
     private fun createOverlayParams(
         focusable: Boolean,
         type: Int = overlayWindowType,
@@ -1000,7 +1023,7 @@ internal class ColorOsFreeformCoordinator(
                 // 反射失败就退回"整屏可触摸"，不影响点选，只是底部手势仍被拦。
                 runCatching {
                     val metrics = context.resources.displayMetrics
-                    val gestureBar = (BOTTOM_GESTURE_INSET_DP * metrics.density).toInt()
+                    val gestureBar = bottomGestureInsetPx(metrics)
                     val region = android.graphics.Region()
                     region.set(
                         0,
@@ -1297,8 +1320,8 @@ internal class ColorOsFreeformCoordinator(
         const val CANCEL_WATCH_MS = 150L
         /** 两次指针事件间隔超过这个值，就认为上一次会话已经结束，避免状态卡死。 */
         const val SESSION_GAP_MS = 800L
-        /** 保持挂起时留给系统底部手势的高度（dp）。 */
-        const val BOTTOM_GESTURE_INSET_DP = 26f
+        /** 读不到系统导航栏高度时的兜底值（dp）。 */
+        const val BOTTOM_GESTURE_INSET_DP = 40f
         /** WindowManager.LayoutParams.TOUCHABLE_INSETS_REGION 是 @hide 常量。 */
         const val TOUCHABLE_INSETS_REGION = 3
         const val OVERLAY_PREWARM_LIFETIME_MS = 400L
