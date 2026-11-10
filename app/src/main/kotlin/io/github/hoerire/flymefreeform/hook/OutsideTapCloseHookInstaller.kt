@@ -268,7 +268,28 @@ internal class OutsideTapCloseHookInstaller(
                     // 用户拖到边缘走的拖拽入口不经过这里。
                     // 迷你窗是"与其他应用共存"的形态：桌面点开全屏应用时系统会把它转成浮窗保持可见，
                     // 我们若在这里替换成关闭，就等于把迷你窗收掉，无法边聊天边看视频（实测关掉自动收窗即恢复）。
-                    val miniScene = inMiniWindowScene()
+                    // HansSceneManager 的场景标志在这台机器上不置位，改用退出策略自带的窗口矩形判断：
+                    // 迷你窗的矩形远小于屏幕，全屏窗口被顶掉时接近满屏。
+                    val startBounds = strategy?.let { current ->
+                        runCatching {
+                            fieldInHierarchy(current.javaClass, "mStartBounds")?.get(current) as? android.graphics.Rect
+                        }.getOrNull()
+                    }
+                    val screenWidth = runCatching {
+                        android.content.res.Resources.getSystem().displayMetrics.widthPixels
+                    }.getOrDefault(0)
+                    val smallWindow = startBounds != null && screenWidth > 0 &&
+                        startBounds.width() > 0 && startBounds.width() < screenWidth * 0.75f
+                    if (startBounds != null) {
+                        module.log(
+                            Log.DEBUG,
+                            TAG,
+                            "ZOOM_EXIT_BOUNDS_" + startBounds.width() + "x" + startBounds.height() +
+                                "_screen" + screenWidth + "_small" + (if (smallWindow) 1 else 0),
+                            null,
+                        )
+                    }
+                    val miniScene = smallWindow || inMiniWindowScene()
                     val decision = if (miniScene) {
                         CloseDecision.KeepOriginal
                     } else {
