@@ -35,6 +35,8 @@ internal object ModulePreferences {
     const val KEY_ZOOM_MAX_WINDOW_COUNT = "zoom_max_window_count"
     const val KEY_ZOOM_ALLOW_ANY_APP = "zoom_allow_any_app"
     /** 小窗跳转总开关：通知、控制中心、应用互跳、桌面快捷项与卡片统一受它控制。 */
+    /** 小窗交互总开关：关闭时下列各项一律不介入，避免与其他模块抢同一批入口。 */
+    const val KEY_ZOOM_INTERACTION_ENABLED = "zoom_interaction_enabled"
     const val KEY_ZOOM_LAUNCH = "zoom_launch"
 
     /** 桌面长按快捷项是否转小窗；关闭后保持系统默认全屏。 */
@@ -85,6 +87,7 @@ internal object ModulePreferences {
     const val MIN_ZOOM_MAX_WINDOW_COUNT = 1
     const val MAX_ZOOM_MAX_WINDOW_COUNT = 5
     const val DEFAULT_ZOOM_ALLOW_ANY_APP = false
+    const val DEFAULT_ZOOM_INTERACTION_ENABLED = false
     const val DEFAULT_ZOOM_LAUNCH = false
     /** 两个桌面入口默认跟随主开关，保持既有行为。 */
     const val DEFAULT_ZOOM_LAUNCHER_SHORTCUT = true
