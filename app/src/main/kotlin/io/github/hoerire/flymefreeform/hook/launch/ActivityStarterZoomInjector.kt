@@ -897,6 +897,7 @@ internal class ActivityStarterZoomInjector(
                 "android.intent.action.GET_CONTENT",
                 "android.intent.action.OPEN_DOCUMENT",
                 "android.intent.action.OPEN_DOCUMENT_TREE",
+                "android.intent.action.CREATE_DOCUMENT",
                 "android.intent.action.PICK",
             )
 
