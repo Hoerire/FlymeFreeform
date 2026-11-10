@@ -72,6 +72,8 @@
     <string name="radial_keep_open_title">保持挂起</string>
     <string name="radial_keep_open_summary">松手保持扇形菜单，可以继续滑动点选应用</string>
     <string name="zoom_limit_removed_title">小窗交互</string>
+    <string name="zoom_interaction_title">轻量打开</string>
+    <string name="zoom_interaction_summary">总开关：关闭时下面各项都不介入系统，也不会与其他模块冲突</string>
     <string name="zoom_options_summary">小窗数量、启动场景与窗口操作</string>
     <string name="zoom_max_windows_title">小窗数量</string>
     <string name="zoom_max_windows_summary">同时存在的自由浮窗个数</string>
