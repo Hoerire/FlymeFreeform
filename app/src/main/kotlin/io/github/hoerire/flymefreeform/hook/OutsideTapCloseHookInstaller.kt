@@ -245,11 +245,11 @@ internal class OutsideTapCloseHookInstaller(
                 val isFloatExit = strategy != null && floatStrategyClass.isInstance(strategy)
                 // 开关状态：仅在"确实是一次转浮标退出"且快照为关闭时才重读磁盘配置，
                 // 避免把预算浪费在无关退出上。
-                if (isFloatExit && !configuration.snapshot.autoCloseWindow && reloadBudget > 0) {
+                if (isFloatExit && !configuration.snapshot.autoCloseWindowEffective && reloadBudget > 0) {
                     reloadBudget--
                     configuration.forceReload()
                 }
-                if (isFloatExit && configuration.snapshot.autoCloseWindow) {
+                if (isFloatExit && configuration.snapshot.autoCloseWindowEffective) {
                     val frames = Throwable().stackTrace
                     // 系统的「谁该退出」判定有两条入口：超出数量上限（updateTaskMaxNum* /
                     // handleFlexibleExChange）与统一裁决（determineFlexibleTaskToExit /
