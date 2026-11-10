@@ -270,8 +270,12 @@ internal class ActivityStarterZoomInjector(
      * 这一类每次点图标都必然保持全屏，逐条打「跳过原因」只会把真正的异常埋掉，
      * 因此三条兜底日志对它一律静默；其余启动照常记录。
      */
-    private fun isLauncherIconLaunch(callingPackage: String?, action: String?, hasResultTo: Boolean): Boolean =
-        callingPackage == LAUNCHER_PACKAGE && action == Intent.ACTION_MAIN && hasResultTo
+    private fun isLauncherIconLaunch(callingPackage: String?, action: String?, hasResultTo: Boolean): Boolean {
+        val launcher = callingPackage == LAUNCHER_PACKAGE && action == Intent.ACTION_MAIN && hasResultTo
+        // 桌面点开意味着目标一定是全屏；记下时刻，收窗那侧据此放过旁边的迷你窗。
+        if (launcher) io.github.hoerire.flymefreeform.logic.LauncherLaunchMarker.mark()
+        return launcher
+    }
 
     /** 判定「目标应用自己的中转页二次发起同一目标」：判据尽量窄，避免误伤授权与回传链路。 */
     private fun isTrampolineRelay(intent: Intent, target: String, callingPackage: String?): Boolean {

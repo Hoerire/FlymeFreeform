@@ -17,6 +17,7 @@ import io.github.hoerire.flymefreeform.config.OutsideTapCloseMode
 import io.github.hoerire.flymefreeform.gesture.OutsideTapGestureEngine
 import io.github.hoerire.flymefreeform.logic.CloseDecision
 import io.github.hoerire.flymefreeform.logic.ClosePolicy
+import io.github.hoerire.flymefreeform.logic.LauncherLaunchMarker
 import io.github.hoerire.flymefreeform.platform.coloros.ColorOsDisplayContentImeAccess
 import io.github.hoerire.flymefreeform.platform.coloros.ColorOsTaskImeBoundsAccess
 import java.lang.reflect.Field
@@ -266,30 +267,9 @@ internal class OutsideTapCloseHookInstaller(
                     // 通知、应用内跳转），而用户的规则只有一条——不允许窗口被收成贴边浮标。
                     // 判据只看这次退出是不是系统自己的"该谁退出"裁决（determine*/updateTaskMaxNum*），
                     // 用户拖到边缘走的拖拽入口不经过这里。
-                    // 迷你窗是"与其他应用共存"的形态：桌面点开全屏应用时系统会把它转成浮窗保持可见，
-                    // 我们若在这里替换成关闭，就等于把迷你窗收掉，无法边聊天边看视频（实测关掉自动收窗即恢复）。
-                    // HansSceneManager 的场景标志在这台机器上不置位，改用退出策略自带的窗口矩形判断：
-                    // 迷你窗的矩形远小于屏幕，全屏窗口被顶掉时接近满屏。
-                    val startBounds = strategy?.let { current ->
-                        runCatching {
-                            fieldInHierarchy(current.javaClass, "mStartBounds")?.get(current) as? android.graphics.Rect
-                        }.getOrNull()
-                    }
-                    val screenWidth = runCatching {
-                        android.content.res.Resources.getSystem().displayMetrics.widthPixels
-                    }.getOrDefault(0)
-                    val smallWindow = startBounds != null && screenWidth > 0 &&
-                        startBounds.width() > 0 && startBounds.width() < screenWidth * 0.75f
-                    if (startBounds != null) {
-                        module.log(
-                            Log.DEBUG,
-                            TAG,
-                            "ZOOM_EXIT_BOUNDS_" + startBounds.width() + "x" + startBounds.height() +
-                                "_screen" + screenWidth + "_small" + (if (smallWindow) 1 else 0),
-                            null,
-                        )
-                    }
-                    val miniScene = smallWindow || inMiniWindowScene()
+                    // 桌面点开的应用一定是全屏（其他入口都被我们以小窗打开），旁边的迷你窗是被系统
+                    // 顺带判成退场的，不能跟着关闭。判据只加这一条：最近的启动来自桌面。
+                    val miniScene = LauncherLaunchMarker.recentlyLaunched()
                     val decision = if (miniScene) {
                         CloseDecision.KeepOriginal
                     } else {
@@ -341,25 +321,6 @@ internal class OutsideTapCloseHookInstaller(
      * 退场动画与原厂一致。
      */
 
-    /**
-     * 是否处于迷你窗多窗口场景。
-     *
-     * ColorOS 把这个状态放在 HansSceneManager 上；取不到时按"不是迷你窗"处理，
-     * 保持原有收窗行为，不让判定因反射失败而整体失效。
-     */
-    private fun inMiniWindowScene(): Boolean {
-        val cls = hansSceneClass ?: runCatching {
-            Class.forName("com.android.server.hans.scene.HansSceneManager", false, javaClass.classLoader)
-        }.getOrNull()?.also { hansSceneClass = it }
-        cls ?: return false
-        val entered = runCatching {
-            val instance = cls.getMethod("getInstance").invoke(null)
-            cls.getMethod("isMiniMultiWindowSceneEntered").invoke(instance) as? Boolean
-        }.getOrNull()
-        return entered == true
-    }
-
-    @Volatile private var hansSceneClass: Class<*>? = null
 
     private fun hideClosingSurface(task: Any) {
         try {
