@@ -553,7 +553,11 @@ internal class ActivityStarterZoomInjector(
         //
         // 该判定先于 SKIP_TARGETS：分享面板由系统包承载，但属于用户主动发起的跳转，
         // 按组件精确放行，其余系统组件维持全屏。
+        // 目标必须已知：分享 / 选择器这类意图在 execute 阶段常常还没解析出目标，
+        // 这时写进 zoom 参数会落在一个"还不知道给谁"的 Intent 上，分享页会以小窗打开，
+        // 紧接着被收窗关掉，表现为点了没反应（实测 11:29:19 那次）。
         if (hasResultTo &&
+            target != null &&
             callingPackage != null &&
             callingPackage != LAUNCHER_PACKAGE &&
             callingPackage != SYSTEM_UI_PACKAGE &&

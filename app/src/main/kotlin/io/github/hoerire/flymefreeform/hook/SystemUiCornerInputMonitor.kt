@@ -299,13 +299,6 @@ internal class SystemUiCornerInputMonitor(
                         if (gestureEngine.phase == GesturePhase.Armed) {
                             activeConfig = config
                             tracking = true
-                            // 落点已在底角触发区内，这里立刻抢占指针流。
-                            // 等到手势激活（位移过一个阈值）再抢，桌面的上滑处理器已经先一步
-                            // 拉起多任务了（实测 17 上 recents_animation_input_consumer 早 0.3s 拿到流）。
-                            if (!pilferAttempted) {
-                                pilferAttempted = true
-                                pilfer(this)
-                            }
                         }
                     }
                 }
