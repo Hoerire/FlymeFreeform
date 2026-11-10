@@ -259,7 +259,7 @@ internal class ColorOsFreeformCoordinator(
         if (monitor.start(MONITOR_NAME + ":" + context.packageName)) {
             gestureMonitor = monitor
             pointerRegistered = true
-            debug("SYSTEM_POINTER_LISTENER_REGISTERED")
+            trace("SYSTEM_POINTER_LISTENER_REGISTERED")
             return
         }
         registerWindowPointerListener(generation)
@@ -459,19 +459,17 @@ internal class ColorOsFreeformCoordinator(
         val settings = lastSettings
         if (!pointerRegistered || !environmentState.isGestureAllowed()) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                debug("SYSTEM_GESTURE_SKIPPED_ENV_" + environmentRejectionReason())
+                trace("SYSTEM_GESTURE_SKIPPED_ENV_" + environmentRejectionReason())
             }
             cancelActiveGesture()
             return
         }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            // 每个 DOWN 都拼字符串在热路径上很贵；只有开详细日志时才计算。
-            if (io.github.hoerire.flymefreeform.log.VerboseLog.enabled) {
-                debug("SYSTEM_GESTURE_DOWN_" + event.x.toInt() + "_" + event.y.toInt())
-            }
+            // 手势生命周期的第一行，无条件记；每根手指只有一行，热路径负担可以忽略。
+            trace("SYSTEM_GESTURE_DOWN_" + event.x.toInt() + "_" + event.y.toInt())
             activeEnvironmentApproved = isGestureEnvironmentAllowed()
             if (!activeEnvironmentApproved) {
-                debug("SYSTEM_GESTURE_REJECTED_" + environmentRejectionReason())
+                trace("SYSTEM_GESTURE_REJECTED_" + environmentRejectionReason())
                 activeGestureConfig = null
                 return
             }
@@ -523,7 +521,7 @@ internal class ColorOsFreeformCoordinator(
         }
         when (action) {
             is GestureAction.Activate -> {
-                debug(
+                trace(
                     "SYSTEM_GESTURE_ACTIVATE_" + action.side.name + "_" +
                         action.x.toInt() + "_" + action.y.toInt(),
                 )
@@ -544,7 +542,7 @@ internal class ColorOsFreeformCoordinator(
                     debug("SYSTEM_GESTURE_COMMIT_TOO_EARLY")
                     view.cancelGesture()
                 } else {
-                    debug("SYSTEM_GESTURE_COMMIT")
+                    trace("SYSTEM_GESTURE_COMMIT")
                     view?.finishGesture()
                 }
             }
@@ -617,8 +615,8 @@ internal class ColorOsFreeformCoordinator(
             try {
                 windowManager.addView(view, params)
                 overlayWindowType = OVERLAY_WINDOW_TYPE
-                debug("SYSTEM_OVERLAY_SHOWN_" + overlayWindowType)
-                debug("SYSTEM_OVERLAY_TYPE_" + OVERLAY_WINDOW_TYPE)
+                trace("SYSTEM_OVERLAY_SHOWN_" + overlayWindowType)
+                trace("SYSTEM_OVERLAY_TYPE_" + OVERLAY_WINDOW_TYPE)
             } catch (exception: RuntimeException) {
                 // 输入法层的窗口类型被系统拒绝时，退回普通悬浮窗，至少保证扇形可用。
                 val fallback = createOverlayParams(focusable = keepOpen, type = FALLBACK_OVERLAY_TYPE)
@@ -659,6 +657,17 @@ internal class ColorOsFreeformCoordinator(
     }
 
     /** 详细日志：只有设置里打开「详细日志」才输出。 */
+    /**
+     * 手势生命周期的关键事件：无条件进模块日志。
+     *
+     * 这些是排障时唯一有用的几行（按下 / 被环境拒绝 / 激活 / 浮层起落 / 监听注册），
+     * 用户根本不知道要去设置里开"详细日志"，所以不挂 VerboseLog。每根手指只有 1~3 行。
+     */
+    private fun trace(code: String) {
+        logger(Log.INFO, code, null)
+    }
+
+    /** 高频/细节日志，仍受设置里的详细日志开关控制（MOVE、启动细节、通知等）。 */
     private fun debug(code: String) {
         if (io.github.hoerire.flymefreeform.log.VerboseLog.enabled) logger(Log.DEBUG, code, null)
     }
@@ -878,7 +887,7 @@ internal class ColorOsFreeformCoordinator(
             return
         }
         overlayRemovePending = false
-        debug("SYSTEM_OVERLAY_REMOVE")
+        trace("SYSTEM_OVERLAY_REMOVE")
         overlay = null
         if (sidebar.isPending) sidebar.cancel()
         morePanelActive = false
