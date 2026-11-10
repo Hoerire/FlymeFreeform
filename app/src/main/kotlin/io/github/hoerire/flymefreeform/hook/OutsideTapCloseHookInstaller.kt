@@ -269,7 +269,8 @@ internal class OutsideTapCloseHookInstaller(
                     // 用户拖到边缘走的拖拽入口不经过这里。
                     // 只有"被新应用顶掉"才收窗：最近 1.5 秒内有界面启动。迷你窗变形
                     //（ColorOS 17 也走同一套退场裁决）没有启动发生，保持系统原策略。
-                    val launching = LaunchInFlight.active()
+                    // 一次启动只收一个窗口：命中即失效，避免随后的"划成迷你窗"复用同一个标记。
+                    val launching = LaunchInFlight.consume()
                     val decision = if (!launching) {
                         CloseDecision.KeepOriginal
                     } else {
