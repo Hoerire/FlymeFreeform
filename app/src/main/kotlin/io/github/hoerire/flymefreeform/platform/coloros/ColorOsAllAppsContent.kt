@@ -204,6 +204,12 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
                             // 一起截进画面；动态条目（最近文件等）既不在 mTools 里，也没有
                             // 包名/动作可代发，它依赖面板仍然可见时的系统点击实现，因此
                             // 必须原样交回适配器，不能塞进"先收后执行"的通道。
+                            // 「最近文件和文档」是侧边栏的内嵌页面，不是独立应用；
+                            // 我们在同一个卡片里盖一层自己的列表，行为上等于打开该页面。
+                            if (alias == "recent_files") {
+                                panelLog("PANEL_RECENT_FILES_PAGE")
+                                return@newProxyInstance showRecentFiles()
+                            }
                             val ours = hasStaticTool(alias) || canLaunchByOurselves(item)
                             if (!ours && index != null) {
                                 panelLog("PANEL_ENTRY_NATIVE_" + (alias ?: "?"))
@@ -392,6 +398,22 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
         val uri = runCatching { cls.getMethod("getIntentString").invoke(bean) as? String }.getOrNull()
         return !uri.isNullOrEmpty()
     }
+
+
+    /** 在卡片里盖一层「最近文件和文档」页面；返回 false 表示无法展示，交回原流程。 */
+    private fun showRecentFiles(): Boolean {
+        val host = card ?: return false
+        existingRecentPage?.let { host.removeView(it) }
+        val page = RecentFilesPage(context).build {
+            existingRecentPage?.let { host.removeView(it) }
+            existingRecentPage = null
+        }
+        existingRecentPage = page
+        host.addView(page, FrameLayout.LayoutParams(-1, -1))
+        return true
+    }
+
+    private var existingRecentPage: View? = null
 
     private fun launchEntry(alias: String?, item: Any?): Boolean {
         if (!alias.isNullOrEmpty() && launchTool(alias)) return true
