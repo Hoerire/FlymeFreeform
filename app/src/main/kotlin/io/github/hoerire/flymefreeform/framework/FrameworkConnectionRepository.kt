@@ -128,8 +128,6 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setZoomLaunchInterApp(enabled: Boolean) =
         updateSettings { it.copy(zoomLaunchInterApp = enabled) }
 
-    fun setZoomLaunchSidebar(enabled: Boolean) =
-        updateSettings { it.copy(zoomLaunchSidebar = enabled) }
 
     /** 桌面长按快捷项是否转小窗。 */
     fun setZoomLauncherShortcut(enabled: Boolean) =

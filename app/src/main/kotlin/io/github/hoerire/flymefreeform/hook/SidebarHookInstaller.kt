@@ -273,10 +273,9 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
      */
     private fun applyToolLaunchZoom(intent: Intent?, options: Bundle?) {
         if (intent == null || options == null) return
-        if (!configuration.snapshot.zoomLaunchSidebarEffective) {
-            ModuleLog.info("ZOOM_SCENE_SIDEBAR_OFF")
-            return
-        }
+        // 侧边栏条目本身由系统以小窗打开，这里只处理「更多」面板里的工具条目，
+        // 因此跟随「轻量打开」总闸即可，不再单独做一个开关。
+        if (!configuration.snapshot.zoomInteractionActive) return
         val target = intent.component?.packageName ?: intent.getPackage() ?: return
         if (!PanelToolLaunchBridge.apply(target, options)) return
         io.github.hoerire.flymefreeform.log.ModuleLog.debug("FFLAUNCH") { "PANEL_TOOL_ZOOM_" + target }

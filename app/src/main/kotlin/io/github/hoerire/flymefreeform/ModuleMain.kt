@@ -81,7 +81,6 @@ class ModuleMain : XposedModule() {
                     "_scnH" + settings.zoomLaunchHeadsUp +
                     "_scnC" + settings.zoomLaunchControlCenter +
                     "_scnI" + settings.zoomLaunchInterApp +
-                    "_scnS" + settings.zoomLaunchSidebar +
                     "_scnSh" + settings.zoomLauncherShortcut +
                     "_scnCd" + settings.zoomLauncherCard +
                     "_scnAc" + settings.autoCloseWindow +

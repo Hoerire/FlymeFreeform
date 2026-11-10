@@ -58,7 +58,6 @@ class MainActivity : ComponentActivity() {
                     onZoomLaunchHeadsUpChange = repository::setZoomLaunchHeadsUp,
                     onZoomLaunchControlCenterChange = repository::setZoomLaunchControlCenter,
                     onZoomLaunchInterAppChange = repository::setZoomLaunchInterApp,
-                    onZoomLaunchSidebarChange = repository::setZoomLaunchSidebar,
                     onZoomLauncherShortcutChange = repository::setZoomLauncherShortcut,
                     onZoomLauncherCardChange = repository::setZoomLauncherCard,
                     onAutoCloseWindowChange = repository::setAutoCloseWindow,

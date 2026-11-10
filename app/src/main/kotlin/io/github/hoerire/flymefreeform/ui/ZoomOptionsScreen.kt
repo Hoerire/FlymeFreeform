@@ -45,7 +45,6 @@ internal fun ZoomOptionsScreen(
     onZoomLaunchHeadsUpChange: (Boolean) -> Unit,
     onZoomLaunchControlCenterChange: (Boolean) -> Unit,
     onZoomLaunchInterAppChange: (Boolean) -> Unit,
-    onZoomLaunchSidebarChange: (Boolean) -> Unit,
     onZoomLauncherShortcutChange: (Boolean) -> Unit,
     onZoomLauncherCardChange: (Boolean) -> Unit,
     onAutoCloseWindowChange: (Boolean) -> Unit,
@@ -154,14 +153,6 @@ internal fun ZoomOptionsScreen(
                     onCheckedChange = onZoomLaunchInterAppChange,
                     title = stringResource(R.string.zoom_launch_inter_app_title),
                     summary = stringResource(R.string.zoom_launch_inter_app_summary),
-                    enabled = subEnabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, enabled) },
-                )
-                SwitchPreference(
-                    checked = state.settings.zoomLaunchSidebar,
-                    onCheckedChange = onZoomLaunchSidebarChange,
-                    title = stringResource(R.string.zoom_launch_sidebar_title),
-                    summary = stringResource(R.string.zoom_launch_sidebar_summary),
                     enabled = subEnabled,
                     startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, enabled) },
                 )

@@ -47,8 +47,6 @@ internal data class ModuleSettingsSnapshot(
     val zoomLaunchControlCenter: Boolean = false,
     /** 小窗跳转·应用跳转：一个应用拉起另一个应用时改小窗。 */
     val zoomLaunchInterApp: Boolean = false,
-    /** 小窗跳转·侧边栏：侧边栏点开的条目以小窗打开。 */
-    val zoomLaunchSidebar: Boolean = false,
     /**
      * 禁用浮窗：这些应用不会被以任何形式的自由浮窗打开，作为目标、发起方或前台都算。
      *
@@ -76,7 +74,6 @@ internal data class ModuleSettingsSnapshot(
     val zoomLaunchHeadsUpEffective: Boolean get() = zoomInteractionActive && zoomLaunchHeadsUp
     val zoomLaunchControlCenterEffective: Boolean get() = zoomInteractionActive && zoomLaunchControlCenter
     val zoomLaunchInterAppEffective: Boolean get() = zoomInteractionActive && zoomLaunchInterApp
-    val zoomLaunchSidebarEffective: Boolean get() = zoomInteractionActive && zoomLaunchSidebar
     val zoomLauncherShortcutEffective: Boolean get() = zoomInteractionActive && zoomLauncherShortcut
     val zoomLauncherCardEffective: Boolean get() = zoomInteractionActive && zoomLauncherCard
     val autoCloseWindowEffective: Boolean get() = zoomInteractionActive && autoCloseWindow
@@ -117,7 +114,6 @@ internal data class ModuleSettingsSnapshot(
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_HEADS_UP, zoomLaunchHeadsUp)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_CONTROL_CENTER, zoomLaunchControlCenter)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_INTER_APP, zoomLaunchInterApp)
-            .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_SIDEBAR, zoomLaunchSidebar)
             .putBoolean(
                 ModulePreferences.KEY_ZOOM_LAUNCHER_SHORTCUT,
                 zoomLauncherShortcut,
@@ -237,7 +233,6 @@ internal data class ModuleSettingsSnapshot(
                 zoomLaunchHeadsUp = scene(ModulePreferences.KEY_ZOOM_LAUNCH_HEADS_UP),
                 zoomLaunchControlCenter = scene(ModulePreferences.KEY_ZOOM_LAUNCH_CONTROL_CENTER),
                 zoomLaunchInterApp = scene(ModulePreferences.KEY_ZOOM_LAUNCH_INTER_APP),
-                zoomLaunchSidebar = scene(ModulePreferences.KEY_ZOOM_LAUNCH_SIDEBAR),
                 leftCornerEnabled = if (bothCornersDisabled) true else leftEnabled,
                 rightCornerEnabled = if (bothCornersDisabled) true else rightEnabled,
                 cornerTriggerRangeDp = cornerTriggerRangeDp,

@@ -89,8 +89,6 @@
     <string name="zoom_launch_control_center_summary">控制中心磁贴长按打开的页面用小窗</string>
     <string name="zoom_launch_inter_app_title">应用跳转</string>
     <string name="zoom_launch_inter_app_summary">应用之间互相拉起时改以小窗打开</string>
-    <string name="zoom_launch_sidebar_title">侧边栏</string>
-    <string name="zoom_launch_sidebar_summary">侧边栏里点开的条目以小窗打开</string>
     <string name="zoom_launcher_shortcut_title">快捷方式</string>
     <string name="zoom_launcher_shortcut_summary">长按桌面快捷项时以浮窗打开</string>
     <string name="auto_close_window_title">自动收窗</string>
