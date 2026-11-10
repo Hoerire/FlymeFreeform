@@ -14,6 +14,7 @@ import io.github.libxposed.api.XposedModule
  */
 internal class FlexibleMenuEntryInstaller(
     private val module: XposedModule,
+    private val context: android.content.Context,
 ) {
     @Volatile private var entryIndex = -1
 
@@ -111,8 +112,7 @@ internal class FlexibleMenuEntryInstaller(
                             ?.invoke(manager)
                     }
                     runCatching {
-                        val context = displayContextOf(manager)
-                            ?: error("no context")
+                        val context = this@FlexibleMenuEntryInstaller.context
                         // 不加 setPackage：指定 package=android 需要 BROADCAST_SYSTEM 之类的权限，
                         // 从 SystemUI 发出会被拦下（实测 BROADCAST_FAIL）。
                         context.sendBroadcast(android.content.Intent(ModulePreferences.ACTION_SHOW_RADIAL))
@@ -133,16 +133,6 @@ internal class FlexibleMenuEntryInstaller(
         module.log(Log.INFO, TAG, "FLEXIBLE_MENU_CLICK_HOOKED", null)
     }
 
-
-    /** getDisplayContext 可能是私有方法，按名字在方法表里找。 */
-    private fun displayContextOf(manager: Any?): android.content.Context? {
-        manager ?: return null
-        val method = manager.javaClass.declaredMethods.firstOrNull {
-            it.name == "getDisplayContext" && it.parameterTypes.isEmpty()
-        } ?: return null
-        method.isAccessible = true
-        return method.invoke(manager) as? android.content.Context
-    }
 
     private companion object {
         const val TAG = "FlymeFreeform"
