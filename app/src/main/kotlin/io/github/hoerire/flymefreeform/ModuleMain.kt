@@ -71,6 +71,7 @@ class ModuleMain : XposedModule() {
                 TAG,
                 "MODULE_CONFIG_READY_" + LogTag.of(processName) +
                     "_en" + settings.enabled +
+                    "_zhub" + settings.zoomInteractionEnabled +
                     "_zcount" + settings.zoomMaxWindowCount +
                     "_zapp" + settings.zoomAllowAnyApp +
                     "_zlaunch" + settings.zoomLaunch +
