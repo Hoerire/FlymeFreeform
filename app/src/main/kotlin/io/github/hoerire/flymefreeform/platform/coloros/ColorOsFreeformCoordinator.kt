@@ -22,7 +22,6 @@ import io.github.hoerire.flymefreeform.config.PinnedTargetCodec
 import io.github.hoerire.flymefreeform.gesture.AdaptiveCornerGestureConfig
 import io.github.hoerire.flymefreeform.gesture.CornerGestureConfig
 import io.github.hoerire.flymefreeform.gesture.CornerGestureEngine
-import io.github.hoerire.flymefreeform.gesture.CornerTriggerRegion
 import io.github.hoerire.flymefreeform.gesture.GestureAction
 import io.github.hoerire.flymefreeform.gesture.GesturePhase
 import io.github.hoerire.flymefreeform.gesture.PointerStreamGate
@@ -35,12 +34,16 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
-/** system_server 中的唯一长期所有者：WMS 指针监听、Overlay、目录缓存与启动适配。 */
 /**
- * system_server 侧的手势与浮层协调器。
+ * system_server 侧的手势与浮层协调器，本进程内唯一长期所有者：
+ * gesture monitor、Overlay、目录缓存与启动适配都归它。
  *
- * 链路：SystemUI 的角落监听（[io.github.hoerire.flymefreeform.hook.SystemUiCornerInputMonitor]）
- * 与桌面侧监听把触摸点喂进 [gestureEngine]；引擎判定激活后在此创建 Compose 浮层窗口，
+ * 链路：[SystemServerGestureMonitor] 把整条指针流喂进 [gestureEngine]；引擎判定激活后
+ * 在这里创建 Compose 浮层窗口。为什么 monitor 必须在本进程：pilferPointers() 抢下的
+ * 只是「这一个 monitor 通道」，事件继续投递给本进程；monitor 若建在 SystemUI，
+ * 抢完的 MOVE 全落到另一个进程，这里的引擎只收到 DOWN，扇形永远不激活。
+ *
+ * 松手时按选中目标分两条启动路径：
  * 松手时按选中目标分两条启动路径：
  * - 普通应用：本进程持 ActivityOptions 直接 startActivity（见 [launchCommittedEntry]）；
  * - 侧边栏条目（工具/快捷方式/侧边栏应用）：转交侧边栏进程执行原生路由

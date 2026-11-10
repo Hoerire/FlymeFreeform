@@ -33,19 +33,19 @@ internal data class ModuleSettingsSnapshot(
     val zoomMaxWindowCount: Int = ModulePreferences.DEFAULT_ZOOM_MAX_WINDOW_COUNT,
     /** 小窗扩展·解除应用准入：isSupportFlexibleWindow 一律放行。 */
     val zoomAllowAnyApp: Boolean = ModulePreferences.DEFAULT_ZOOM_ALLOW_ANY_APP,
-    /**
-     * 小窗扩展·小窗跳转：通知、控制中心、应用互跳、桌面快捷项与卡片统一以自由浮窗启动。
-     *
-     * 关闭后不改写任何启动，全部入口回到系统默认的全屏行为。
-     */
-    val zoomLaunch: Boolean = ModulePreferences.DEFAULT_ZOOM_LAUNCH,
-    /** 小窗跳转·通知中心：点通知以小窗打开。 */
+    // 小窗跳转按入口拆成四项，各自独立存盘、独立判定。
+    // 全部默认关闭：没存过就是 false，不继承旧版那个已被移除的单一开关。
+
+    /** 通知中心：点通知以小窗打开。 */
     val zoomLaunchNotice: Boolean = false,
-    /** 小窗跳转·通知横幅：横幅直接展开成小窗。 */
+
+    /** 通知横幅：横幅展开时直接以小窗呈现。 */
     val zoomLaunchHeadsUp: Boolean = false,
-    /** 小窗跳转·控制中心：磁贴长按打开的页面。 */
+
+    /** 控制中心：磁贴长按打开的目标页面以小窗呈现。 */
     val zoomLaunchControlCenter: Boolean = false,
-    /** 小窗跳转·应用跳转：一个应用拉起另一个应用时改小窗。 */
+
+    /** 应用跳转：一个应用拉起另一个应用时改小窗。 */
     val zoomLaunchInterApp: Boolean = false,
     /**
      * 禁用浮窗：这些应用不会被以任何形式的自由浮窗打开，作为目标、发起方或前台都算。
@@ -64,12 +64,16 @@ internal data class ModuleSettingsSnapshot(
     val radialKeepOpen: Boolean = ModulePreferences.DEFAULT_RADIAL_KEEP_OPEN,
 ) {
 
-    /** 模块总开关 + 小窗交互总开关同时打开，才允许小窗相关 hook 介入。 */
+    /**
+     * 小窗相关 hook 的总闸：模块总开关与小窗交互开关同时打开才为真。
+     *
+     * 下面每个 xxxEffective 都是「总闸 && 该项开关」，hook 一律只读这些派生值：
+     * 所以关掉「轻量打开」等于把整页能力从系统里摘掉，而不是只把界面变灰。
+     */
     val zoomInteractionActive: Boolean
         get() = enabled && zoomInteractionEnabled
 
     val zoomAllowAnyAppEffective: Boolean get() = zoomInteractionActive && zoomAllowAnyApp
-    val zoomLaunchEffective: Boolean get() = zoomInteractionActive && zoomLaunch
     val zoomLaunchNoticeEffective: Boolean get() = zoomInteractionActive && zoomLaunchNotice
     val zoomLaunchHeadsUpEffective: Boolean get() = zoomInteractionActive && zoomLaunchHeadsUp
     val zoomLaunchControlCenterEffective: Boolean get() = zoomInteractionActive && zoomLaunchControlCenter
@@ -109,7 +113,6 @@ internal data class ModuleSettingsSnapshot(
                 zoomInteractionEnabled,
             )
             .putBoolean(ModulePreferences.KEY_ZOOM_ALLOW_ANY_APP, zoomAllowAnyApp)
-            .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH, zoomLaunch)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_NOTICE, zoomLaunchNotice)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_HEADS_UP, zoomLaunchHeadsUp)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_CONTROL_CENTER, zoomLaunchControlCenter)
@@ -291,12 +294,11 @@ internal data class ModuleSettingsSnapshot(
                     ModulePreferences.KEY_ZOOM_ALLOW_ANY_APP,
                     ModulePreferences.DEFAULT_ZOOM_ALLOW_ANY_APP,
                 ),
-                zoomLaunch = readZoomLaunch(preferences),
                 autoCloseWindow = preferences.getBoolean(
                     ModulePreferences.KEY_AUTO_CLOSE_WINDOW,
                     ModulePreferences.DEFAULT_AUTO_CLOSE_WINDOW,
                 ),
-            zoomLauncherShortcut = preferences.getBoolean(
+                zoomLauncherShortcut = preferences.getBoolean(
                     ModulePreferences.KEY_ZOOM_LAUNCHER_SHORTCUT,
                     ModulePreferences.DEFAULT_ZOOM_LAUNCHER_SHORTCUT,
                 ),
@@ -315,18 +317,5 @@ internal data class ModuleSettingsSnapshot(
             )
         }
 
-        /**
-         * 读取小窗跳转总开关。
-         *
-         * 升级前是三个分项开关，任一项为开即视为开启；由此第一次读取会把旧值合并进总开关，
-         * 之后只认新键。
-         */
-        private fun readZoomLaunch(preferences: SharedPreferences): Boolean {
-            val legacy =
-                preferences.getBoolean(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_NOTIFICATION, false) ||
-                    preferences.getBoolean(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_CONTROL_CENTER, false) ||
-                    preferences.getBoolean(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_INTER_APP, false)
-            return preferences.getBoolean(ModulePreferences.KEY_ZOOM_LAUNCH, legacy)
-        }
     }
 }
