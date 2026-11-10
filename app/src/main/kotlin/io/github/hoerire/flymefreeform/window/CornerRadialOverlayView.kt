@@ -1034,13 +1034,10 @@ internal class CornerRadialOverlayView(
         }
         exitRequestState.value = ExitRequest(pendingCommit, entryProgress.value)
         removeCallbacks(dismissFallback)
-        // 没有待启动目标 = 用户松手时没选中任何格，语义上就是「关掉」。
-        // 收场只取决于这个状态，不取决于退场动画能不能逐帧跑完：
-        // 首次呼出时 Compose 还没热，动画帧不来，靠动画回调收场就会把菜单挂在屏幕上。
-        if (pendingCommit == null) {
-            completeRadialExit()
-            return
-        }
+        // 统一走退场动画：未选中目标的「关掉」也是一次收拢，不该直接消失。
+        // 之前为躲"动画回调不来把菜单挂住"，在无目标时直接 completeRadialExit，
+        // 结果退场动画从来没播过。现在改成：动画照播，dismissFallback 只在
+        // 动画帧意外不来时兜底收场，两者不再互斥。
         if (!ValueAnimator.areAnimatorsEnabled()) {
             completeRadialExit()
         } else {

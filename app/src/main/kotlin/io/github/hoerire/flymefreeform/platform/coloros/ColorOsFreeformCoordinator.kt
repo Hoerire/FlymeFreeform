@@ -649,7 +649,9 @@ internal class ColorOsFreeformCoordinator(
             }
             is GestureAction.Commit -> {
                 val view = overlay
-                if (view != null && !view.isSettled()) {
+                // 开了「保持挂起」时不判误触：用户要的就是滑一下就把扇形留在那儿，
+                // 再按「展开动画是否跑完」去拦，会变成"要等一会儿才挂得住"。
+                if (view != null && !view.isSettled() && !lastSettings.radialKeepOpen) {
                     // 扇形还在展开中就抬手：快速上滑容易命中第一格而"秒启动"，判为误触。
                     debug("SYSTEM_GESTURE_COMMIT_TOO_EARLY")
                     view.cancelGesture()
