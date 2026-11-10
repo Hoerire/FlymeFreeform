@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.LockOpen
@@ -22,7 +21,9 @@ import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import io.github.hoerire.flymefreeform.R
 import io.github.hoerire.flymefreeform.config.ModulePreferences
@@ -69,6 +70,8 @@ internal fun ZoomOptionsScreen(
     val master = state.settings.zoomInteractionEnabled
     val sub = enabled && master
     val outsideTapModes = OutsideTapCloseMode.entries
+    // 通知横幅：屏幕 + 状态栏下方的一条横幅，自绘（Material 里没有对应图示）。
+    val headsUpIcon = ImageVector.vectorResource(R.drawable.ic_heads_up_banner)
     val outsideTapItems =
         listOf(
             DropdownItem(text = stringResource(R.string.outside_tap_mode_disabled)),
@@ -119,7 +122,7 @@ internal fun ZoomOptionsScreen(
                     title = stringResource(R.string.zoom_launch_heads_up_title),
                     summary = stringResource(R.string.zoom_launch_heads_up_summary),
                     enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.Campaign, sub) },
+                    startAction = { PreferenceIcon(headsUpIcon, sub) },
                 )
                 SwitchPreference(
                     checked = state.settings.zoomLaunchControlCenter,
