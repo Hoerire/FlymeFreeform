@@ -409,7 +409,17 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
             existingRecentPage = null
         }
         existingRecentPage = page
+        page.elevation = host.resources.displayMetrics.density * 12f
         host.addView(page, FrameLayout.LayoutParams(-1, -1))
+        page.bringToFront()
+        page.post {
+            panelLog(
+                "PANEL_RECENT_FILES_SHOWN children=" + host.childCount +
+                    " size=" + page.width + "x" + page.height +
+                    " visible=" + (page.visibility == View.VISIBLE) +
+                    " alpha=" + page.alpha,
+            )
+        }
         return true
     }
 
