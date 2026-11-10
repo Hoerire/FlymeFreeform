@@ -967,6 +967,28 @@ internal class ColorOsFreeformCoordinator(
     }
 
     /**
+     * 把窗口的可触摸区域裁成指定大小。
+     *
+     * 两个成员都是 @hide：`touchableRegion`（Region 字段）与 `setTouchableInsets(int)`。
+     * 这里取字段里已有的 Region 就地修改，而不是塞一个新对象——避免某些版本字段是 final 的。
+     * 返回是否成功，调用方负责记日志。
+     */
+    private fun applyTouchableRegion(
+        params: WindowManager.LayoutParams,
+        width: Int,
+        height: Int,
+    ): Boolean =
+        runCatching {
+            val type = WindowManager.LayoutParams::class.java
+            val regionField = type.getField("touchableRegion")
+            val region = regionField.get(params) as android.graphics.Region
+            region.set(0, 0, width, height)
+            type.getMethod("setTouchableInsets", Integer.TYPE)
+                .invoke(params, TOUCHABLE_INSETS_REGION)
+            true
+        }.getOrDefault(false)
+
+    /**
      * 底部手势区的高度（像素）。
      *
      * 保持挂起的浮层要把这一条让给系统，否则从底部上滑会被窗口吃掉（用户实测）。
@@ -1017,25 +1039,22 @@ internal class ColorOsFreeformCoordinator(
             setFitInsetsTypes(0)
             if (focusable) {
                 // 保持挂起时窗口要能点选，但整屏可触摸会把底部上滑手势一起吃掉
-                // （用户实测：扇形出来后上滑回不了桌面）。把窗口的可触摸区域裁到
-                // 手势条以上，底部那一条继续交给系统。
-                // touchableRegion / setTouchableInsets 都是 @hide，只能反射；
-                // 反射失败就退回"整屏可触摸"，不影响点选，只是底部手势仍被拦。
-                runCatching {
-                    val metrics = context.resources.displayMetrics
-                    val gestureBar = bottomGestureInsetPx(metrics)
-                    val region = android.graphics.Region()
-                    region.set(
-                        0,
-                        0,
-                        metrics.widthPixels,
-                        (metrics.heightPixels - gestureBar).coerceAtLeast(1),
+                // （实机：扇形出来后上滑回不了桌面）。把可触摸区域裁到手势条以上，
+                // 底部那一条继续交给系统。窗口本身不能缩小——view 内部按屏幕尺寸布局
+                // （begin() 用 displayMetrics 算 layout），缩小窗口会把扇形裁掉。
+                val metrics = context.resources.displayMetrics
+                val gestureBar = bottomGestureInsetPx(metrics)
+                val applied =
+                    applyTouchableRegion(
+                        params = this,
+                        width = metrics.widthPixels,
+                        height = (metrics.heightPixels - gestureBar).coerceAtLeast(1),
                     )
-                    javaClass.getField("touchableRegion").set(this, region)
-                    javaClass
-                        .getMethod("setTouchableInsets", Integer.TYPE)
-                        .invoke(this, TOUCHABLE_INSETS_REGION)
-                }
+                // 常开一行：反射是否成功必须能从日志看出来，否则又会"改了半天没生效"。
+                trace(
+                    "SYSTEM_OVERLAY_TOUCH_REGION_" + applied +
+                        "_inset" + gestureBar,
+                )
             }
             title = "FlymeFreeformCornerOverlay"
         }
