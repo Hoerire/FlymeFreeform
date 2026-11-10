@@ -37,6 +37,7 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 internal fun ZoomOptionsScreen(
     state: FrameworkConnectionState,
     onBack: () -> Unit,
+    onZoomInteractionEnabledChange: (Boolean) -> Unit,
     onZoomMaxWindowCountChange: (Int) -> Unit,
     onZoomAllowAnyAppChange: (Boolean) -> Unit,
     onZoomLaunchChange: (Boolean) -> Unit,
@@ -48,6 +49,9 @@ internal fun ZoomOptionsScreen(
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
 ) {
     val enabled = state.settingsEditable && state.settings.enabled
+    // 总开关本身只受模块总开关约束；它下面所有项还要再看它自己。
+    val master = state.settings.zoomInteractionEnabled
+    val subEnabled = enabled && master
     val outsideTapModes = OutsideTapCloseMode.entries
     val outsideTapItems =
         listOf(
@@ -61,11 +65,23 @@ internal fun ZoomOptionsScreen(
     ) {
         item(key = "options") {
             Card(modifier = Modifier.fillMaxWidth()) {
+                // 总开关「轻量打开」：默认关，关闭时下面每一项都灰掉且不介入系统。
+                // 「窗外关闭」不受它控制，所以放在它上面、独立可调。
+                SwitchPreference(
+                    checked = master,
+                    onCheckedChange = onZoomInteractionEnabledChange,
+                    title = stringResource(R.string.zoom_interaction_title),
+                    summary = stringResource(R.string.zoom_interaction_summary),
+                    // 总开关只看模块总开关，不受自己影响。
+                    enabled = enabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.TouchApp, enabled) },
+                )
                 OverlaySpinnerPreference(
                     items = outsideTapItems,
                     selectedIndex = outsideTapModes.indexOf(state.settings.outsideTapCloseMode),
                     title = stringResource(R.string.outside_tap_close_title),
                     summary = stringResource(R.string.outside_tap_close_summary),
+                    // 窗外关闭独立于「轻量打开」，不受总开关控制。
                     enabled = enabled,
                     startAction = { PreferenceIcon(Icons.Rounded.TouchApp, enabled) },
                     onSelectedIndexChange = { index ->
@@ -76,7 +92,7 @@ internal fun ZoomOptionsScreen(
                     icon = Icons.Rounded.Widgets,
                     confirmedValue = state.settings.zoomMaxWindowCount,
                     isUpdating = state.isUpdating,
-                    enabled = enabled,
+                    enabled = subEnabled,
                     title = stringResource(R.string.zoom_max_windows_title),
                     summary = stringResource(R.string.zoom_max_windows_summary),
                     minDp = ModulePreferences.MIN_ZOOM_MAX_WINDOW_COUNT,
@@ -92,7 +108,7 @@ internal fun ZoomOptionsScreen(
                     onCheckedChange = onZoomAllowAnyAppChange,
                     title = stringResource(R.string.zoom_allow_any_app_title),
                     summary = stringResource(R.string.zoom_allow_any_app_summary),
-                    enabled = enabled,
+                    enabled = subEnabled,
                     startAction = { PreferenceIcon(Icons.Rounded.LockOpen, enabled) },
                 )
                 // 小窗跳转＝把启动改成自由浮窗，图标直接用「画中画」这个通用小窗符号。
@@ -101,7 +117,7 @@ internal fun ZoomOptionsScreen(
                     onCheckedChange = onZoomLaunchChange,
                     title = stringResource(R.string.zoom_launch_title),
                     summary = stringResource(R.string.zoom_launch_summary),
-                    enabled = enabled,
+                    enabled = subEnabled,
                     startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, enabled) },
                 )
                 // 桌面上的两个入口单独可关：关掉后保持系统默认的全屏行为。
@@ -110,7 +126,7 @@ internal fun ZoomOptionsScreen(
                     onCheckedChange = onZoomLauncherShortcutChange,
                     title = stringResource(R.string.zoom_launcher_shortcut_title),
                     summary = stringResource(R.string.zoom_launcher_shortcut_summary),
-                    enabled = enabled,
+                    enabled = subEnabled,
                     startAction = { PreferenceIcon(Icons.Rounded.SwipeUp, enabled) },
                 )
                 // 窗口超过数量限制时：开 → 直接关闭旧窗口；关 → 保持系统收成贴边浮标。
@@ -119,7 +135,7 @@ internal fun ZoomOptionsScreen(
                     onCheckedChange = onAutoCloseWindowChange,
                     title = stringResource(R.string.auto_close_window_title),
                     summary = stringResource(R.string.auto_close_window_summary),
-                    enabled = enabled,
+                    enabled = subEnabled,
                     startAction = { PreferenceIcon(Icons.Rounded.CropFree, enabled) },
                 )
                 SwitchPreference(
@@ -127,7 +143,7 @@ internal fun ZoomOptionsScreen(
                     onCheckedChange = onZoomLauncherCardChange,
                     title = stringResource(R.string.zoom_launcher_card_title),
                     summary = stringResource(R.string.zoom_launcher_card_summary),
-                    enabled = enabled,
+                    enabled = subEnabled,
                     startAction = { PreferenceIcon(Icons.Rounded.Widgets, enabled) },
                 )
                 SwitchPreference(
@@ -135,7 +151,7 @@ internal fun ZoomOptionsScreen(
                     onCheckedChange = onHandleSwipeUpToMiniEnabledChange,
                     title = stringResource(R.string.handle_swipe_up_to_mini_title),
                     summary = stringResource(R.string.handle_swipe_up_to_mini_summary),
-                    enabled = enabled,
+                    enabled = subEnabled,
                     startAction = { PreferenceIcon(Icons.Rounded.SwipeUp, enabled) },
                 )
                 // 禁用浮窗＝列表内应用不以任何形式的自由浮窗打开，图标用「四角括号」画全屏边界。
@@ -143,7 +159,7 @@ internal fun ZoomOptionsScreen(
                     title = stringResource(R.string.zoom_excluded_title),
                     summary = stringResource(R.string.zoom_excluded_summary),
                     onClick = onNavigateToZoomExcluded,
-                    enabled = enabled,
+                    enabled = subEnabled,
                     startAction = { PreferenceIcon(Icons.Rounded.CropFree, enabled) },
                 )
             }
