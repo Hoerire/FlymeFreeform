@@ -17,7 +17,6 @@ import io.github.hoerire.flymefreeform.config.OutsideTapCloseMode
 import io.github.hoerire.flymefreeform.gesture.OutsideTapGestureEngine
 import io.github.hoerire.flymefreeform.logic.CloseDecision
 import io.github.hoerire.flymefreeform.logic.ClosePolicy
-import io.github.hoerire.flymefreeform.logic.LauncherLaunchMarker
 import io.github.hoerire.flymefreeform.platform.coloros.ColorOsDisplayContentImeAccess
 import io.github.hoerire.flymefreeform.platform.coloros.ColorOsTaskImeBoundsAccess
 import java.lang.reflect.Field
@@ -251,48 +250,22 @@ internal class OutsideTapCloseHookInstaller(
                 }
                 if (isFloatExit && configuration.snapshot.autoCloseWindow) {
                     val frames = Throwable().stackTrace
-                    // 系统的「谁该退出」判定有两条入口：超出数量上限（updateTaskMaxNum* /
-                    // handleFlexibleExChange）与统一裁决（determineFlexibleTaskToExit /
-                    // setLastFlexibleTaskToExit*）。冷启动新窗口走的是后者——
-                    // 实测 23:30:00 那次只出现 determineFlexibleTaskToExit:2376，
-                    // 早先只认前者，于是判据不成立、原样放行，旧窗被收成浮标。
-                    val fromLimit = frames.any { frame ->
+                    // 只认"新的小窗正在加入"这一个条件：新增小窗必经 addFlexibleTask(Task)；
+                    // 超出数量上限另走 updateTaskMaxNum*。迷你窗的变形、桌面点开全屏应用、
+                    // 分享中转页退场都不会经过这两条，因此一律保持系统原策略。
+                    val newWindowJoining = frames.any { it.methodName.contains("addFlexibleTask") }
+                    val overLimit = frames.any { frame ->
                         val name = frame.methodName
-                        name.contains("updateTaskMaxNum") ||
-                            name.contains("handleFlexibleExChange") ||
-                            name.contains("determineFlexibleTaskToExit") ||
-                            name.contains("setLastFlexibleTaskToExit")
+                        name.contains("updateTaskMaxNum") || name.contains("handleFlexibleExChange")
                     }
-                    // 不再判断"这次退出是不是启动引起的"：入口太多（扇形、更多面板、桌面、
-                    // 通知、应用内跳转），而用户的规则只有一条——不允许窗口被收成贴边浮标。
-                    // 判据只看这次退出是不是系统自己的"该谁退出"裁决（determine*/updateTaskMaxNum*），
-                    // 用户拖到边缘走的拖拽入口不经过这里。
-                    // ① 桌面点开的应用一定是全屏（其他入口都被我们以小窗打开），旁边的迷你窗是被系统
-                    //    顺带判成退场的，不能跟着关闭；
-                    // ② 划成迷你窗时系统只是把窗口转成小形态继续存活，策略里的 mNeedExitTask 为 false，
-                    //    此时替换成关闭等于直接杀掉它（QQ 里扇形开抖音再划成迷你窗即复现）。
-                    val needExitTask = strategy?.let { current ->
-                        runCatching {
-                            fieldInHierarchy(current.javaClass, "mNeedExitTask")?.get(current) as? Boolean
-                        }.getOrNull()
-                    }
-                    module.log(
-                        Log.DEBUG,
-                        TAG,
-                        "ZOOM_EXIT_NEED_TASK_" + (when (needExitTask) { true -> "1"; false -> "0"; null -> "-" }),
-                        null,
+                    val fromLimit = newWindowJoining || overLimit
+                    // 判据收窄到"新小窗加入 / 超出上限"两件事；其余形态（迷你窗变形、全屏应用启动、
+                    // 分享中转页退场）原样交给系统，不替换成关闭。
+                    val decision = ClosePolicy.decide(
+                        autoCloseEnabled = true,
+                        isFloatExitStrategy = isFloatExit,
+                        fromSystemVerdict = fromLimit,
                     )
-                    logExitStates(strategy)
-                    val miniScene = LauncherLaunchMarker.recentlyLaunched() || needExitTask == false
-                    val decision = if (miniScene) {
-                        CloseDecision.KeepOriginal
-                    } else {
-                        ClosePolicy.decide(
-                            autoCloseEnabled = true,
-                            isFloatExitStrategy = isFloatExit,
-                            fromSystemVerdict = fromLimit,
-                        )
-                    }
                     // 常驻诊断：每次"要收浮标"的退出都留一行，便于确认是否被接管。
                     module.log(
                         Log.DEBUG,
@@ -336,38 +309,6 @@ internal class OutsideTapCloseHookInstaller(
      */
 
 
-
-    /**
-     * 诊断：退出策略对应的任务在 0..4 各柔性状态下的判定结果。
-     *
-     * FlexibleTaskController.isTaskInFlexibleState(Task, int) 是厂商自己的状态接口（普通小窗为 1），
-     * 迷你窗对应的码没有公开常量，用这条日志一次复现即可确定。只读，不改变任何行为。
-     */
-    private fun logExitStates(strategy: Any?) {
-        strategy ?: return
-        val task = runCatching {
-            fieldInHierarchy(strategy.javaClass, "mTask")?.get(strategy)
-        }.getOrNull() ?: return
-        val controller = runCatching {
-            fieldInHierarchy(strategy.javaClass, "mController")?.get(strategy)
-        }.getOrNull() ?: return
-        val method = runCatching {
-            var type: Class<*>? = controller.javaClass
-            var found: java.lang.reflect.Method? = null
-            while (type != null && found == null) {
-                found = type.declaredMethods.firstOrNull {
-                    it.name == "isTaskInFlexibleState" && it.parameterTypes.size == 2
-                }
-                type = type.superclass
-            }
-            found?.apply { isAccessible = true }
-        }.getOrNull() ?: return
-        val states = (0..4).joinToString("") { state ->
-            val hit = runCatching { method.invoke(controller, task, state) as? Boolean }.getOrNull()
-            when (hit) { true -> "1"; false -> "0"; null -> "-" }
-        }
-        module.log(Log.DEBUG, TAG, "ZOOM_TASK_STATES_" + states, null)
-    }
 
     private fun hideClosingSurface(task: Any) {
         try {
