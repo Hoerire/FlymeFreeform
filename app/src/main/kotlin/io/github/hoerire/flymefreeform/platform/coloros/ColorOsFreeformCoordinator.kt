@@ -252,7 +252,7 @@ internal class ColorOsFreeformCoordinator(
                 context = context,
                 onEvent = { event ->
                     enqueuePointerEvent(event, generation)
-                    shouldPilferCorner(event)
+                    shouldStartPilfer(event)
                 },
                 logger = logger,
             )
@@ -407,30 +407,53 @@ internal class ColorOsFreeformCoordinator(
             else -> false
         }
 
-    /**
-     * 角区按下当帧决定是否 pilfer。
-     *
-     * 只有"单指、落在角区、功能开启、环境允许"才抢流；其余一律放行，让系统照常处理上滑。
-     * 这条判定和 [handlePointerEvent] 用的是同一套参数，避免两处不一致。
-     */
-    private fun shouldPilferCorner(event: MotionEvent): Boolean {
-        if (event.actionMasked != MotionEvent.ACTION_DOWN) return false
-        if (event.pointerCount != 1) return false
-        if (event.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER) return false
-        val settings = lastSettings
-        if (!settings.enabled) return false
-        if (!environmentState.isGestureAllowed()) return false
-        val metrics = context.resources.displayMetrics
-        return CornerTriggerRegion.detectSide(
-            x = event.rawX,
-            y = event.rawY,
-            displayWidth = metrics.widthPixels.toFloat(),
-            displayHeight = metrics.heightPixels.toFloat(),
-            radius = CornerTriggerRegion.radiusPx(settings.cornerTriggerRangeDp, metrics.density),
-            leftEnabled = settings.leftCornerEnabled,
-            rightEnabled = settings.rightCornerEnabled,
-        ) != null
-    }
+    // 与 UI 引擎分开的一份判定实例：只在 monitor 线程同步跑，专门回答"这一帧能不能抢流"。
+    // 抢流不可逆，所以必须等引擎确认这是角落斜推（Activate）再抢，不能让普通点击陪葬。
+    private val pilferEngine = CornerGestureEngine()
+    private var pilferConfig: CornerGestureConfig? = null
+
+    private fun shouldStartPilfer(event: MotionEvent): Boolean =
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                pilferEngine.cancel()
+                pilferConfig = null
+                val settings = lastSettings
+                if (!settings.enabled || !environmentState.isGestureAllowed()) {
+                    false
+                } else {
+                    val metrics = context.resources.displayMetrics
+                    val config =
+                        AdaptiveCornerGestureConfig.create(
+                            displayWidth = metrics.widthPixels.toFloat(),
+                            displayHeight = metrics.heightPixels.toFloat(),
+                            touchSlop = touchSlop,
+                            density = metrics.density,
+                            triggerRangeDp = settings.cornerTriggerRangeDp,
+                            leftEnabled = settings.leftCornerEnabled,
+                            rightEnabled = settings.rightCornerEnabled,
+                        )
+                    pilferConfig = config
+                    pilferEngine.down(event.getPointerId(0), event.x, event.y, config)
+                    false
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val config = pilferConfig ?: return false
+                val index = event.findPointerIndex(event.getPointerId(0)).coerceAtLeast(0)
+                pilferEngine.move(
+                    event.getPointerId(index),
+                    event.pointerCount,
+                    event.getX(index),
+                    event.getY(index),
+                    config,
+                ) is GestureAction.Activate
+            }
+            else -> {
+                pilferEngine.cancel()
+                pilferConfig = null
+                false
+            }
+        }
 
     private fun handlePointerEvent(event: MotionEvent) {
         val settings = lastSettings
