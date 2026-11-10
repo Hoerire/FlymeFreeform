@@ -24,7 +24,6 @@ import io.github.hoerire.flymefreeform.gesture.CornerSide
 import io.github.hoerire.flymefreeform.gesture.CornerTriggerRegion
 import io.github.hoerire.flymefreeform.gesture.GestureAction
 import io.github.hoerire.flymefreeform.gesture.GesturePhase
-import io.github.hoerire.flymefreeform.log.ModuleLog
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 
@@ -45,6 +44,23 @@ internal class SystemUiCornerInputMonitor(
     private val environmentState = ModuleEnvironmentState(configuration) { code, exception ->
         module.log(Log.WARN, TAG, code, exception)
     }
+    private val inputFeaturesField: Field =
+        WindowManager.LayoutParams::class.java.getField("inputFeatures").apply {
+            isAccessible = true
+        }
+    private val setTrustedOverlayMethod: Method =
+        WindowManager.LayoutParams::class.java.getMethod("setTrustedOverlay").apply {
+            isAccessible = true
+        }
+    private val getViewRootImplMethod: Method =
+        View::class.java.getDeclaredMethod("getViewRootImpl").apply {
+            isAccessible = true
+        }
+    private val pilferPointersMethod: Method =
+        InputManager::class.java.getDeclaredMethod("pilferPointers", IBinder::class.java).apply {
+            isAccessible = true
+        }
+    private val bindings = linkedMapOf<CornerSide, CornerBinding>()
 
     private var settings = ModuleSettingsSnapshot(enabled = false)
     private var pendingSettings: ModuleSettingsSnapshot? = null
@@ -121,23 +137,6 @@ internal class SystemUiCornerInputMonitor(
                 pilfer = ::pilfer,
                 onStreamFinished = ::finishStream,
             )
-        // 让出手势区：把这块区域声明为系统手势排除区，系统就不会把这里的滑动
-        // 当成上滑/返回处理。ColorOS 17 上应用层抢不到指针流，这条是系统主动配合的机制。
-        view.addOnAttachStateChangeListener(
-            object : android.view.View.OnAttachStateChangeListener {
-                override fun onViewAttachedToWindow(attached: android.view.View) {
-                    runCatching {
-                        attached.systemGestureExclusionRects =
-                            listOf(android.graphics.Rect(0, 0, attached.width, attached.height))
-                    }.onFailure {
-                        module.log(Log.WARN, TAG, "SYSTEMUI_GESTURE_EXCLUSION_FAILED", it)
-                    }
-                    module.log(Log.INFO, TAG, "SYSTEMUI_GESTURE_EXCLUSION_SET_" + side.name, null)
-                }
-
-                override fun onViewDetachedFromWindow(detached: android.view.View) = Unit
-            },
-        )
         try {
             windowManager.addView(view, createLayoutParams(side, size))
             bindings[side] = CornerBinding(view, size)
@@ -217,9 +216,7 @@ internal class SystemUiCornerInputMonitor(
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
             setFitInsetsTypes(0)
             setTrustedOverlayMethod.invoke(this)
-            // 不设 INPUT_FEATURE_SPY：SPY 窗口"只看不吃"，系统的手势链会收到同一批事件，
-            // 只能靠 pilfer 去抢（ColorOS 17 上抢不过）。去掉后触摸由本窗口消费，
-            // 系统那条 swipe-up 收不到 DOWN，就不会拉起多任务。
+            // 不设 INPUT_FEATURE_SPY：SPY 只旁观不消费，系统手势链会收到同一批事件。
         }
 
     private fun ensureMainThread() {
@@ -324,7 +321,8 @@ internal class SystemUiCornerInputMonitor(
                             } else {
                                 gestureEngine.cancel()
                             }
-                        if (!pilferAttempted && action is GestureAction.Activate) {
+                        // 窗口已实际消费触摸，不再 pilfer 抢流（旧逻辑保留但默认不触发）。
+                        if (false && !pilferAttempted && action is GestureAction.Activate) {
                             pilferAttempted = true
                             pilfer(this)
                         }
@@ -360,6 +358,7 @@ internal class SystemUiCornerInputMonitor(
 
     private companion object {
         const val TAG = "FlymeFreeform"
+        const val INPUT_FEATURE_SPY = 1 shl 2
         const val CORNER_GESTURE_WINDOW_TYPE = 2024
         const val CORNER_INPUT_CHANNEL_TITLE = "FlymeFreeform-corner-input"
         const val PILFER_FAILURE_LOG_INTERVAL_MS = 10_000L
