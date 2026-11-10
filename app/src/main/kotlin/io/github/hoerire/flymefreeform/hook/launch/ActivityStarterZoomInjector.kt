@@ -118,7 +118,7 @@ internal class ActivityStarterZoomInjector(
             return false
         }
         // 闸门 3：禁用浮窗内的应用在前台时，抢占同样不做。
-        if (environment?.isForegroundZoomExcluded() == true && settings.zoomLaunch) {
+        if (environment?.isForegroundZoomExcluded() == true && settings.zoomLaunchEffective) {
             ModuleLog.debug(TAG) { "ZOOM_SKIP_ZOOM_EXCLUDED_PREEMPT_" + stage }
             return false
         }
@@ -193,18 +193,18 @@ internal class ActivityStarterZoomInjector(
                 // （adjustOptionsForFlexibleTask reason:9），窗口创建不出来，表现为点击无反应。
                 // 只能改走系统 zoom 入口重发；重发失败会返回 false，原启动照常进行，退化为全屏。
                 pendingDispatchOwner(callingPackage, realCallingUid, requestRealUid) != null &&
-                    settings.zoomLaunch && target !in SKIP_TARGETS -> true
+                    settings.zoomLaunchEffective && target !in SKIP_TARGETS -> true
                 // 目标应用自己用中转页（Via 的 .Trampoline 就属这类）二次发起同一目标的 VIEW：
                 // 第一次注入的 options 会在第二次启动时被 adjustOptionsForFlexibleTask 以 reason:9 拒绝，
                 // 结果退化成全屏。判据是「目标自己发起 + 目标与前一次注入相同 + 3 秒内」。
-                settings.zoomLaunch && target !in SKIP_TARGETS && trampolineRelay -> true
+                settings.zoomLaunchEffective && target !in SKIP_TARGETS && trampolineRelay -> true
                 // 通知与横幅由 SystemUI 处理：该进程把 isSupportZoonByIntent 判定为 true 后，
                 // 会先播 hideBanner 收起动画再以小窗启动，此处不参与。
                 pendingIntent != null -> false
                 // 控制中心磁贴的长按入口与通知点击一样，需要系统 zoom 启动才带过渡动画；
                 // 该路径允许打开系统设置页，仅排除系统界面自身。
                 fromSystemUi ->
-                    settings.zoomLaunch && target !in SKIP_TARGETS_FOR_TILES
+                    settings.zoomLaunchEffective && target !in SKIP_TARGETS_FOR_TILES
                 else -> false
             }
         ModuleLog.debug(TAG) { "ZOOM_DECISION_" + stage +
@@ -474,7 +474,7 @@ internal class ActivityStarterZoomInjector(
                 }
         }
         // 「小窗跳转」是其余启动入口的改写开关：关闭时全部回到系统默认的全屏行为。
-        if (!configuration.snapshot.zoomLaunch) {
+        if (!configuration.snapshot.zoomLaunchEffective) {
             ModuleLog.debug(TAG) { "ZOOM_SKIP_SWITCH_OFF" }
             return null
         }
@@ -678,7 +678,7 @@ internal class ActivityStarterZoomInjector(
             intent.action != Intent.ACTION_MAIN &&
             target !in LAUNCHER_CARD_SKIP
         ) {
-            if (!configuration.snapshot.zoomLauncherCard) {
+            if (!configuration.snapshot.zoomLauncherCardEffective) {
                 ModuleLog.debug(TAG) { "ZOOM_SKIP_LAUNCHER_CARD_DISABLED_" + target }
                 return SUPPRESSED_LAUNCHER_ORIGIN
             }
@@ -704,7 +704,7 @@ internal class ActivityStarterZoomInjector(
                 launcherUid > 0 &&
                 (realCallingUid == launcherUid || requestRealUid == launcherUid)
         if (fromShortcut && !hasResultTo && target !in SKIP_TARGETS) {
-            if (!configuration.snapshot.zoomLauncherShortcut) {
+            if (!configuration.snapshot.zoomLauncherShortcutEffective) {
                 ModuleLog.debug(TAG) { "ZOOM_SKIP_LAUNCHER_SHORTCUT_DISABLED_" + target }
                 return SUPPRESSED_LAUNCHER_ORIGIN
             }
