@@ -37,21 +37,9 @@ internal class ModuleEnvironmentState(
     @Volatile private var keyguardLocked = true
     @Volatile private var foregroundPackage: String? = null
 
-    /** 当前前台 Activity 的类名，用于识别多任务 / 最近任务界面。 */
+    /** 当前前台 Activity 的类名，用于识别负一屏等系统页面。 */
     @Volatile private var foregroundActivity: String? = null
 
-    /** 桌面是否处于多任务 / 负一屏（由桌面进程上报）。 */
-    @Volatile private var launcherSystemPage = false
-
-    fun updateLauncherSystemPage(blocked: Boolean) {
-        launcherSystemPage = blocked
-    }
-
-    /** 供 system_server 直接读取共享状态（按下瞬间调用，无广播延迟）。 */
-    @Volatile var launcherPageReader: (() -> Boolean)? = null
-
-    private var launcherPageCheckedAt = 0L
-    private var launcherPageCached = false
     @Volatile private var keyguardRecheckNeeded = true
     private var lastObservation: Observation? = null
     private var lastFailureAt = -10_000L
@@ -163,27 +151,10 @@ internal class ModuleEnvironmentState(
         }
     }
 
-    /**
-     * 是否处于"桌面系统页面"。
-     *
-     * 读的是桌面写入的共享值；带 200 ms 缓存——手势每次按下都会问一次，
-     * 直接跨进程读 Settings 会在输入路径上产生固定开销，而状态不会在这个尺度内翻来覆去。
-     */
-    private val LAUNCHER_PAGE_CACHE_MS = 200L
-
-    private fun launcherPageBlocked(): Boolean {
-        val reader = launcherPageReader ?: return launcherSystemPage
-        val now = android.os.SystemClock.uptimeMillis()
-        if (now - launcherPageCheckedAt < LAUNCHER_PAGE_CACHE_MS) return launcherPageCached
-        launcherPageCheckedAt = now
-        launcherPageCached = runCatching { reader() }.getOrDefault(launcherSystemPage)
-        return launcherPageCached
-    }
-
     fun isGestureAllowed(refreshKeyguard: Boolean = false): Boolean {
         if (refreshKeyguard && keyguardRecheckNeeded) refreshKeyguardState()
-        // 多任务等系统页面不响应呼出手势。
-        if (launcherPageBlocked() || isSystemPanelForeground()) return false
+        // 负一屏、最近任务等系统页面不响应呼出手势。
+        if (isSystemPanelForeground()) return false
         return isModuleAllowed() && gestureNavigation && !keyguardLocked
     }
 

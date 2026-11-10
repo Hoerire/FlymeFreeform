@@ -124,23 +124,6 @@ internal class LauncherHookInstaller(
                         chain.proceed()
                     }
                 }
-            // 独立安装：桌面状态上报完全独立于手势 hook，拿实例靠 Launcher.onResume。
-            runCatching {
-                val launcherClass = target.inputMethod.declaringClass.classLoader
-                    .loadClass("com.android.launcher3.Launcher")
-                module.hook(launcherClass.getMethod("onResume"))
-                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.launcher.page_reporter")
-                    .intercept { chain ->
-                        val result = chain.proceed()
-                        (chain.thisObject as? Context)?.let { instance ->
-                            installPageReporter(instance)
-                            reportPageState(instance)
-                        }
-                        result
-                    }
-                module.log(Log.INFO, TAG, "LAUNCHER_PAGE_RESUME_HOOK_INSTALLED", null)
-            }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_RESUME_HOOK_FAILED", it) }
             module.log(Log.INFO, TAG, "LAUNCHER_CORNER_INPUT_HOOK_INSTALLED")
         } catch (exception: IllegalArgumentException) {
             module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_HOOK_REJECTED", exception)
@@ -149,125 +132,7 @@ internal class LauncherHookInstaller(
         }
     }
 
-    /**
-     * 桌面是否处于系统页面（多任务 / 负一屏）。
-     *
-     * 这两者在 ColorOS 上都不是独立 Activity，而是桌面内部的页面状态，
-     * 只能从桌面进程里读：多任务对应 LauncherState.OVERVIEW，
-     * 负一屏对应 Workspace 的负页码。命中时我们完全不接管手势，交回桌面自己处理。
-     */
-    private val pageReporterStarted = AtomicBoolean(false)
-
-    /** 供上滑 hook 使用：注册时缓存的 Launcher 实例。 */
-    @Volatile private var launcherRef: Context? = null
-
-    /** 注册桌面状态监听，并在状态变化时把"是否系统页面"上报给 system_server。 */
-    /** 从当前 Context 解析出真正的 Launcher 实例（手势入口的 owner 是 TouchInteractionService）。 */
-    private fun resolveLauncher(context: Context): Context? {
-        if (context.javaClass.name.endsWith("Launcher")) return context
-        return runCatching {
-            val launcherClass = context.javaClass.classLoader
-                .loadClass("com.android.launcher3.Launcher")
-            launcherClass.getMethod("getLauncher", Context::class.java)
-                .invoke(null, context) as? Context
-        }.getOrNull()
-    }
-
-    private fun installPageReporter(owner: Context) {
-        // 只接受真正的 Launcher 实例：手势入口传进来的是 TouchInteractionService，
-        // 在它上面调用 getStateManager 会抛异常，并把这个一次性开关浪费掉。
-        val launcher = resolveLauncher(owner)
-        if (launcher == null) {
-            module.log(Log.DEBUG, TAG, "LAUNCHER_PAGE_NO_INSTANCE_" + owner.javaClass.simpleName, null)
-            return
-        }
-        if (!pageReporterStarted.compareAndSet(false, true)) return
-        launcherRef = launcher
-        runCatching {
-            val stateManager = launcher.javaClass.getMethod("getStateManager").invoke(launcher)
-            val listenerClass = launcher.javaClass.classLoader.loadClass(
-                "com.android.launcher3.statemanager.StateManager\$StateListener",
-            )
-            val proxy = java.lang.reflect.Proxy.newProxyInstance(
-                listenerClass.classLoader,
-                arrayOf(listenerClass),
-            ) { _, method, _ ->
-                if (method.name.startsWith("onState")) reportPageState(launcher)
-                null
-            }
-            stateManager?.javaClass
-                ?.getMethod("addStateListener", listenerClass)
-                ?.invoke(stateManager, proxy)
-            // 负一屏是桌面的一个翻页，不触发状态切换，这里单独跟一下页码变化。
-            runCatching {
-                val pagedView = launcher.javaClass.classLoader.loadClass("com.android.launcher3.PagedView")
-                val setCurrentPage =
-                    pagedView.getMethod("setCurrentPage", Int::class.javaPrimitiveType)
-                module.hook(setCurrentPage)
-                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.launcher.page_state")
-                    .intercept { chain ->
-                        val result = chain.proceed()
-                        reportPageState(launcher)
-                        result
-                    }
-            }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_HOOK_FAILED", it) }
-            module.log(Log.INFO, TAG, "LAUNCHER_PAGE_REPORTER_INSTALLED", null)
-        }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_REPORTER_FAILED", it) }
-        reportPageState(launcher)
-    }
-
-    private fun reportPageState(launcher: Context) {
-        val blocked = isLauncherSystemPage(launcher)
-        // 直接写系统设置：system_server 在按下瞬间读它，避免广播排队造成的几十毫秒误差。
-        runCatching {
-            android.provider.Settings.System.putInt(
-                launcher.contentResolver,
-                io.github.hoerire.flymefreeform.config.ModulePreferences.KEY_LAUNCHER_PAGE_BLOCKED,
-                if (blocked) 1 else 0,
-            )
-        }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_SETTINGS_WRITE_FAILED", it) }
-        runCatching {
-            launcher.sendBroadcast(
-                android.content.Intent(
-                    io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_LAUNCHER_PAGE_STATE,
-                ).putExtra(
-                    io.github.hoerire.flymefreeform.config.ModulePreferences.EXTRA_LAUNCHER_BLOCKED,
-                    blocked,
-                ),
-            )
-            ModuleLog.debug(TAG) { "LAUNCHER_PAGE_REPORT_" + blocked }
-        }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_PAGE_REPORT_FAILED", it) }
-    }
-
-    /** 沿继承链找方法：桌面类层级较深，直接 getMethod 容易漏。 */
-    private fun findMethod(start: Class<*>, name: String, count: Int): java.lang.reflect.Method? {
-        var type: Class<*>? = start
-        while (type != null) {
-            type.declaredMethods.firstOrNull { it.name == name && it.parameterTypes.size == count }
-                ?.let { it.isAccessible = true; return it }
-            type = type.superclass
-        }
-        return null
-    }
-
-    private fun isLauncherSystemPage(launcher: Context): Boolean =
-        runCatching {
-            val stateManager = launcher.javaClass.getMethod("getStateManager").invoke(launcher)
-            val state = stateManager?.javaClass?.getMethod("getState")?.invoke(stateManager)
-            // 用状态名判断，而不是实例相等：多任务还可能是 OVERVIEW_MODAL_TASK 等状态。
-            val stateName = runCatching { state?.toString().orEmpty() }.getOrDefault("")
-            if (stateName.contains("OVERVIEW", ignoreCase = true)) return true
-            // 负一屏：桌面自带 isAssistantScreenVisible()，比"负页码"可靠。
-            // （实测负一屏是 com.coloros.assistantscreen 的独立窗口，不占 Workspace 页。）
-            findMethod(launcher.javaClass, "isAssistantScreenVisible", 0)
-                ?.invoke(launcher) as? Boolean == true
-        }.getOrDefault(false)
-
     private fun shouldSuppress(owner: Context, event: MotionEvent): Boolean {
-        // 多任务界面与负一屏不响应扇形手势；同时把状态上报给 system_server（手势判定在那里）。
-        // 这里只做判定，注册交给 Launcher.onResume。
-        resolveLauncher(owner)?.let { if (isLauncherSystemPage(it)) return false }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             resetStream()
             val config = createEligibleConfig(owner, event) ?: return false
