@@ -386,11 +386,10 @@ internal class SystemUiCornerInputMonitor(
             val ok = runCatching { injectTap(down) && injectTap(up) }.getOrDefault(false)
             down.recycle()
             up.recycle()
-            module.log(
+            Log.println(
                 if (ok) Log.INFO else Log.WARN,
-                TAG,
+                "FlymeFreeform",
                 if (ok) "SYSTEMUI_CORNER_TAP_REPLAYED" else "SYSTEMUI_CORNER_TAP_REPLAY_FAILED",
-                null,
             )
         }
 
