@@ -266,11 +266,18 @@ internal class OutsideTapCloseHookInstaller(
                     // 通知、应用内跳转），而用户的规则只有一条——不允许窗口被收成贴边浮标。
                     // 判据只看这次退出是不是系统自己的"该谁退出"裁决（determine*/updateTaskMaxNum*），
                     // 用户拖到边缘走的拖拽入口不经过这里。
-                    val decision = ClosePolicy.decide(
-                        autoCloseEnabled = true,
-                        isFloatExitStrategy = isFloatExit,
-                        fromSystemVerdict = fromLimit,
-                    )
+                    // 迷你窗是"与其他应用共存"的形态：桌面点开全屏应用时系统会把它转成浮窗保持可见，
+                    // 我们若在这里替换成关闭，就等于把迷你窗收掉，无法边聊天边看视频（实测关掉自动收窗即恢复）。
+                    val miniScene = inMiniWindowScene()
+                    val decision = if (miniScene) {
+                        CloseDecision.KeepOriginal
+                    } else {
+                        ClosePolicy.decide(
+                            autoCloseEnabled = true,
+                            isFloatExitStrategy = isFloatExit,
+                            fromSystemVerdict = fromLimit,
+                        )
+                    }
                     // 常驻诊断：每次"要收浮标"的退出都留一行，便于确认是否被接管。
                     module.log(
                         Log.DEBUG,
@@ -312,6 +319,27 @@ internal class OutsideTapCloseHookInstaller(
      * 只在「超限替换」分支调用；点窗外、标题栏按钮、拖边缘等独立关闭不经过这里，
      * 退场动画与原厂一致。
      */
+
+    /**
+     * 是否处于迷你窗多窗口场景。
+     *
+     * ColorOS 把这个状态放在 HansSceneManager 上；取不到时按"不是迷你窗"处理，
+     * 保持原有收窗行为，不让判定因反射失败而整体失效。
+     */
+    private fun inMiniWindowScene(): Boolean {
+        val cls = hansSceneClass ?: runCatching {
+            Class.forName("com.android.server.hans.scene.HansSceneManager", false, javaClass.classLoader)
+        }.getOrNull()?.also { hansSceneClass = it }
+        cls ?: return false
+        val entered = runCatching {
+            val instance = cls.getMethod("getInstance").invoke(null)
+            cls.getMethod("isMiniMultiWindowSceneEntered").invoke(instance) as? Boolean
+        }.getOrNull()
+        return entered == true
+    }
+
+    @Volatile private var hansSceneClass: Class<*>? = null
+
     private fun hideClosingSurface(task: Any) {
         try {
             val surface = task.javaClass.getMethod("getSurfaceControl").invoke(task)
