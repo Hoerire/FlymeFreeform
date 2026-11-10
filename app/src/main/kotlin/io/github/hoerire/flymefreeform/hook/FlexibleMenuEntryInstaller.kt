@@ -1,6 +1,7 @@
 package io.github.hoerire.flymefreeform.hook
 
 import android.util.Log
+import io.github.hoerire.flymefreeform.config.ModulePreferences
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 
@@ -102,6 +103,21 @@ internal class FlexibleMenuEntryInstaller(
                 val position = chain.args.getOrNull(3) as? Int ?: -1
                 if (entryIndex >= 0 && position == entryIndex) {
                     module.log(Log.INFO, TAG, "FLEXIBLE_MENU_ENTRY_CLICKED", null)
+                    val manager = chain.args.getOrNull(0)
+                    // 先收起菜单，再请 system_server 画扇形（菜单是 SystemUI 的弹窗，留着会挡住扇形）。
+                    runCatching {
+                        manager?.javaClass
+                            ?.getMethod("dismissPopupWindowMenu")
+                            ?.invoke(manager)
+                    }
+                    runCatching {
+                        val context = (manager?.javaClass?.getMethod("getDisplayContext")?.invoke(manager)
+                            as? android.content.Context)
+                        val intent = android.content.Intent(ModulePreferences.ACTION_SHOW_RADIAL)
+                        intent.setPackage("android")
+                        context?.sendBroadcast(intent)
+                        module.log(Log.INFO, TAG, "FLEXIBLE_MENU_ENTRY_BROADCAST", null)
+                    }.onFailure { module.log(Log.WARN, TAG, "FLEXIBLE_MENU_ENTRY_BROADCAST_FAILED", it) }
                     null
                 } else {
                     chain.proceed()
