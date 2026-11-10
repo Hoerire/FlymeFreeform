@@ -56,9 +56,6 @@ internal class SystemUiHookInstaller(
             val monitor = SystemUiCornerInputMonitor(context, module, configuration)
             inputMonitor = monitor
             monitor.start()
-            // 底部手柄入口：在 SystemUI 里吞掉落在触发区内的触摸（17 上桌面那个入口已被删除）。
-            NavigationHandleSuppressor(module, configuration, context)
-                .install(context.classLoader)
             module.log(Log.INFO, TAG, "SYSTEMUI_CORNER_SPY_READY")
         } catch (exception: ReflectiveOperationException) {
             module.log(Log.WARN, TAG, "SYSTEMUI_CORNER_SPY_API_UNAVAILABLE", exception)
