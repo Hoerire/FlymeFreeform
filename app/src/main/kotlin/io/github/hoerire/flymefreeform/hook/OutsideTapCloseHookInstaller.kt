@@ -295,12 +295,13 @@ internal class OutsideTapCloseHookInstaller(
                             module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_DELAYED", null)
                             val previous = pendingClose
                             if (previous != null) mainHandler.removeCallbacks(previous)
-                            pendingClose = Runnable {
+                            val closeAction = Runnable {
                                 module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE", null)
                                 runCatching { innerLocked.invoke(controller, back) }
                                 hideClosingSurface(task)
                             }
-                            mainHandler.postDelayed(pendingClose, CLOSE_DELAY_MS)
+                            pendingClose = closeAction
+                            mainHandler.postDelayed(closeAction, CLOSE_DELAY_MS)
                             return@intercept chain.proceed()
                         }
                     }
