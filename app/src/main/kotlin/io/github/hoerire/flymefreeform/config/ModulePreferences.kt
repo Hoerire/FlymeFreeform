@@ -84,8 +84,8 @@ internal object ModulePreferences {
     const val DEFAULT_RADIAL_ICON_SIZE_DP = 44
     const val MIN_RADIAL_ICON_SIZE_DP = 32
     const val MAX_RADIAL_ICON_SIZE_DP = 56
-    val DEFAULT_OUTSIDE_TAP_CLOSE_MODE = OutsideTapCloseMode.SingleTap
-    const val DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED = true
+    val DEFAULT_OUTSIDE_TAP_CLOSE_MODE = OutsideTapCloseMode.Disabled
+    const val DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED = false
     const val DEFAULT_PAUSE_IN_LANDSCAPE = true
     const val DEFAULT_PAUSE_IN_GAME_MODE = true
     const val DEFAULT_VERBOSE_LOG = false
@@ -96,8 +96,8 @@ internal object ModulePreferences {
     const val DEFAULT_ZOOM_INTERACTION_ENABLED = false
     const val DEFAULT_ZOOM_LAUNCH = false
     /** 两个桌面入口默认跟随主开关，保持既有行为。 */
-    const val DEFAULT_ZOOM_LAUNCHER_SHORTCUT = true
-    const val DEFAULT_ZOOM_LAUNCHER_CARD = true
+    const val DEFAULT_ZOOM_LAUNCHER_SHORTCUT = false
+    const val DEFAULT_ZOOM_LAUNCHER_CARD = false
     const val DEFAULT_SHOW_SYSTEM_APPS = false
     const val DEFAULT_RADIAL_KEEP_OPEN = false
     /** 扇形最多能放几个应用（收藏上限同值）。须定义在引用它的常量之前。 */
