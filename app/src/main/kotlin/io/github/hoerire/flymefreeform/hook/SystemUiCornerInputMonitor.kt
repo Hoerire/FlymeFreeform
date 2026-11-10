@@ -138,6 +138,23 @@ internal class SystemUiCornerInputMonitor(
                 pilfer = ::pilfer,
                 onStreamFinished = ::finishStream,
             )
+        // 让出手势区：把这块区域声明为系统手势排除区，系统就不会把这里的滑动
+        // 当成上滑/返回处理。ColorOS 17 上应用层抢不到指针流，这条是系统主动配合的机制。
+        view.addOnAttachStateChangeListener(
+            object : android.view.View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(attached: android.view.View) {
+                    runCatching {
+                        attached.systemGestureExclusionRects =
+                            listOf(android.graphics.Rect(0, 0, attached.width, attached.height))
+                    }.onFailure {
+                        module.log(Log.WARN, TAG, "SYSTEMUI_GESTURE_EXCLUSION_FAILED", it)
+                    }
+                    module.log(Log.INFO, TAG, "SYSTEMUI_GESTURE_EXCLUSION_SET_" + side.name, null)
+                }
+
+                override fun onViewDetachedFromWindow(detached: android.view.View) = Unit
+            },
+        )
         try {
             windowManager.addView(view, createLayoutParams(side, size))
             bindings[side] = CornerBinding(view, size)
