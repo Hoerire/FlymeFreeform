@@ -24,25 +24,13 @@ import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * 扇形里固定项的排序：只有工具与快捷方式垫底，其余（应用、应用入口、分身）按用户顺序。
+ * 扇形里的固定项顺序 = 用户在设置页拖出来的顺序，不做任何重排。
  *
- * 工具与快捷方式不是应用入口，排在前面会把应用挤出上限名额；这里的 sortedBy 是稳定排序，
- * 组内仍保持用户在设置页拖出来的顺序。
- *
- * 分身（CloneApp）虽与工具、快捷方式同属侧边栏条目，但它是实打实的应用入口，
- * 不能跟着垫底：早先按「是不是 PinnedTarget.App」分组，分身因此被永久钉在最后一位，
- * 设置页能拖动而扇形不跟随（2026-11-08 用户实测发现）。
+ * 早先为了让工具/快捷方式不占应用名额，这里做过一次「工具垫底」的稳定排序；
+ * 代价是工具的顺序被永久钉死——设置页能拖，扇形不跟随（用户实测：小布识屏、截屏
+ * 一直压在最后）。顺序应当只有一处来源，就是 pinnedTargets 本身。
  */
-private fun radialPinOrder(targets: List<PinnedTarget>): List<PinnedTarget> =
-    targets.sortedBy {
-        if (it is PinnedTarget.Sidebar &&
-            (it.kind == PinnedTarget.Kind.Tool || it.kind == PinnedTarget.Kind.Shortcut)
-        ) {
-            1
-        } else {
-            0
-        }
-    }
+private fun radialPinOrder(targets: List<PinnedTarget>): List<PinnedTarget> = targets
 
 internal data class RadialEntry(
     val target: PinnedTarget,
