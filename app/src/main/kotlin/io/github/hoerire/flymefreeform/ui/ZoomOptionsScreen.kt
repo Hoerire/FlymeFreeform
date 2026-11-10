@@ -6,12 +6,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CropFree
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Campaign
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.LockOpen
-import androidx.compose.material.icons.rounded.PictureInPictureAlt
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.SwipeUp
 import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -105,7 +111,7 @@ internal fun ZoomOptionsScreen(
                     title = stringResource(R.string.zoom_launch_notice_title),
                     summary = stringResource(R.string.zoom_launch_notice_summary),
                     enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, sub) },
+                    startAction = { PreferenceIcon(Icons.Rounded.Notifications, sub) },
                 )
                 SwitchPreference(
                     checked = state.settings.zoomLaunchHeadsUp,
@@ -113,7 +119,7 @@ internal fun ZoomOptionsScreen(
                     title = stringResource(R.string.zoom_launch_heads_up_title),
                     summary = stringResource(R.string.zoom_launch_heads_up_summary),
                     enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, sub) },
+                    startAction = { PreferenceIcon(Icons.Rounded.Campaign, sub) },
                 )
                 SwitchPreference(
                     checked = state.settings.zoomLaunchControlCenter,
@@ -121,7 +127,7 @@ internal fun ZoomOptionsScreen(
                     title = stringResource(R.string.zoom_launch_control_center_title),
                     summary = stringResource(R.string.zoom_launch_control_center_summary),
                     enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, sub) },
+                    startAction = { PreferenceIcon(Icons.Rounded.Tune, sub) },
                 )
                 SwitchPreference(
                     checked = state.settings.zoomLaunchInterApp,
@@ -129,7 +135,7 @@ internal fun ZoomOptionsScreen(
                     title = stringResource(R.string.zoom_launch_inter_app_title),
                     summary = stringResource(R.string.zoom_launch_inter_app_summary),
                     enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.PictureInPictureAlt, sub) },
+                    startAction = { PreferenceIcon(Icons.Rounded.OpenInNew, sub) },
                 )
                 SwitchPreference(
                     checked = state.settings.zoomLauncherShortcut,
@@ -137,7 +143,7 @@ internal fun ZoomOptionsScreen(
                     title = stringResource(R.string.zoom_launcher_shortcut_title),
                     summary = stringResource(R.string.zoom_launcher_shortcut_summary),
                     enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.SwipeUp, sub) },
+                    startAction = { PreferenceIcon(Icons.Rounded.Bolt, sub) },
                 )
                 SwitchPreference(
                     checked = state.settings.zoomLauncherCard,
@@ -159,7 +165,7 @@ internal fun ZoomOptionsScreen(
         item(key = "window") {
             Card(modifier = Modifier.fillMaxWidth()) {
                 RemoteDpSliderPreference(
-                    icon = Icons.Rounded.Widgets,
+                    icon = Icons.Rounded.Layers,
                     confirmedValue = state.settings.zoomMaxWindowCount,
                     isUpdating = state.isUpdating,
                     enabled = sub,
@@ -186,14 +192,14 @@ internal fun ZoomOptionsScreen(
                     title = stringResource(R.string.auto_close_window_title),
                     summary = stringResource(R.string.auto_close_window_summary),
                     enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.CropFree, sub) },
+                    startAction = { PreferenceIcon(Icons.Rounded.DeleteSweep, sub) },
                 )
                 ArrowPreference(
                     title = stringResource(R.string.zoom_excluded_title),
                     summary = stringResource(R.string.zoom_excluded_summary),
                     onClick = onNavigateToZoomExcluded,
                     enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.CropFree, sub) },
+                    startAction = { PreferenceIcon(Icons.Rounded.Block, sub) },
                 )
             }
         }
