@@ -15,6 +15,7 @@ internal class SystemUiHookInstaller(
 ) {
     private val bound = AtomicBoolean(false)
     private var inputMonitor: SystemUiCornerInputMonitor? = null
+    private var gestureMonitor: SystemUiGestureMonitor? = null
 
     fun install(classLoader: ClassLoader) {
         // SystemUI 侧不改写通知点击入口。
@@ -40,6 +41,7 @@ internal class SystemUiHookInstaller(
                         // 通知点击小窗：改 Bundle（含剥离 remote 转场），让窗口不被横幅压住。
                         NotifBundleHook(module, configuration).install(classLoader)
                         startInputMonitor(context)
+                        startGestureMonitor(context)
                     }
                     result
                 }
@@ -63,6 +65,20 @@ internal class SystemUiHookInstaller(
             module.log(Log.WARN, TAG, "SYSTEMUI_CORNER_SPY_START_FAILED", exception)
         } catch (exception: LinkageError) {
             module.log(Log.WARN, TAG, "SYSTEMUI_CORNER_SPY_LINKAGE_FAILED", exception)
+        }
+    }
+
+    private fun startGestureMonitor(context: Context) {
+        try {
+            val monitor = SystemUiGestureMonitor(context, module, configuration)
+            gestureMonitor = monitor
+            monitor.start()
+        } catch (exception: ReflectiveOperationException) {
+            module.log(Log.WARN, TAG, "CORNER_MONITOR_API_UNAVAILABLE", exception)
+        } catch (exception: RuntimeException) {
+            module.log(Log.WARN, TAG, "CORNER_MONITOR_START_FAILED", exception)
+        } catch (exception: LinkageError) {
+            module.log(Log.WARN, TAG, "CORNER_MONITOR_LINKAGE_FAILED", exception)
         }
     }
 
