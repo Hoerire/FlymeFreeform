@@ -637,11 +637,19 @@ internal class ColorOsFreeformCoordinator(
                     "SYSTEM_GESTURE_ACTIVATE_" + action.side.name + "_" +
                         action.x.toInt() + "_" + action.y.toInt(),
                 )
-                showOverlay(
-                    side = action.side,
-                    x = action.x,
-                    y = action.y,
-                )
+                // 保持挂起时屏幕上已经有一份扇形：此时从角区起手的上滑（返回桌面、
+                // 进多任务）也会被判成 Activate，若照常重建，就会看到"扇形收起来又冒出来"。
+                // 已有浮层时不再重建，把这个手势交回系统。
+                if (overlay != null && lastSettings.radialKeepOpen) {
+                    trace("SYSTEM_GESTURE_ACTIVATE_IGNORED_PINNED")
+                    gestureEngine.cancel()
+                } else {
+                    showOverlay(
+                        side = action.side,
+                        x = action.x,
+                        y = action.y,
+                    )
+                }
             }
             is GestureAction.Update -> {
                 val selected = overlay?.updateGesture(action.x, action.y)
