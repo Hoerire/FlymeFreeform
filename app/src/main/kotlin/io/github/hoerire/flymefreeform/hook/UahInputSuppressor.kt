@@ -29,15 +29,18 @@ internal class UahInputSuppressor(
             module.log(Log.WARN, TAG, "UAH_RECEIVER_UNAVAILABLE", null)
             return
         }
-        val method = type.declaredMethods.firstOrNull { candidate ->
-            candidate.name == METHOD_NAME &&
+        // dealWithInputEvent 与 onInputEvent 都钩：前者可能是内部转发，后者才是接收器回调。
+        val targets = type.declaredMethods.filter { candidate ->
+            candidate.name in METHOD_NAMES &&
                 candidate.parameterTypes.size == 1 &&
                 candidate.parameterTypes[0].name == "android.view.InputEvent"
         }
-        if (method == null) {
+        if (targets.isEmpty()) {
             module.log(Log.WARN, TAG, "UAH_METHOD_UNAVAILABLE", null)
             return
         }
+        targets.forEach { target ->
+        val method = target
         method.isAccessible = true
         module
             .hook(method)
@@ -80,7 +83,8 @@ internal class UahInputSuppressor(
                     else -> if (suppressing) null else chain.proceed()
                 }
             }
-        module.log(Log.INFO, TAG, "UAH_INPUT_HOOK_INSTALLED", null)
+        module.log(Log.INFO, TAG, "UAH_INPUT_HOOK_INSTALLED_" + method.name, null)
+        }
     }
 
     private fun insideTrigger(event: MotionEvent): Boolean {
@@ -107,7 +111,7 @@ internal class UahInputSuppressor(
         const val TAG = "FlymeFreeform"
         const val RECEIVER_CLASS =
             "com.android.server.oplus.uah.util.OplusUAwareInputHelper\$UahExInputEventReceiver"
-        const val METHOD_NAME = "dealWithInputEvent"
+        val METHOD_NAMES = setOf("dealWithInputEvent", "onInputEvent")
         const val PROBE_INTERVAL_MS = 3000L
     }
 }
