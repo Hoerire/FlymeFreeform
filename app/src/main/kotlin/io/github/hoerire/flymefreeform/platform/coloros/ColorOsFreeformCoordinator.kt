@@ -162,19 +162,6 @@ internal class ColorOsFreeformCoordinator(
     private var movePosted = false
     private var lastOverlayFailureLogAt = -OVERLAY_FAILURE_LOG_INTERVAL_MS
 
-    /** 由 SystemUI 的菜单项触发：没有手势坐标，用右下角作为扇形锚点。 */
-    fun showRadialFromMenu() {
-        handler.post {
-            val metrics = context.resources.displayMetrics
-            debug("SYSTEM_RADIAL_FROM_MENU")
-            showOverlay(
-                io.github.hoerire.flymefreeform.gesture.CornerSide.Right,
-                metrics.widthPixels - 1f,
-                metrics.heightPixels - 1f,
-            )
-        }
-    }
-
     fun start() {
         // 识屏宿主被限制后台运行会让三条入口同时失效；开机纠正一次，之后省电策略再改也不会失效。
         ScreenIdentifyAppOps.ensure(context)
@@ -184,7 +171,6 @@ internal class ColorOsFreeformCoordinator(
             environmentState.observe { applySettings(configuration.snapshot) }
             registerPackageObserver()
             registerPinnedTargetsObserver()
-            registerRadialMenuReceiver()
             configuration.observe {
                 handler.post { applySettings(configuration.snapshot) }
             }
@@ -192,27 +178,6 @@ internal class ColorOsFreeformCoordinator(
         logger(Log.INFO, "SYSTEM_GESTURE_COORDINATOR_READY", null)
     }
 
-
-    /** 接收 SystemUI 菜单项的「显示扇形」请求。 */
-    private fun registerRadialMenuReceiver() {
-        runCatching {
-            context.registerReceiver(
-                object : android.content.BroadcastReceiver() {
-                    override fun onReceive(receiver: android.content.Context?, intent: android.content.Intent?) {
-                        val action = intent?.action ?: return
-                        if (action == ModulePreferences.ACTION_SHOW_RADIAL) {
-                            showRadialFromMenu()
-                        }
-                    }
-                },
-                android.content.IntentFilter(ModulePreferences.ACTION_SHOW_RADIAL),
-                null,
-                null,
-                android.content.Context.RECEIVER_EXPORTED,
-            )
-            logger(Log.INFO, "SYSTEM_RADIAL_RECEIVER_INSTALLED", null)
-        }.onFailure { logger(Log.WARN, "SYSTEM_RADIAL_RECEIVER_FAILED", it) }
-    }
 
     private fun registerPackageObserver() {
         try {
