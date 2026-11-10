@@ -56,6 +56,7 @@ internal class SystemServerGestureMonitor(
     private var monitor: Any? = null
     private var receiver: InputEventReceiver? = null
     private var pilferCount = 0L
+    private var pilferActive = false
 
     /** 建 monitor；返回 false 表示没建起来，调用方自行回退。 */
     fun start(name: String): Boolean {
@@ -122,26 +123,39 @@ internal class SystemServerGestureMonitor(
         }
         val worker = thread
         thread = null
+        pilferActive = false
         runCatching { worker?.quitSafely() }
     }
 
-    /** 交给协调器处理，并返回是否需要在这一帧把流抢过来。 */
+    /**
+     * 交给协调器处理，并在"确认是角落斜推"的那一帧把流抢过来。
+     *
+     * 抢流不可逆：DOWN 就抢会把普通点击一起吞掉（1081 的毛病）。所以只有协调器判定
+     * 引擎已经 Activate 的那一帧才抢，抬手/取消时复位。
+     */
     private fun dispatch(event: MotionEvent, pilferMethod: Method): Boolean {
-        val wantPilfer = onEvent(event)
-        if (!wantPilfer) return false
-        val instance = monitor ?: return false
-        return try {
-            pilferMethod.invoke(instance)
-            pilferCount++
-            logger(Log.INFO, "MONITOR_PILFER_OK_count=" + pilferCount, null)
-            true
-        } catch (error: ReflectiveOperationException) {
-            logger(Log.WARN, MONITOR_TAG, error)
-            false
-        } catch (error: RuntimeException) {
-            logger(Log.WARN, MONITOR_TAG, error)
-            false
+        val wantsPilfer = onEvent(event)
+        if (wantsPilfer && !pilferActive) {
+            val instance = monitor ?: return false
+            try {
+                pilferMethod.invoke(instance)
+                pilferActive = true
+                pilferCount++
+                logger(Log.INFO, "MONITOR_PILFER_OK_count=" + pilferCount, null)
+            } catch (error: ReflectiveOperationException) {
+                logger(Log.WARN, MONITOR_TAG, error)
+                return false
+            } catch (error: RuntimeException) {
+                logger(Log.WARN, MONITOR_TAG, error)
+                return false
+            }
         }
+        if (event.actionMasked == MotionEvent.ACTION_UP ||
+            event.actionMasked == MotionEvent.ACTION_CANCEL
+        ) {
+            pilferActive = false
+        }
+        return pilferActive
     }
 
     private fun releaseQuietly(channel: Any?) {
