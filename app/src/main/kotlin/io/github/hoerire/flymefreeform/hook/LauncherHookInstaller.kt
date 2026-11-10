@@ -55,6 +55,10 @@ internal class LauncherHookInstaller(
 
     fun install(classLoader: ClassLoader, applicationInfo: ApplicationInfo) {
         if (!installationStarted.compareAndSet(false, true)) return
+        // 手势判定已由 system_server 的 UAH 通道接管（16/17 通用），桌面侧钩子不再需要，
+        // 两套同时启用反而会互相干扰。这里直接让位。
+        module.log(Log.INFO, TAG, "LAUNCHER_HOOK_DISABLED_UAH_TAKEOVER", null)
+        return
         val apk = File(applicationInfo.sourceDir)
         val cache = File(applicationInfo.dataDir, "code_cache/flymefreeform/launcher-symbols")
         val finished = AtomicBoolean(false)
