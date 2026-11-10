@@ -267,9 +267,22 @@ internal class OutsideTapCloseHookInstaller(
                     // 通知、应用内跳转），而用户的规则只有一条——不允许窗口被收成贴边浮标。
                     // 判据只看这次退出是不是系统自己的"该谁退出"裁决（determine*/updateTaskMaxNum*），
                     // 用户拖到边缘走的拖拽入口不经过这里。
-                    // 桌面点开的应用一定是全屏（其他入口都被我们以小窗打开），旁边的迷你窗是被系统
-                    // 顺带判成退场的，不能跟着关闭。判据只加这一条：最近的启动来自桌面。
-                    val miniScene = LauncherLaunchMarker.recentlyLaunched()
+                    // ① 桌面点开的应用一定是全屏（其他入口都被我们以小窗打开），旁边的迷你窗是被系统
+                    //    顺带判成退场的，不能跟着关闭；
+                    // ② 划成迷你窗时系统只是把窗口转成小形态继续存活，策略里的 mNeedExitTask 为 false，
+                    //    此时替换成关闭等于直接杀掉它（QQ 里扇形开抖音再划成迷你窗即复现）。
+                    val needExitTask = strategy?.let { current ->
+                        runCatching {
+                            fieldInHierarchy(current.javaClass, "mNeedExitTask")?.get(current) as? Boolean
+                        }.getOrNull()
+                    }
+                    module.log(
+                        Log.DEBUG,
+                        TAG,
+                        "ZOOM_EXIT_NEED_TASK_" + (when (needExitTask) { true -> "1"; false -> "0"; null -> "-" }),
+                        null,
+                    )
+                    val miniScene = LauncherLaunchMarker.recentlyLaunched() || needExitTask == false
                     val decision = if (miniScene) {
                         CloseDecision.KeepOriginal
                     } else {
