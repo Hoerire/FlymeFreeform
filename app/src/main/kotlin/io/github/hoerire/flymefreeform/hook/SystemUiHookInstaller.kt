@@ -68,11 +68,17 @@ internal class SystemUiHookInstaller(
         }
     }
 
+    /**
+     * SystemUI 侧不再建 gesture monitor。
+     *
+     * pilfer 抢下的是"这个 monitor 通道"，monitor 建在 SystemUI 时抢完的 MOVE 全落到
+     * SystemUI，system_server 里的扇形判定只收到 DOWN，永远不 Activate（实测 35 次按下
+     * 只有 1 次呼出）。monitor 已移到 ColorOsFreeformCoordinator（见 SystemServerGestureMonitor）。
+     * 这里保留空实现，只为不销毁作用域与其它 hook 的装配顺序。
+     */
     private fun startGestureMonitor(context: Context) {
         try {
-            val monitor = SystemUiGestureMonitor(context, module, configuration)
-            gestureMonitor = monitor
-            monitor.start()
+            module.log(Log.INFO, TAG, "SYSTEMUI_GESTURE_MONITOR_DISABLED_MOVED_TO_SYSTEM_SERVER")
         } catch (exception: ReflectiveOperationException) {
             module.log(Log.WARN, TAG, "CORNER_MONITOR_API_UNAVAILABLE", exception)
         } catch (exception: RuntimeException) {
