@@ -81,35 +81,36 @@ internal class SystemServerHookInstaller(
      */
     private fun installInputFilter(classLoader: ClassLoader) {
         runCatching {
-            val imsClass = classLoader.loadClass("android.hardware.input.InputManagerService")
-            val localServices = classLoader.loadClass("com.android.server.LocalServices")
-            val getService = localServices.getMethod("getService", Class::class.java)
-            val ims = getService.invoke(null, imsClass) ?: error("ims is null")
+            // 不按名字加载 services.jar 里的类：从 LocalServices 的注册表按类名找实例，
+            // 接口类型从 setInputFilter 的参数上取，避免 ClassNotFoundException。
+            val localServices = Class.forName("com.android.server.LocalServices", false, classLoader)
+            val field = localServices.getDeclaredField("sLocalServiceObjects").apply { isAccessible = true }
+            val services = field.get(null) as? Map<*, *> ?: error("no local services")
+            val ims = services.values.firstOrNull {
+                it?.javaClass?.name == "android.hardware.input.InputManagerService"
+            } ?: error("InputManagerService not found")
+            val setter = ims.javaClass.methods.firstOrNull {
+                it.name == "setInputFilter" && it.parameterTypes.size == 1
+            } ?: error("no setInputFilter")
             val filter = ZoneInputFilter(module)
-            val ifaceClass = classLoader.loadClass("android.hardware.input.IInputFilter")
-            // setInputFilter 的参数是 IInputFilter 接口，用 Proxy 桥接到我们的 Binder。
+            val iface = setter.parameterTypes[0]
             val proxy = java.lang.reflect.Proxy.newProxyInstance(
-                ifaceClass.classLoader,
-                arrayOf(ifaceClass),
+                iface.classLoader,
+                arrayOf(iface),
             ) { _, method, args ->
                 when (method.name) {
                     "filterInputEvent" -> {
                         filter.filterFromProxy(args)
                         null
                     }
-                    "install", "uninstall" -> null
                     "asBinder" -> filter
                     else -> null
                 }
             }
-            val setter = imsClass.methods.firstOrNull {
-                it.name == "setInputFilter" && it.parameterTypes.size == 1
-            } ?: error("no setInputFilter")
             setter.invoke(ims, proxy)
             module.log(Log.INFO, TAG, "INPUT_FILTER_REGISTERED", null)
         }.onFailure { module.log(Log.WARN, TAG, "INPUT_FILTER_REGISTER_FAILED", it) }
     }
-
     /**
      * 跟踪前台应用，供排除列表判定。
      *
