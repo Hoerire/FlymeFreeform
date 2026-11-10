@@ -200,7 +200,16 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
                         if (data == null || itemType(item) == 0) {
                             // 工具（截屏/录屏这类取屏入口）与现造快捷方式都先收起面板、等窗口提交
                             // 不可见帧后再执行，否则取屏工具会把手里的面板一起截进画面。
-                            onClick(true) { launchEntry(alias, item) }
+                            onClick(true) {
+                                // 静态工具走它自己的 handle()；动态条目（如「最近文件」）不在
+                                // ToolEntryHelper.mTools 里，取不到就回退到系统自己的点击分发，
+                                // 否则表现为"点了没反应"，而系统侧边栏能正常打开。
+                                if (!launchEntry(alias, item) && item != null && clickType != null) {
+                                    panelLog("PANEL_ENTRY_FALLBACK_DISPLAYED_" + (alias ?: "?"))
+                                    dispatchDisplayed(item, clickType)
+                                    closeAction?.invoke()
+                                }
+                            }
                             return@newProxyInstance nativeUnit
                         }
                         when {
