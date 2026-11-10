@@ -21,6 +21,7 @@ internal class UahInputSuppressor(
     private val environment: ModuleEnvironmentState,
 ) {
     @Volatile private var suppressing = false
+    @Volatile private var lastProbeAt = 0L
 
     fun install(loader: ClassLoader) {
         val type = runCatching { loader.loadClass(RECEIVER_CLASS) }.getOrNull()
@@ -44,6 +45,14 @@ internal class UahInputSuppressor(
             .setId("flymefreeform.system.uah_input")
             .intercept { chain ->
                 val event = chain.args.firstNotNullOfOrNull { it as? MotionEvent }
+                if (event != null) {
+                    // 探针：确认这个接收器在真机上到底有没有收到事件（限流，避免刷屏）。
+                    val now = android.os.SystemClock.uptimeMillis()
+                    if (now - lastProbeAt > PROBE_INTERVAL_MS) {
+                        lastProbeAt = now
+                        module.log(Log.INFO, TAG, "UAH_EVENT_" + event.actionMasked, null)
+                    }
+                }
                 if (event == null) {
                     suppressing = false
                     return@intercept chain.proceed()
@@ -99,5 +108,6 @@ internal class UahInputSuppressor(
         const val RECEIVER_CLASS =
             "com.android.server.oplus.uah.util.OplusUAwareInputHelper\$UahExInputEventReceiver"
         const val METHOD_NAME = "dealWithInputEvent"
+        const val PROBE_INTERVAL_MS = 3000L
     }
 }
