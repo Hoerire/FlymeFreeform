@@ -38,7 +38,8 @@ internal class ZoneInputMonitor(
             val created = method.invoke(instance, MONITOR_NAME, 0) as? InputMonitor
                 ?: error("monitor is null")
             monitor = created
-            receiver = object : InputEventReceiver(created.inputChannel, Looper.getMainLooper()) {
+            val channel = created.getInputChannel() ?: error("no input channel")
+            receiver = object : InputEventReceiver(channel, Looper.getMainLooper()) {
                 override fun onInputEvent(event: InputEvent) {
                     handle(event)
                     finishInputEvent(event, false)
