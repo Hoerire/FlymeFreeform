@@ -37,7 +37,6 @@ internal class SystemServerHookInstaller(
         ).install(classLoader)
         NotificationEnqueueProbe(module).install(classLoader)
         UahInputSuppressor(module, configuration, environment).install(classLoader)
-        installInputFilter(classLoader)
         installForegroundObserver(classLoader)
         try {
             // 厂商初始化入口只能反射定位；缺失时保留系统启动流程。
@@ -52,6 +51,9 @@ internal class SystemServerHookInstaller(
                     val result = chain.proceed()
                     val controller = chain.thisObject
                     if (controller != null && bound.compareAndSet(false, true)) {
+                        // 用 controller 实例的加载器：services.jar 的类只在这个加载器可见
+                        // （LocalServices 自身的 classLoader 反而取不到 InputManagerService）。
+                        installInputFilter(controller.javaClass.classLoader)
                         ColorOsFreeformCoordinator(
                             controller = controller,
                             classLoader = classLoader,
