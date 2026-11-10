@@ -57,6 +57,9 @@ internal class ActivityStarterZoomInjector(
                     // 总开关关闭时完全让行：不读配置、不改参数、不启动窗口，
                     // 保证与其他同时启用的模块互不干扰。
                     if (!configuration.snapshot.enabled) return@intercept chain.proceed()
+                    // 收窗判据要知道"此刻是否有界面正在启动"：只有被新应用顶掉才收窗，
+                    // 迷你窗变形（17 也走同一套退场裁决）没有启动发生。
+                    io.github.hoerire.flymefreeform.logic.LaunchInFlight.mark()
                     runCatching { trace(chain.thisObject, method.name) }
                     val preempted =
                         runCatching { preemptWithZoomWindow(chain.thisObject, method.name) }
