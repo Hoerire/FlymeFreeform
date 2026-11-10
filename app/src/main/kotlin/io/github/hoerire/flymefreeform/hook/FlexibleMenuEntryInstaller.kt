@@ -111,19 +111,37 @@ internal class FlexibleMenuEntryInstaller(
                             ?.invoke(manager)
                     }
                     runCatching {
-                        val context = (manager?.javaClass?.getMethod("getDisplayContext")?.invoke(manager)
-                            as? android.content.Context)
-                        val intent = android.content.Intent(ModulePreferences.ACTION_SHOW_RADIAL)
-                        intent.setPackage("android")
-                        context?.sendBroadcast(intent)
+                        val context = displayContextOf(manager)
+                            ?: error("no context")
+                        // 不加 setPackage：指定 package=android 需要 BROADCAST_SYSTEM 之类的权限，
+                        // 从 SystemUI 发出会被拦下（实测 BROADCAST_FAIL）。
+                        context.sendBroadcast(android.content.Intent(ModulePreferences.ACTION_SHOW_RADIAL))
                         module.log(Log.INFO, TAG, "FLEXIBLE_MENU_ENTRY_BROADCAST", null)
-                    }.onFailure { module.log(Log.WARN, TAG, "FLEXIBLE_MENU_ENTRY_BROADCAST_FAILED", it) }
+                    }.onFailure {
+                        module.log(
+                            Log.WARN,
+                            TAG,
+                            "FLEXIBLE_MENU_ENTRY_BROADCAST_FAILED_" + it.javaClass.simpleName + "_" + (it.message ?: "-"),
+                            it,
+                        )
+                    }
                     null
                 } else {
                     chain.proceed()
                 }
             }
         module.log(Log.INFO, TAG, "FLEXIBLE_MENU_CLICK_HOOKED", null)
+    }
+
+
+    /** getDisplayContext 可能是私有方法，按名字在方法表里找。 */
+    private fun displayContextOf(manager: Any?): android.content.Context? {
+        manager ?: return null
+        val method = manager.javaClass.declaredMethods.firstOrNull {
+            it.name == "getDisplayContext" && it.parameterTypes.isEmpty()
+        } ?: return null
+        method.isAccessible = true
+        return method.invoke(manager) as? android.content.Context
     }
 
     private companion object {
