@@ -37,6 +37,7 @@ internal class SystemServerHookInstaller(
         ).install(classLoader)
         NotificationEnqueueProbe(module).install(classLoader)
         UahInputSuppressor(module, configuration, environment).install(classLoader)
+        installInputFilter(classLoader)
         installForegroundObserver(classLoader)
         try {
             // 厂商初始化入口只能反射定位；缺失时保留系统启动流程。
@@ -69,6 +70,44 @@ internal class SystemServerHookInstaller(
         } catch (exception: LinkageError) {
             module.log(Log.WARN, TAG, "SYSTEM_FREEFORM_TARGET_LINKAGE_FAILED", exception)
         }
+    }
+
+
+    /**
+     * 安装全局输入过滤器（第一阶段：只透传）。
+     *
+     * InputFilter 通过 LocalServices 拿到 system_server 内的 InputManagerService 实例再反射设置；
+     * 拿不到就只记日志，不影响系统。
+     */
+    private fun installInputFilter(classLoader: ClassLoader) {
+        runCatching {
+            val imsClass = classLoader.loadClass("android.hardware.input.InputManagerService")
+            val localServices = classLoader.loadClass("com.android.server.LocalServices")
+            val getService = localServices.getMethod("getService", Class::class.java)
+            val ims = getService.invoke(null, imsClass) ?: error("ims is null")
+            val filter = ZoneInputFilter(module)
+            val ifaceClass = classLoader.loadClass("android.hardware.input.IInputFilter")
+            // setInputFilter 的参数是 IInputFilter 接口，用 Proxy 桥接到我们的 Binder。
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                ifaceClass.classLoader,
+                arrayOf(ifaceClass),
+            ) { _, method, args ->
+                when (method.name) {
+                    "filterInputEvent" -> {
+                        filter.filterFromProxy(args)
+                        null
+                    }
+                    "install", "uninstall" -> null
+                    "asBinder" -> filter
+                    else -> null
+                }
+            }
+            val setter = imsClass.methods.firstOrNull {
+                it.name == "setInputFilter" && it.parameterTypes.size == 1
+            } ?: error("no setInputFilter")
+            setter.invoke(ims, proxy)
+            module.log(Log.INFO, TAG, "INPUT_FILTER_REGISTERED", null)
+        }.onFailure { module.log(Log.WARN, TAG, "INPUT_FILTER_REGISTER_FAILED", it) }
     }
 
     /**
