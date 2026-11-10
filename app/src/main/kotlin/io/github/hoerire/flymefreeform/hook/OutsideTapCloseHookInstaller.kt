@@ -282,6 +282,7 @@ internal class OutsideTapCloseHookInstaller(
                         "ZOOM_EXIT_NEED_TASK_" + (when (needExitTask) { true -> "1"; false -> "0"; null -> "-" }),
                         null,
                     )
+                    logExitStates(strategy)
                     val miniScene = LauncherLaunchMarker.recentlyLaunched() || needExitTask == false
                     val decision = if (miniScene) {
                         CloseDecision.KeepOriginal
@@ -334,6 +335,39 @@ internal class OutsideTapCloseHookInstaller(
      * 退场动画与原厂一致。
      */
 
+
+
+    /**
+     * 诊断：退出策略对应的任务在 0..4 各柔性状态下的判定结果。
+     *
+     * FlexibleTaskController.isTaskInFlexibleState(Task, int) 是厂商自己的状态接口（普通小窗为 1），
+     * 迷你窗对应的码没有公开常量，用这条日志一次复现即可确定。只读，不改变任何行为。
+     */
+    private fun logExitStates(strategy: Any?) {
+        strategy ?: return
+        val task = runCatching {
+            fieldInHierarchy(strategy.javaClass, "mTask")?.get(strategy)
+        }.getOrNull() ?: return
+        val controller = runCatching {
+            fieldInHierarchy(strategy.javaClass, "mController")?.get(strategy)
+        }.getOrNull() ?: return
+        val method = runCatching {
+            var type: Class<*>? = controller.javaClass
+            var found: java.lang.reflect.Method? = null
+            while (type != null && found == null) {
+                found = type.declaredMethods.firstOrNull {
+                    it.name == "isTaskInFlexibleState" && it.parameterTypes.size == 2
+                }
+                type = type.superclass
+            }
+            found?.apply { isAccessible = true }
+        }.getOrNull() ?: return
+        val states = (0..4).joinToString("") { state ->
+            val hit = runCatching { method.invoke(controller, task, state) as? Boolean }.getOrNull()
+            when (hit) { true -> "1"; false -> "0"; null -> "-" }
+        }
+        module.log(Log.DEBUG, TAG, "ZOOM_TASK_STATES_" + states, null)
+    }
 
     private fun hideClosingSurface(task: Any) {
         try {
