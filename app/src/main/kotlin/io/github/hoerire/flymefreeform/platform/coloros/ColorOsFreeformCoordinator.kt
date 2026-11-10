@@ -299,16 +299,8 @@ internal class ColorOsFreeformCoordinator(
             SystemServerGestureMonitor(
                 context = context,
                 onEvent = { event ->
-                    if (event.actionMasked == MotionEvent.ACTION_DOWN && pilferSessionActive) {
-                        // 必须在入队之前挡掉：一旦进了 enqueue，gate 会 begin 新流、主线程处理时
-                        // 又被 return，末尾的 ignore(stream) 会把后续 MOVE 全部丢掉，
-                        // 于是 HIT_ENTER 再不出现，菜单就定格了（23:26:40 实机日志）。
-                        trace("SYSTEM_GESTURE_DOWN_IGNORED_IN_SESSION")
-                        false
-                    } else {
-                        enqueuePointerEvent(event, generation)
-                        shouldStartPilfer(event)
-                    }
+                    enqueuePointerEvent(event, generation)
+                    shouldStartPilfer(event)
                 },
                 logger = logger,
             )
@@ -520,6 +512,13 @@ internal class ColorOsFreeformCoordinator(
             cancelActiveGesture()
             return
         }
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && pilferSessionActive) {
+            // 抢流后系统重发的那次 DOWN：只换基准点，不重置会话（实测 00:51:48：
+            // 走重置会把引擎打回 Armed，接着 CANCEL 一来整条流就断了，菜单定格）。
+            gestureEngine.rebase(event.x, event.y)
+            trace("SYSTEM_GESTURE_DOWN_REBASED_" + event.x.toInt() + "_" + event.y.toInt())
+            return
+        }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             // 手势生命周期的第一行，无条件记；每根手指只有一行，热路径负担可以忽略。
             trace("SYSTEM_GESTURE_DOWN_" + event.x.toInt() + "_" + event.y.toInt())
@@ -567,7 +566,10 @@ internal class ColorOsFreeformCoordinator(
                     )
                 }
                 MotionEvent.ACTION_UP -> gestureEngine.up(event.getPointerId(event.actionIndex))
-                MotionEvent.ACTION_CANCEL -> gestureEngine.cancel()
+                // 抢流之后系统必然给旧流发一次 CANCEL，那是 Pilfer 的副作用，不是用户取消。
+                // 当成取消会立刻复位引擎，扇形就定格在最后一帧。
+                MotionEvent.ACTION_CANCEL ->
+                    if (pilferSessionActive) GestureAction.Ignore else gestureEngine.cancel()
                 // 多指按下不再取消主手势，只忽略新增的那根手指。
                 MotionEvent.ACTION_POINTER_DOWN -> GestureAction.Ignore
                 else -> if (gestureEngine.isClaimed) gestureEngine.cancel() else GestureAction.Ignore
