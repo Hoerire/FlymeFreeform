@@ -78,7 +78,7 @@ dependencies {
     compileOnly(libs.libxposed.api)
     // framework @hide 类的编译期占位（android.view.InputChannel / InputEventReceiver）。
     // 只参与编译，绝不进 dex，否则运行时会和 bootclasspath 的真实类撞名。
-    compileOnly(rootProject.file("libs/hidden-stubs.jar"))
+    compileOnly(files(rootProject.file("libs/hidden-stubs.jar")))
     implementation(libs.dexkit)
     implementation(libs.libxposed.service)
     implementation(libs.miuix.blur)
