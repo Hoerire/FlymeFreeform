@@ -154,6 +154,8 @@ internal class ColorOsFreeformCoordinator(
     private var cancelWatchScheduled = false
     /** 当前这条指针流是不是从角落起手的；monitor 线程读写。 */
     @Volatile private var cornerStream = false
+    /** 上一次指针事件的时间戳；用来识别"新手势"并复位卡住的抢流会话。 */
+    private var lastPointerEventAt = 0L
     private var overlay: CornerRadialOverlayView? = null
     private var morePanelActive = false
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
@@ -546,6 +548,16 @@ internal class ColorOsFreeformCoordinator(
         }
 
     private fun handlePointerEvent(event: MotionEvent) {
+        // 会话间隙保护：抢流后如果流被系统掐断（没有 UP/CANCEL），pilferSessionActive 会一直
+        // 停在 true，之后每一次新的按下都被当成"重复 DOWN"走 rebase，扇形再也激活不了
+        // （实机 02:49:08：连续 REBASED、没有一次 ACTIVATE）。这里用事件间隔判定新手势。
+        val now = android.os.SystemClock.uptimeMillis()
+        if (pilferSessionActive && now - lastPointerEventAt > SESSION_GAP_MS) {
+            trace("SYSTEM_GESTURE_SESSION_RESET_STALE")
+            pilferSessionActive = false
+            gestureEngine.cancel()
+        }
+        lastPointerEventAt = now
         val settings = lastSettings
         if (!pointerRegistered || !environmentState.isGestureAllowed()) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -980,6 +992,21 @@ internal class ColorOsFreeformCoordinator(
             layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
             setFitInsetsTypes(0)
+            if (focusable) {
+                // 保持挂起时窗口要能点选，但整屏可触摸会把底部上滑手势一起吃掉
+                // （用户实测：扇形出来后上滑回不了桌面）。把窗口的可触摸区域裁到
+                // 手势条以上，底部那一条继续交给系统。
+                val metrics = context.resources.displayMetrics
+                val gestureBar = (BOTTOM_GESTURE_INSET_DP * metrics.density).toInt()
+                touchableRegion.set(
+                    0,
+                    0,
+                    metrics.widthPixels,
+                    (metrics.heightPixels - gestureBar).coerceAtLeast(1),
+                )
+                // TOUCHABLE_INSETS_REGION：按上面的 Region 判定可触摸范围（隐藏常量，值 3）。
+                setTouchableInsets(TOUCHABLE_INSETS_REGION)
+            }
             title = "FlymeFreeformCornerOverlay"
         }
     }
@@ -1261,6 +1288,12 @@ internal class ColorOsFreeformCoordinator(
         const val MONITOR_NAME = "flymefreeform-corner"
         /** 抢流被 CANCEL 后，等这么久没有 MOVE 就按取消收场。 */
         const val CANCEL_WATCH_MS = 150L
+        /** 两次指针事件间隔超过这个值，就认为上一次会话已经结束，避免状态卡死。 */
+        const val SESSION_GAP_MS = 800L
+        /** 保持挂起时留给系统底部手势的高度（dp）。 */
+        const val BOTTOM_GESTURE_INSET_DP = 26f
+        /** WindowManager.LayoutParams.TOUCHABLE_INSETS_REGION 是 @hide 常量。 */
+        const val TOUCHABLE_INSETS_REGION = 3
         const val OVERLAY_PREWARM_LIFETIME_MS = 400L
         // 窗口层级实测：APPLICATION_OVERLAY=111000，INPUT_METHOD=131000。
         // 用 APPLICATION_OVERLAY 时键盘一弹出就盖住扇形，故选输入法对话框层（141000），
