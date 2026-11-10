@@ -304,6 +304,7 @@ internal class ColorOsFreeformCoordinator(
                         // 又被 return，末尾的 ignore(stream) 会把后续 MOVE 全部丢掉，
                         // 于是 HIT_ENTER 再不出现，菜单就定格了（23:26:40 实机日志）。
                         trace("SYSTEM_GESTURE_DOWN_IGNORED_IN_SESSION")
+                        false
                     } else {
                         enqueuePointerEvent(event, generation)
                         shouldStartPilfer(event)
