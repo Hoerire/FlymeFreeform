@@ -430,6 +430,7 @@ internal class ColorOsFreeformCoordinator(
             leftEnabled = settings.leftCornerEnabled,
             rightEnabled = settings.rightCornerEnabled,
         ) != null
+    }
 
     private fun handlePointerEvent(event: MotionEvent) {
         val settings = lastSettings
