@@ -210,7 +210,7 @@ internal class NotificationZoomSourceHook(
 
     private fun enabled(): Boolean {
         val settings = configuration.snapshot
-        return settings.enabled && settings.zoomLaunch
+        return settings.zoomLaunchEffective
     }
 
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
