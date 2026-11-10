@@ -46,7 +46,6 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -524,7 +523,8 @@ internal class CornerRadialOverlayView(
         val itemColors = LocalRadialItemColors.current
         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
             if (backdropOnlyState.value) {
-                drawRect(Color.Black, alpha = OverlayBackdrop.MAX_ALPHA * backdropAlpha.floatValue)
+                // 背景暗度已由窗口的 FLAG_DIM_BEHIND + dimAmount 提供（系统合成，不消费触摸），
+                // 这里不再叠一层黑块，否则会出现双重压暗。
                 return@Canvas
             }
             val panel =
@@ -564,8 +564,7 @@ internal class CornerRadialOverlayView(
                 iconScale = exitSample.iconScale + (entrySample.iconScale - 1f) * (1f - dismissalBlend),
             )
             val visual = dismissal ?: entrySample
-            val scrimAlpha = if (panelModeState.value) handoffVisuals.scrimProgress else visual.contentAlpha
-            drawRect(Color.Black, alpha = OverlayBackdrop.MAX_ALPHA * scrimAlpha)
+            // 同上：暗度交给窗口 dim，绘制层只画图标和面板。
             val alpha = visual.contentAlpha * if (panelModeState.value) handoffVisuals.contentAlpha else 1f
             if (alpha <= 0f) return@Canvas
             drawRadialItems(

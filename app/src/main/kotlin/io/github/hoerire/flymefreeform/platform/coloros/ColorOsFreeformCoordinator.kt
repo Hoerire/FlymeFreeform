@@ -30,6 +30,7 @@ import io.github.hoerire.flymefreeform.hook.ModuleEnvironmentState
 import io.github.hoerire.flymefreeform.logic.WindowForm
 import io.github.hoerire.flymefreeform.hook.ProcessConfiguration
 import io.github.hoerire.flymefreeform.window.CornerRadialOverlayView
+import io.github.hoerire.flymefreeform.window.CornerTouchRegionView
 import java.lang.reflect.Proxy
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
@@ -156,6 +157,8 @@ internal class ColorOsFreeformCoordinator(
     @Volatile private var cornerStream = false
     /** 上一次指针事件的时间戳；用来识别"新手势"并复位卡住的抢流会话。 */
     private var lastPointerEventAt = 0L
+    /** 只负责接触摸的小窗口；主窗口 FLAG_NOT_TOUCHABLE，点选靠它。 */
+    private var touchRegion: CornerTouchRegionView? = null
     private var overlay: CornerRadialOverlayView? = null
     private var morePanelActive = false
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
@@ -209,7 +212,7 @@ internal class ColorOsFreeformCoordinator(
         var view: CornerRadialOverlayView? = null
         try {
             view = CornerRadialOverlayView(context, this, ::debug)
-            val params = createOverlayParams(focusable = false)
+            val params = createOverlayParams()
             params.width = 1
             params.height = 1
             params.alpha = 0.01f
@@ -337,7 +340,17 @@ internal class ColorOsFreeformCoordinator(
                     // 这里直接放行，连 MotionEvent 复制和主线程投递都省掉。
                     // 之前每一帧都 obtain+post，桌面滑动时整页抖动就是这个开销造成的。
                     if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                        cornerStream = isInCornerZone(event)
+                        // 菜单已经挂出来时，主窗口不可触摸，事件会穿透到下层应用：
+                        // 这里只是"看一眼"有没有点在菜单外面，用来关闭菜单。
+                        // 只对 DOWN 做一次判定，不接流、不复制 MotionEvent。
+                        if (overlay != null && !pilferSessionActive) {
+                            val x = event.x
+                            val y = event.y
+                            handler.post { handleOutsideTouch(x, y) }
+                            cornerStream = false
+                        } else {
+                            cornerStream = isInCornerZone(event)
+                        }
                     }
                     if (!cornerStream) {
                         false
@@ -732,9 +745,10 @@ internal class ColorOsFreeformCoordinator(
             debug("SYSTEM_CATALOG_EMPTY_REFRESH")
             appCatalog.refresh(lastSettings, reloadApps = true)
         }
-        // 永久保持需要浮层自己接收点选，窗口必须可触摸。
+        // 保持挂起只影响「抬手后是否收起」，与窗口是否可触摸无关：
+        // 触摸统一由 attachTouchRegion() 那块小窗口接住。
         val keepOpen = lastSettings.radialKeepOpen
-        val params = createOverlayParams(focusable = keepOpen)
+        val params = createOverlayParams()
         var view: CornerRadialOverlayView? = null
         try {
             view = CornerRadialOverlayView(context, this, ::debug)
@@ -755,11 +769,13 @@ internal class ColorOsFreeformCoordinator(
                 trace("SYSTEM_OVERLAY_TYPE_" + OVERLAY_WINDOW_TYPE)
             } catch (exception: RuntimeException) {
                 // 输入法层的窗口类型被系统拒绝时，退回普通悬浮窗，至少保证扇形可用。
-                val fallback = createOverlayParams(focusable = keepOpen, type = FALLBACK_OVERLAY_TYPE)
+                val fallback = createOverlayParams(type = FALLBACK_OVERLAY_TYPE)
                 windowManager.addView(view, fallback)
                 overlayWindowType = FALLBACK_OVERLAY_TYPE
                 logger(Log.WARN, "SYSTEM_OVERLAY_TYPE_FALLBACK_" + FALLBACK_OVERLAY_TYPE, exception)
             }
+            // 主窗口只是画；点选必须另有人接。
+            attachTouchRegion()
         } catch (exception: RuntimeException) {
             handleOverlayFailure(view, "SYSTEM_OVERLAY_ADD_FAILED", exception)
         } catch (error: LinkageError) {
@@ -934,7 +950,7 @@ internal class ColorOsFreeformCoordinator(
     }
 
     private fun showBuiltInMorePanel(view: CornerRadialOverlayView) {
-        val params = createOverlayParams(focusable = true)
+        val params = createOverlayParams()
         try {
             windowManager.updateViewLayout(view, params)
             view.showBuiltInMorePanel()
@@ -949,7 +965,7 @@ internal class ColorOsFreeformCoordinator(
     /** 面板打开期间把遮罩切成不可触摸，避免吞掉面板上的首次点击。 */
     private fun applyBackdropPassThrough(view: CornerRadialOverlayView) {
         try {
-            windowManager.updateViewLayout(view, createOverlayParams(focusable = false))
+            windowManager.updateViewLayout(view, createOverlayParams())
             debug("SYSTEM_BACKDROP_PASS_THROUGH_OK")
         } catch (exception: RuntimeException) {
             logger(Log.WARN, "SYSTEM_BACKDROP_PASS_THROUGH_FAILED", exception)
@@ -965,28 +981,6 @@ internal class ColorOsFreeformCoordinator(
     override fun onCleanupFailed(throwable: Throwable) {
         logOverlayFailure("SYSTEM_OVERLAY_DISPOSE_FAILED", throwable)
     }
-
-    /**
-     * 把窗口的可触摸区域裁成指定大小。
-     *
-     * 两个成员都是 @hide：`touchableRegion`（Region 字段）与 `setTouchableInsets(int)`。
-     * 这里取字段里已有的 Region 就地修改，而不是塞一个新对象——避免某些版本字段是 final 的。
-     * 返回是否成功，调用方负责记日志。
-     */
-    private fun applyTouchableRegion(
-        params: WindowManager.LayoutParams,
-        width: Int,
-        height: Int,
-    ): Boolean =
-        runCatching {
-            val type = WindowManager.LayoutParams::class.java
-            val regionField = type.getField("touchableRegion")
-            val region = regionField.get(params) as android.graphics.Region
-            region.set(0, 0, width, height)
-            type.getMethod("setTouchableInsets", Integer.TYPE)
-                .invoke(params, TOUCHABLE_INSETS_REGION)
-            true
-        }.getOrDefault(false)
 
     /**
      * 底部手势区的高度（像素）。
@@ -1011,18 +1005,106 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
+    /**
+     * 菜单之外的一次按下：关闭菜单。
+     *
+     * 主窗口不可触摸之后，点空白不再由窗口接住，只能靠 monitor 的副本"看到"。
+     * 三个区域要分清：
+     * - 菜单区域（下方一块）：由触摸窗口处理，这里不管；
+     * - 底部手势区：属于系统上滑，绝不能关菜单，否则上滑时会先闪一下；
+     * - 其余（上方）：就是"点空白"，关闭。
+     */
+    private fun handleOutsideTouch(x: Float, y: Float) {
+        if (overlay == null) return
+        val metrics = context.resources.displayMetrics
+        val height = metrics.heightPixels.toFloat()
+        val inset = bottomGestureInsetPx(metrics).toFloat()
+        val menuTop = height - inset - height * CornerTouchRegionView.HEIGHT_FRACTION
+        // 底部手势区：让系统处理，不动菜单。
+        if (y >= height - inset) return
+        // 菜单区域：触摸窗口负责，这里不重复处理。
+        if (y >= menuTop) return
+        trace("SYSTEM_OVERLAY_OUTSIDE_CLOSE")
+        cancelActiveGesture()
+        removeOverlay()
+    }
+
+    /**
+     * 挂上只覆盖菜单区域的触摸窗口。
+     *
+     * 主窗口 FLAG_NOT_TOUCHABLE 之后没有人接点选，这里补一块。它和主窗口同层
+     * （同一个 overlayWindowType），所以压在应用之上；尺寸只有屏幕下方一半，
+     * 底部再让出手势条，因此不会碰到系统上滑。
+     */
+    private fun attachTouchRegion() {
+        detachTouchRegion()
+        val metrics = context.resources.displayMetrics
+        val inset = bottomGestureInsetPx(metrics)
+        val params = CornerTouchRegionView.layoutParams(context, overlayWindowType, inset)
+        val view =
+            CornerTouchRegionView(context) { event, offsetY ->
+                handleTouchRegionEvent(event, offsetY)
+            }
+        view.screenOffsetY = (metrics.heightPixels - params.height).coerceAtLeast(0)
+        try {
+            windowManager.addView(view, params)
+            touchRegion = view
+            trace("SYSTEM_TOUCH_REGION_ATTACHED_H" + params.height)
+        } catch (exception: RuntimeException) {
+            logger(Log.WARN, "SYSTEM_TOUCH_REGION_FAILED", exception)
+        }
+    }
+
+    /** 摘掉触摸窗口；与主窗口同生共死。 */
+    private fun detachTouchRegion() {
+        val view = touchRegion ?: return
+        touchRegion = null
+        try {
+            windowManager.removeViewImmediate(view)
+        } catch (_: IllegalArgumentException) {
+            // 已被系统移除。
+        } catch (exception: RuntimeException) {
+            logger(Log.WARN, "SYSTEM_TOUCH_REGION_REMOVE_FAILED", exception)
+        }
+    }
+
+    /**
+     * 触摸窗口收到的事件转成屏幕坐标，喂给扇形做命中判定。
+     *
+     * 这条路径只在「菜单已经挂出来」时使用：手势进行中的选格走 gesture monitor，
+     * 这里是窗口点选（含保持挂起后的单击）。
+     */
+    private fun handleTouchRegionEvent(event: MotionEvent, offsetY: Int) {
+        val view = overlay ?: return
+        val x = event.x
+        val y = event.y + offsetY
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                val selected = view.updateGesture(x, y)
+                gestureEngine.setSelection(selected)
+            }
+            MotionEvent.ACTION_UP -> {
+                view.updateGesture(x, y)
+                trace("SYSTEM_HIT_RELEASE_TOUCH_REGION")
+                view.finishGesture()
+            }
+            MotionEvent.ACTION_CANCEL -> view.cancelGesture()
+        }
+    }
+
+    /**
+     * 主窗口只负责「画」，一律不接收触摸。
+     *
+     * 触摸由另建的 [CornerTouchRegionView]（只覆盖菜单区域的小窗口）捕获，
+     * 点选交给 [CornerRadialOverlayView.updateGesture]，外部点击交给 gesture monitor。
+     * 这样才不会有"一个全屏可触摸窗口把底部手势一起吃掉"的问题——
+     * 这也是 v744 的做法：它的角区窗口带 FLAG_NOT_TOUCHABLE，事件全走 monitor。
+     *
+     * 背景暗度改用系统的 FLAG_DIM_BEHIND + dimAmount：调暗由系统合成，不消费触摸。
+     */
     private fun createOverlayParams(
-        focusable: Boolean,
         type: Int = overlayWindowType,
     ): WindowManager.LayoutParams {
-        // 非聚焦窗不带 ALT 时位于输入法上方；聚焦面板则需要 ALT 保持相同层级。
-        val inputFlags =
-            if (focusable) {
-                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
-            } else {
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-            }
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -1030,32 +1112,16 @@ internal class ColorOsFreeformCoordinator(
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
-                inputFlags,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_DIM_BEHIND,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.FILL
             layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
             setFitInsetsTypes(0)
-            if (focusable) {
-                // 保持挂起时窗口要能点选，但整屏可触摸会把底部上滑手势一起吃掉
-                // （实机：扇形出来后上滑回不了桌面）。把可触摸区域裁到手势条以上，
-                // 底部那一条继续交给系统。窗口本身不能缩小——view 内部按屏幕尺寸布局
-                // （begin() 用 displayMetrics 算 layout），缩小窗口会把扇形裁掉。
-                val metrics = context.resources.displayMetrics
-                val gestureBar = bottomGestureInsetPx(metrics)
-                val applied =
-                    applyTouchableRegion(
-                        params = this,
-                        width = metrics.widthPixels,
-                        height = (metrics.heightPixels - gestureBar).coerceAtLeast(1),
-                    )
-                // 常开一行：反射是否成功必须能从日志看出来，否则又会"改了半天没生效"。
-                trace(
-                    "SYSTEM_OVERLAY_TOUCH_REGION_" + applied +
-                        "_inset" + gestureBar,
-                )
-            }
+            dimAmount = OVERLAY_DIM_AMOUNT
             title = "FlymeFreeformCornerOverlay"
         }
     }
@@ -1119,6 +1185,9 @@ internal class ColorOsFreeformCoordinator(
             return
         }
         overlayRemovePending = false
+        // 触摸窗口必须和主窗口同生共死：主窗口已经不可触摸，留下触摸窗口就等于
+        // 一块看不见的板子盖在菜单区域上。
+        detachTouchRegion()
         trace("SYSTEM_OVERLAY_REMOVE")
         overlay = null
         if (sidebar.isPending) sidebar.cancel()
@@ -1341,6 +1410,8 @@ internal class ColorOsFreeformCoordinator(
         const val SESSION_GAP_MS = 800L
         /** 读不到系统导航栏高度时的兜底值（dp）。 */
         const val BOTTOM_GESTURE_INSET_DP = 40f
+        /** 背景暗度：交给系统的 FLAG_DIM_BEHIND，不再用 Compose 画黑块。 */
+        const val OVERLAY_DIM_AMOUNT = 0.35f
         /** WindowManager.LayoutParams.TOUCHABLE_INSETS_REGION 是 @hide 常量。 */
         const val TOUCHABLE_INSETS_REGION = 3
         const val OVERLAY_PREWARM_LIFETIME_MS = 400L
