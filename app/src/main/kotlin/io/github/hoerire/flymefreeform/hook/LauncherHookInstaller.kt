@@ -82,15 +82,7 @@ internal class LauncherHookInstaller(
                 }
             } catch (exception: ReflectiveOperationException) {
                 module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_TARGET_UNAVAILABLE", exception)
-                // 17 取消了厂商基类：没有 (Service, InputEvent) 入口。改为在桌面进程内把所有
-                // InputEventReceiver.onInputEvent 都接管，落点在触发区内就吞掉事件，
-                // 等价于 16 在 onInputEvent 里 return null 的做法。
-                mainHandler.post {
-                    if (finished.compareAndSet(false, true)) {
-                        mainHandler.removeCallbacks(timeout)
-                        installReceiverSuppressor(classLoader, apk)
-                    }
-                }
+
             } catch (exception: IOException) {
                 module.log(Log.WARN, TAG, "LAUNCHER_DEX_IO_FAILED", exception)
             } catch (exception: RuntimeException) {
@@ -137,73 +129,6 @@ internal class LauncherHookInstaller(
         module.log(Log.INFO, TAG, "LAUNCHER_CORNER_INPUT_SUPPRESS_INSTALLED")
     }
 
-    /**
-     * 17 兜底：把桌面进程里所有 InputEventReceiver.onInputEvent 都钩上。
-     *
-     * 不写死混淆类名，按「方法名 onInputEvent + 参数 InputEvent」定位；
-     * 只有按下点落在触发区内时才吞事件，其余一律原样放行。
-     */
-    private fun installReceiverSuppressor(loader: ClassLoader, apk: File) {
-        val context = runCatching {
-            Class.forName("android.app.ActivityThread").getMethod("currentApplication").invoke(null) as? Context
-        }.getOrNull()
-        if (context == null) {
-            module.log(Log.WARN, TAG, "LAUNCHER_RECEIVER_NO_CONTEXT", null)
-            return
-        }
-        runCatching {
-            System.loadLibrary("dexkit")
-            org.luckypray.dexkit.DexKitBridge.create(apk.path).use { bridge ->
-                val candidates = bridge.findMethod {
-                    matcher {
-                        name = "onInputEvent"
-                        paramTypes("android.view.InputEvent")
-                    }
-                }
-                module.log(Log.INFO, TAG, "LAUNCHER_RECEIVER_CANDIDATES_" + candidates.size, null)
-                candidates.forEach { data ->
-                    runCatching {
-                        val type = loader.loadClass(data.className)
-                        val method = type.declaredMethods.firstOrNull {
-                            it.name == "onInputEvent" && it.parameterTypes.size == 1 &&
-                                it.parameterTypes[0].name == "android.view.InputEvent"
-                        } ?: return@runCatching
-                        method.isAccessible = true
-                        module
-                            .hook(method)
-                            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                            .setId("flymefreeform.launcher.receiver." + type.simpleName)
-                            .intercept { chain ->
-                                val event = chain.args.firstNotNullOfOrNull { it as? MotionEvent }
-                                    ?: return@intercept chain.proceed()
-                                when (event.actionMasked) {
-                                    MotionEvent.ACTION_DOWN -> {
-                                        val config = createEligibleConfig(context, event)
-                                        if (config == null) {
-                                            receiverSuppressing = false
-                                            return@intercept chain.proceed()
-                                        }
-                                        receiverSuppressing = true
-                                        ModuleLog.debug(TAG) { "LAUNCHER_RECEIVER_SUPPRESS_" + type.simpleName }
-                                        null
-                                    }
-                                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                                        val holding = receiverSuppressing
-                                        receiverSuppressing = false
-                                        if (holding) null else chain.proceed()
-                                    }
-                                    else -> if (receiverSuppressing) null else chain.proceed()
-                                }
-                            }
-                        module.log(Log.INFO, TAG, "LAUNCHER_RECEIVER_HOOKED_" + type.simpleName, null)
-                    }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_RECEIVER_HOOK_FAILED", it) }
-                }
-            }
-        }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_RECEIVER_RESOLVE_FAILED", it) }
-    }
-
-    /** 当前是否正在吞一条从触发区开始的指针流。 */
-    @Volatile private var receiverSuppressing = false
 
     private fun installResolved(target: ColorOsLauncherInputTarget) {
         try {
