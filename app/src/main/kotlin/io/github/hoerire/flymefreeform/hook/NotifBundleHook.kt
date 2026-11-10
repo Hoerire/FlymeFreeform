@@ -55,7 +55,7 @@ internal class NotifBundleHook(
 
     private fun rewriteBundle(starter: Any?, args: List<Any?>) {
         val settings = configuration.snapshot
-        if (!settings.enabled || !settings.zoomLaunch) return
+        if (!settings.zoomLaunchEffective) return
         val bundle = args.getOrNull(0) as? Bundle ?: return
         val entry = args.getOrNull(1)
         val pkg = packageOf(entry)
