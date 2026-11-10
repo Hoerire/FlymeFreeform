@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
                     onPauseInLandscapeChange = repository::setPauseInLandscape,
                     onPauseInGameModeChange = repository::setPauseInGameMode,
                     onVerboseLogChange = repository::setVerboseLogEnabled,
+                    onZoomInteractionEnabledChange = repository::setZoomInteractionEnabled,
                     onZoomMaxWindowCountChange = repository::setZoomMaxWindowCount,
                     onZoomAllowAnyAppChange = repository::setZoomAllowAnyApp,
                     onZoomLaunchChange = repository::setZoomLaunch,
