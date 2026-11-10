@@ -26,6 +26,7 @@ import io.github.hoerire.flymefreeform.gesture.GestureAction
 import io.github.hoerire.flymefreeform.gesture.GesturePhase
 import io.github.hoerire.flymefreeform.gesture.PointerStreamGate
 import io.github.hoerire.flymefreeform.hook.ModuleEnvironmentState
+import io.github.hoerire.flymefreeform.logic.WindowForm
 import io.github.hoerire.flymefreeform.hook.ProcessConfiguration
 import io.github.hoerire.flymefreeform.window.CornerRadialOverlayView
 import java.lang.reflect.Proxy
@@ -75,8 +76,9 @@ internal class ColorOsFreeformCoordinator(
         isZoomBlocked = { packageName ->
             lastSettings.isZoomLaunchExcluded(packageName) || lastSettings.isBlacklisted(packageName)
         },
-        // 已经有窗口的应用不再重新启动，改为把已有窗口提到前台，见 bringWindowToFront。
-        bringToFront = { packageName -> bringWindowToFront(packageName) },
+        // 判断在 FanLaunchPolicy：有可见窗口就前置，否则正常启动。
+        existingForm = { packageName -> windowFormOf(packageName) },
+        frontExisting = { packageName -> bringWindowToFront(packageName) },
     )
     private val sidebar = ColorOsSidebarClient(context, handler, logger)
     private val appCatalog =
@@ -876,6 +878,15 @@ internal class ColorOsFreeformCoordinator(
      * 原地改写成小窗且没有动画（getReusableOptionsForFreeForm），所以只做前置；
      * 没有可见窗口（应用在后台、或刚被收窗）时返回 false，调用方按正常小窗启动。
      */
+    /** 该包此刻在屏幕上的状态，供 FanLaunchPolicy 判断。 */
+    private fun windowFormOf(packageName: String): WindowForm {
+        val tasks = tasksOfFocusedDisplay() ?: return WindowForm.None
+        val mine = tasks.filter { packageOfTask(it) == packageName }
+        if (mine.isEmpty()) return WindowForm.None
+        return if (mine.any { isTaskVisible(it) }) WindowForm.VisibleWindow else WindowForm.BackgroundTask
+    }
+
+    /** 把该包的可见任务提到前台。 */
     private fun bringWindowToFront(packageName: String): Boolean {
         val tasks = tasksOfFocusedDisplay() ?: return false
         val task = tasks.firstOrNull { packageOfTask(it) == packageName && isTaskVisible(it) }

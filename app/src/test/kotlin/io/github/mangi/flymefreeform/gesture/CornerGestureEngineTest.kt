@@ -30,16 +30,18 @@ class CornerGestureEngineTest {
     }
 
     @Test
-    fun reverseAndSecondPointerCancelWithoutClaiming() {
+    fun reverseMoveCancelsButSecondPointerDoesNot() {
         val reverse = CornerGestureEngine()
         reverse.down(0, 5f, 1995f, config)
         assertTrue(reverse.move(0, 1, -5f, 1995f, config) is GestureAction.PassThrough)
         assertFalse(reverse.isClaimed)
 
+        // 第二根手指不参与判定：引擎只跟随发起手势的那根手指，
+        // 否则滑到图标附近拇指侧面多报一根手指时，扇形会像断触一样自己关掉。
         val multi = CornerGestureEngine()
         multi.down(0, 5f, 1995f, config)
-        assertTrue(multi.move(0, 2, 30f, 1980f, config) is GestureAction.PassThrough)
-        assertFalse(multi.isClaimed)
+        assertTrue(multi.move(0, 2, 30f, 1980f, config) is GestureAction.Activate)
+        assertTrue(multi.isClaimed)
     }
 
     @Test
@@ -78,13 +80,21 @@ class CornerGestureEngineTest {
     }
 
     @Test
-    fun secondPointerCancelsAnActivatedMenu() {
+    fun secondPointerKeepsTheMenuAndOtherPointersAreIgnored() {
         val engine = CornerGestureEngine()
         engine.down(0, 5f, 1995f, config)
         engine.move(0, 1, 25f, 1985f, config)
 
-        assertTrue(engine.move(0, 2, 30f, 1980f, config) is GestureAction.Cancel)
-        assertFalse(engine.isClaimed)
+        // 多一根手指只带 pointerCount，不影响当前手势。
+        assertTrue(engine.move(0, 2, 30f, 1980f, config) is GestureAction.Update)
+        assertTrue(engine.isClaimed)
+
+        // 真正会取消的是"换了发起手指"这件事。
+        val other = CornerGestureEngine()
+        other.down(0, 5f, 1995f, config)
+        other.move(0, 1, 25f, 1985f, config)
+        assertTrue(other.move(1, 1, 35f, 1975f, config) is GestureAction.Cancel)
+        assertFalse(other.isClaimed)
     }
 
     @Test

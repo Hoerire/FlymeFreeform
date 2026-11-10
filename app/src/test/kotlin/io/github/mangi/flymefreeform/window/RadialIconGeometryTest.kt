@@ -60,8 +60,9 @@ class RadialIconGeometryTest {
         val narrow = fit(insets = insets)
         assertTrue(narrow.radius < full.radius)
         assertEquals(242f / 44f, narrow.radius / narrow.iconDiameter, 0.001f)
-        assertEquals(0.9f, narrow.selectionEnterRadius / narrow.iconDiameter, 0.001f)
-        assertEquals(1.25f, narrow.selectionKeepRadius / narrow.iconDiameter, 0.001f)
+        // 命中半径是 2.5 倍图标直径（设置页给值时另算），保持圈为 0：离开当前格圆心就换格。
+        assertEquals(2.5f, narrow.selectionEnterRadius / narrow.iconDiameter, 0.001f)
+        assertEquals(0f, narrow.selectionKeepRadius, 0.001f)
         for (count in 1..7) assertEquals(narrow, fit(insets = insets, count = count))
     }
 

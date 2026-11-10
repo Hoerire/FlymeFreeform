@@ -5,6 +5,9 @@ import android.app.ActivityOptions
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import io.github.hoerire.flymefreeform.logic.FanLaunchAction
+import io.github.hoerire.flymefreeform.logic.FanLaunchPolicy
+import io.github.hoerire.flymefreeform.logic.WindowForm
 import android.content.pm.PackageManager
 import android.os.Bundle
 
@@ -30,14 +33,11 @@ internal class ColorOsFreeformLauncher(
      * 所以启动源头必须自己判一次；命中就退化成普通全屏启动。
      */
     private val isZoomBlocked: (String) -> Boolean = { false },
-    /**
-     * 把该包已有的窗口提到前台；没有窗口时返回 false。
-     *
-     * 已有任务再走一次小窗启动，命中的是系统的 getReusableOptionsForFreeForm：
-     * 复用那个任务、原地改写窗口参数，没有启动动画（实测是瞬间缩小）。所以有窗口时
-     * 不重新启动，只做前置。
-     */
-    private val bringToFront: (String) -> Boolean = { false },
+    /** 该包此刻在屏幕上的状态；决定是前置还是启动，判断在 FanLaunchPolicy 里。 */
+    private val existingForm: (String) -> WindowForm = { WindowForm.None },
+
+    /** 把该包的可见任务提到前台。 */
+    private val frontExisting: (String) -> Boolean = { false },
 ) {
     /** 详细日志：仅在「详细日志」开启时输出，与其他模块日志同一出口。 */
     private fun debug(code: String) {
@@ -45,8 +45,13 @@ internal class ColorOsFreeformLauncher(
     }
 
     fun launch(requested: ComponentName, atLeft: Boolean = true): FreeformLaunchResult {
-        if (bringToFront(requested.packageName)) {
-            return FreeformLaunchResult.AlreadyOpen
+        when (FanLaunchPolicy.decide(existingForm(requested.packageName))) {
+            FanLaunchAction.FrontExisting -> {
+                debug("SYSTEM_LAUNCH_FRONT_EXISTING_" + requested.packageName)
+                frontExisting(requested.packageName)
+                return FreeformLaunchResult.AlreadyOpen
+            }
+            FanLaunchAction.LaunchAsZoom -> Unit
         }
         var component = requested
         var reason = unavailableReason(component)

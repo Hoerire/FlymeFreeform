@@ -1,6 +1,5 @@
 package io.github.hoerire.flymefreeform.window
 
-import android.view.animation.PathInterpolator
 import kotlin.math.PI
 import kotlin.math.exp
 
@@ -21,7 +20,23 @@ internal object AllAppsPanelMotion {
     /** 入场固定时长（毫秒）：完成判定用它，避免曲线尾部被判成"已到 1"而提前收工。 */
     const val ENTER_DURATION_MS = 450L
 
-    private val enterInterpolator = PathInterpolator(0.4f, 0f, 0.2f, 1f)
+    // cubic-bezier(0.4, 0, 0.2, 1) 自己算，不引 android.view.animation：
+    // 那个类在单测环境里是桩，会直接抛异常，等于把这条曲线挡在测试之外。
+    private fun enterEase(progress: Float): Float {
+        var low = 0f
+        var high = 1f
+        var u = progress
+        repeat(8) {
+            if (bezierAxis(0.4f, 0.2f, u) < progress) low = u else high = u
+            u = (low + high) / 2f
+        }
+        return bezierAxis(0f, 1f, u)
+    }
+
+    private fun bezierAxis(p1: Float, p2: Float, u: Float): Float {
+        val v = 1f - u
+        return 3f * v * v * u * p1 + 3f * v * u * u * p2 + u * u * u
+    }
 
     fun exit(seconds: Float): Frame = Frame(
         alpha = remaining(seconds, 0.3f),
@@ -30,7 +45,7 @@ internal object AllAppsPanelMotion {
 
     fun enter(seconds: Float): Frame {
         val progress = (seconds / ENTER_DURATION_SECONDS).coerceIn(0f, 1f)
-        val eased = enterInterpolator.getInterpolation(progress)
+        val eased = enterEase(progress)
         // 保留原实现的铺开幅度：缩放从 0.3 放大到 1，只是把时长与曲线换成系统那套。
         return Frame(alpha = eased, scale = 0.3f + 0.7f * eased)
     }
