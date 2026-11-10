@@ -141,6 +141,9 @@ internal class ColorOsFreeformCoordinator(
     private var pointerRegistered = false
     @Volatile
     private var pointerGeneration = 0L
+    // 从 Activate（开始 pilfer）到 UP/CANCEL 之间为 true。
+    // 这段时间里的重复 DOWN 不能当新流处理，否则会把引擎打回 Armed。
+    private var pilferSessionActive = false
     private var overlay: CornerRadialOverlayView? = null
     private var morePanelActive = false
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
@@ -509,6 +512,13 @@ internal class ColorOsFreeformCoordinator(
             cancelActiveGesture()
             return
         }
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && pilferSessionActive) {
+            // 抢流会话进行中又收到 DOWN：系统重发或第二根手指误报，不是新流。
+            // 走 begin()+down() 会把正在进行的扇形打回 Armed，之后再也产生不了 Update，
+            // 表现就是"菜单卡住、不能选、不能滑"（23:19:00 实机日志正是这样）。
+            trace("SYSTEM_GESTURE_DOWN_IGNORED_IN_SESSION")
+            return
+        }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             // 手势生命周期的第一行，无条件记；每根手指只有一行，热路径负担可以忽略。
             trace("SYSTEM_GESTURE_DOWN_" + event.x.toInt() + "_" + event.y.toInt())
@@ -566,6 +576,7 @@ internal class ColorOsFreeformCoordinator(
         }
         when (action) {
             is GestureAction.Activate -> {
+                pilferSessionActive = true
                 trace(
                     "SYSTEM_GESTURE_ACTIVATE_" + action.side.name + "_" +
                         action.x.toInt() + "_" + action.y.toInt(),
@@ -600,6 +611,7 @@ internal class ColorOsFreeformCoordinator(
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
             activeEnvironmentApproved = false
             activeGestureConfig = null
+            pilferSessionActive = false
         }
     }
 
