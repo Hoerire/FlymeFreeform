@@ -286,10 +286,8 @@ internal class OutsideTapCloseHookInstaller(
                         val back = task?.let { runCatching { backConstructor.newInstance(it, true) }.getOrNull() }
                         if (task != null && back != null) {
                             module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE", null)
-                            val result = chain.proceed(arrayOf(back))
-                            // 被动收窗不留画面：退场动画在新应用之上播，只能当帧抹掉。
-                            hideClosingSurface(task)
-                            return@intercept result
+                            // 同帧替换为 ToBack，但不再隐藏 surface：退场动画交给系统照常播完。
+                            return@intercept chain.proceed(arrayOf(back))
                         }
                     }
                 }
@@ -298,51 +296,6 @@ internal class OutsideTapCloseHookInstaller(
         module.log(Log.INFO, TAG, "ZOOM_REPLACE_TO_CLOSE_INSTALLED", null)
     }
 
-    /**
-     * 被动收窗不留画面。
-     *
-     * 小窗压在小窗专用层（ALWAYS_ON_TOP_BASE_LAYER）之上，退场动画无论排在启动之前、
-     * 之后还是同时，都会画在新应用上面；所以「被新启动顶掉」这一次不播画面，直接在
-     * 退出同一个同步事务里隐藏任务 surface。
-     *
-     * 依据：厂商 exitFlexibleTask 的 customTransition == 0x10（转浮标）分支就是
-     * reparent + hide + apply，隐藏 surface 是这套框架消画面的正规手段；这里只取 hide，
-     * 不跟它的 setTaskState(4) / setIsAlwaysTopStateChanged(false)，避免把任务留在浮标语义。
-     *
-     * 只在「超限替换」分支调用；点窗外、标题栏按钮、拖边缘等独立关闭不经过这里，
-     * 退场动画与原厂一致。
-     */
-    private fun hideClosingSurface(task: Any) {
-        try {
-            val surface = task.javaClass.getMethod("getSurfaceControl").invoke(task)
-                as? android.view.SurfaceControl
-            val transaction = task.javaClass.getMethod("getSyncTransaction").invoke(task)
-                as? android.view.SurfaceControl.Transaction
-            if (surface == null || transaction == null || !surface.isValid) {
-                module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_HIDE_SKIPPED", null)
-                return
-            }
-            // SurfaceControl.Transaction#hide 是 @hide 成员，编译期不可见，只能反射调用。
-            val hide = transaction.javaClass.getMethod("hide", android.view.SurfaceControl::class.java)
-            hide.invoke(transaction, surface)
-            transaction.apply()
-            module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_SURFACE_HIDDEN", null)
-        } catch (exception: ReflectiveOperationException) {
-            module.log(
-                Log.WARN,
-                TAG,
-                "ZOOM_REPLACE_TO_CLOSE_HIDE_FAILED_" + exception.javaClass.simpleName + "_" + exception.message,
-                exception,
-            )
-        } catch (exception: RuntimeException) {
-            module.log(
-                Log.WARN,
-                TAG,
-                "ZOOM_REPLACE_TO_CLOSE_HIDE_FAILED_" + exception.javaClass.simpleName + "_" + exception.message,
-                exception,
-            )
-        }
-    }
 
     /** 沿继承链找字段（厂商把字段放在父类上）。 */
     private fun fieldInHierarchy(start: Class<*>, name: String): java.lang.reflect.Field? {
