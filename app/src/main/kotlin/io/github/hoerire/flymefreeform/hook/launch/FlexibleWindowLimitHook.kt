@@ -69,10 +69,6 @@ internal class FlexibleWindowLimitHook(
                         } else if (isMaxWinNum) {
                             // 直接作为上限值：这是用户在设置里明确指定的个数，不做放宽合并。
                             settings.zoomMaxWindowCount
-                        } else if (isSupport && original == true && shouldBlockSystemSheet(chain.args)) {
-                            // 系统自己要把分享面板/选择器开成小窗：否掉，让它全屏。
-                            // 我们注入的那条路带着 EXTRA_APPLIED 标记，不受影响。
-                            false
                         } else if (settings.zoomAllowAnyApp) {
                             true
                         } else {
@@ -88,34 +84,6 @@ internal class FlexibleWindowLimitHook(
         return count
     }
 
-    /**
-     * 是否要否决这次"开成小窗"。
-     *
-     * 只针对分享面板 / 系统选择器，且只针对不是我们发起的那次（没有注入标记）。
-     * ColorOS 17 会自己把分享页开成柔性窗口，用户关掉「小窗跳转」也拦不住；
-     * 点选目标后那个窗口退到后台还会被收成贴边把手。这里直接让它全屏。
-     */
-    private fun shouldBlockSystemSheet(args: List<Any?>): Boolean {
-        val intent = args.filterIsInstance<android.content.Intent>().firstOrNull()
-            ?: args.firstNotNullOfOrNull { candidate ->
-                candidate?.let { task ->
-                    runCatching {
-                        task.javaClass.getMethod("getBaseIntent").invoke(task) as? android.content.Intent
-                    }.getOrNull()
-                }
-            }
-            ?: return false
-        if (intent.hasExtra(ZoomLaunchSpec.EXTRA_APPLIED)) return false
-        val target = intent.component?.packageName
-            ?: runCatching {
-                intent.javaClass.getMethod("getPackage").invoke(intent) as? String
-            }.getOrNull()
-            ?: return false
-        if (target !in SYSTEM_SHEET_PACKAGES) return false
-        io.github.hoerire.flymefreeform.log.ModuleLog.debug(TAG) { "ZOOM_BLOCK_SYSTEM_SHEET_" + target }
-        return true
-    }
-
     private fun shortName(className: String): String = className.substringAfterLast('.')
 
     private companion object {
@@ -123,12 +91,5 @@ internal class FlexibleWindowLimitHook(
         const val MANAGER_CLASS = "com.android.server.wm.FlexibleWindowManagerService"
         const val CONTROLLER_CLASS = "com.android.server.wm.FlexibleTaskController"
         const val UTILS_CLASS = "com.android.server.wm.FlexibleWindowUtils"
-
-        /** 系统分享面板与选择器所在的包：这些界面开成小窗必然出问题。 */
-        val SYSTEM_SHEET_PACKAGES = setOf(
-            "com.android.intentresolver",
-            "com.google.android.intentresolver",
-            "android",
-        )
     }
 }
