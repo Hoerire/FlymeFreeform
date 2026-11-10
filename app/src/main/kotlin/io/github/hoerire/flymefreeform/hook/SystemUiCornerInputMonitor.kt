@@ -24,6 +24,7 @@ import io.github.hoerire.flymefreeform.gesture.CornerSide
 import io.github.hoerire.flymefreeform.gesture.CornerTriggerRegion
 import io.github.hoerire.flymefreeform.gesture.GestureAction
 import io.github.hoerire.flymefreeform.gesture.GesturePhase
+import io.github.hoerire.flymefreeform.log.ModuleLog
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 
@@ -299,6 +300,15 @@ internal class SystemUiCornerInputMonitor(
                         if (gestureEngine.phase == GesturePhase.Armed) {
                             activeConfig = config
                             tracking = true
+                            // 落点已在触发区内：立刻抢占指针流，让系统的 swipe-up 收不到后续事件。
+                            // ColorOS 17 取消了桌面侧的事件入口，只能在这里抢；成败都记录，便于验证。
+                            if (!pilferAttempted) {
+                                pilferAttempted = true
+                                val ok = pilfer(this)
+                                ModuleLog.debug(TAG) {
+                                    if (ok) "SYSTEM_CORNER_PILFER_OK" else "SYSTEM_CORNER_PILFER_FAILED"
+                                }
+                            }
                         }
                     }
                 }
