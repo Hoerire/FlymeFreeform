@@ -53,12 +53,16 @@ internal class SystemUiHookInstaller(
         }
     }
 
+    /**
+     * SystemUI 侧的角区 SPY 窗口已停用。
+     *
+     * 那是两个真的接收触摸的 size×size 窗口（INPUT_FEATURE_SPY，通道名
+     * FlymeFreeform-corner-input-Left/Right），覆盖在屏幕下角，pilfer 之后点击就被它吃掉。
+     * 抢流与判定已全部移到 system_server 的 gesture monitor，这里不再需要任何窗口。
+     */
     private fun startInputMonitor(context: Context) {
         try {
-            val monitor = SystemUiCornerInputMonitor(context, module, configuration)
-            inputMonitor = monitor
-            monitor.start()
-            module.log(Log.INFO, TAG, "SYSTEMUI_CORNER_SPY_READY")
+            module.log(Log.INFO, TAG, "SYSTEMUI_CORNER_SPY_DISABLED_NO_TOUCH_WINDOW")
         } catch (exception: ReflectiveOperationException) {
             module.log(Log.WARN, TAG, "SYSTEMUI_CORNER_SPY_API_UNAVAILABLE", exception)
         } catch (exception: RuntimeException) {
