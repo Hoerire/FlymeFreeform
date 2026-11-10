@@ -293,7 +293,8 @@ internal class OutsideTapCloseHookInstaller(
                             // 让新窗口先出现并铺开，旧窗再退，观感上才不是"凭空消失"。
                             val controller = chain.thisObject
                             module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE_DELAYED", null)
-                            pendingClose?.let(mainHandler::removeCallbacks)
+                            val previous = pendingClose
+                            if (previous != null) mainHandler.removeCallbacks(previous)
                             pendingClose = Runnable {
                                 module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE", null)
                                 runCatching { innerLocked.invoke(controller, back) }
