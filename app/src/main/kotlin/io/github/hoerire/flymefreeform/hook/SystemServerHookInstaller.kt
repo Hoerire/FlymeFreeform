@@ -36,9 +36,6 @@ internal class SystemServerHookInstaller(
             environment,
         ).install(classLoader)
         NotificationEnqueueProbe(module).install(classLoader)
-        // 只记日志、不改行为：厂商侧窗口建立/移除/裁决/悬浮把手四个节点，供定位 ColorOS 17 的怪现象。
-        runCatching { FlexibleWindowDiagnostics(module).install(classLoader) }
-            .onFailure { module.log(Log.WARN, "FlymeFreeform", "FLEX_DIAGNOSTICS_INSTALL_FAILED", it) }
         installForegroundObserver(classLoader)
         try {
             // 厂商初始化入口只能反射定位；缺失时保留系统启动流程。

@@ -551,11 +551,9 @@ internal class ActivityStarterZoomInjector(
         // 都当成应用间跳转；系统界面自身的启动由后续分支处理。两者一律保持全屏。
         // 应用内部页面之间的跳转同样携带 resultTo，因此还要求目标与发起方不同包。
         //
-        // 目标必须已知：分享面板、选择器这类 Intent 在 execute 阶段常常还没解析出目标，
-        // 此时注入 zoom 参数会落到系统组件上，最终变成一个小窗分享页。
-        // 分享面板由系统包承载、在 SKIP_TARGETS 内，但按组件精确放行，保留"小窗分享"。
+        // 该判定先于 SKIP_TARGETS：分享面板由系统包承载，但属于用户主动发起的跳转，
+        // 按组件精确放行，其余系统组件维持全屏。
         if (hasResultTo &&
-            target != null &&
             callingPackage != null &&
             callingPackage != LAUNCHER_PACKAGE &&
             callingPackage != SYSTEM_UI_PACKAGE &&
