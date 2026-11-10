@@ -162,7 +162,14 @@ internal class ColorOsFreeformCoordinator(
     private var movePosted = false
     private var lastOverlayFailureLogAt = -OVERLAY_FAILURE_LOG_INTERVAL_MS
 
+    private var zoneInputMonitor: ZoneInputMonitor? = null
+
     fun start() {
+        runCatching {
+            zoneInputMonitor = ZoneInputMonitor(configuration) { priority, code, throwable ->
+                logger(priority, code, throwable)
+            }.also { it.start() }
+        }.onFailure { logger(Log.WARN, "SYSTEM_ZONE_MONITOR_INSTALL_FAILED", it) }
         // 识屏宿主被限制后台运行会让三条入口同时失效；开机纠正一次，之后省电策略再改也不会失效。
         ScreenIdentifyAppOps.ensure(context)
         handler.post {
