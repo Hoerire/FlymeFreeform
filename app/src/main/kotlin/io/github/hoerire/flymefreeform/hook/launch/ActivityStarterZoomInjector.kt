@@ -544,6 +544,15 @@ internal class ActivityStarterZoomInjector(
             return null
         }
 
+        // 分享面板与系统选择器一律全屏。
+        // 它们带 resultTo、目标又落在 isShareSheet 上，会命中下面的 inter_app 分支被改成小窗；
+        // 而 ColorOS 17 的分享面板自带子菜单与动画，改成小窗后点选目标，那个窗口退到后台
+        // 就会被系统收成贴边把手（实测 09:59:35 那次 QQQ 分享）。
+        if (intent.action == Intent.ACTION_CHOOSER || isShareSheet(intent)) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIPPED_SHARE_SHEET" }
+            return null
+        }
+
         // 携带 resultTo 的跨应用启动：调用方在等待结果。
         // 本方法只补 ActivityOptions，不另起一次启动，结果回传链路保持完整。
         //
@@ -551,14 +560,15 @@ internal class ActivityStarterZoomInjector(
         // 都当成应用间跳转；系统界面自身的启动由后续分支处理。两者一律保持全屏。
         // 应用内部页面之间的跳转同样携带 resultTo，因此还要求目标与发起方不同包。
         //
-        // 该判定先于 SKIP_TARGETS：分享面板由系统包承载，但属于用户主动发起的跳转，
-        // 按组件精确放行，其余系统组件维持全屏。
+        // 目标必须已知：分享面板、选择器这类 Intent 在 execute 阶段常常还没解析出目标，
+        // 此时注入 zoom 参数会落到系统组件上，最终变成一个小窗分享页。
         if (hasResultTo &&
+            target != null &&
             callingPackage != null &&
             callingPackage != LAUNCHER_PACKAGE &&
             callingPackage != SYSTEM_UI_PACKAGE &&
             callingPackage != target &&
-            (target !in SKIP_TARGETS || isShareSheet(intent))
+            target !in SKIP_TARGETS
         ) {
             return "inter_app"
         }
