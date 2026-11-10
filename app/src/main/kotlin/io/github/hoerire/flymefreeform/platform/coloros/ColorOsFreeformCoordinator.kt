@@ -343,7 +343,9 @@ internal class ColorOsFreeformCoordinator(
                         // 菜单已经挂出来时，主窗口不可触摸，事件会穿透到下层应用：
                         // 这里只是"看一眼"有没有点在菜单外面，用来关闭菜单。
                         // 只对 DOWN 做一次判定，不接流、不复制 MotionEvent。
-                        if (overlay != null && !pilferSessionActive) {
+                        // 只要菜单在屏幕上就检测：pilferSessionActive 可能残留为 true
+                        // （流被系统掐断时没有 UP），拿它当条件会让点空白完全失效。
+                        if (overlay != null) {
                             val x = event.x
                             val y = event.y
                             handler.post { handleOutsideTouch(x, y) }
@@ -1084,9 +1086,17 @@ internal class ColorOsFreeformCoordinator(
                 gestureEngine.setSelection(selected)
             }
             MotionEvent.ACTION_UP -> {
-                view.updateGesture(x, y)
-                trace("SYSTEM_HIT_RELEASE_TOUCH_REGION")
-                view.finishGesture()
+                val selected = view.updateGesture(x, y)
+                if (selected == null) {
+                    // 点在扇形之外：这就是"点空白关闭"。没有这一支的话，
+                    // 主窗口又不可触摸，菜单会一直挂在屏幕上无法关闭。
+                    trace("SYSTEM_OVERLAY_TOUCH_BLANK_CLOSE")
+                    cancelActiveGesture()
+                    removeOverlay()
+                } else {
+                    trace("SYSTEM_HIT_RELEASE_TOUCH_REGION")
+                    view.finishGesture()
+                }
             }
             MotionEvent.ACTION_CANCEL -> view.cancelGesture()
         }

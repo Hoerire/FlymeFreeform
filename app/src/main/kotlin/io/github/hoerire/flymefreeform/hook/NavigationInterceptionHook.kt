@@ -45,7 +45,12 @@ internal class NavigationInterceptionHook(
             val clazz =
                 try {
                     classLoader.loadClass(className)
-                } catch (_: Throwable) {
+                } catch (throwable: Throwable) {
+                    // 加载不到时把类名和异常类型都写出来，否则只有一句笼统的"不可用"。
+                    ModuleLog.info(
+                        "NAV_REGION_CLASS_MISSING_" + className +
+                            "_" + throwable.javaClass.simpleName,
+                    )
                     null
                 } ?: continue
             for (method in clazz.declaredMethods) {
@@ -92,8 +97,16 @@ internal class NavigationInterceptionHook(
         val byName =
             name == "updateinvalidregion" || (name.contains("invalid") && name.contains("region"))
         if (!byName) return false
-        return method.parameterTypes.any { it.isArray }
+        // ColorOS 17 的实际签名是 updateInvalidRegion(String, List, boolean, boolean, Bundle)：
+        // 区域是 java.util.List，不是数组。只认 isArray 会导致一个方法都匹配不上。
+        return method.parameterTypes.any { isRegionContainer(it) }
     }
+
+    /** 承载矩形的参数类型：数组、List/Collection、Iterable。 */
+    private fun isRegionContainer(type: Class<*>): Boolean =
+        type.isArray ||
+            Collection::class.java.isAssignableFrom(type) ||
+            Iterable::class.java.isAssignableFrom(type)
 
     /** 在参数里找承载矩形的那一项，挖角后写回；找不到就原样放行。 */
     private fun carve(args: List<Any?>) {
