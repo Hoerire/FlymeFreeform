@@ -55,12 +55,6 @@ internal class LauncherHookInstaller(
 
     fun install(classLoader: ClassLoader, applicationInfo: ApplicationInfo) {
         if (!installationStarted.compareAndSet(false, true)) return
-        // 暂时停用桌面侧输入钩子：现在改由底角覆盖层直接消费触摸，两套同时启用会互相干扰。
-        // 恢复时把下面这行删掉即可。
-        if (DISABLED_FOR_CONSUME_EXPERIMENT) {
-            module.log(Log.INFO, TAG, "LAUNCHER_HOOK_DISABLED_FOR_EXPERIMENT", null)
-            return
-        }
         val apk = File(applicationInfo.sourceDir)
         val cache = File(applicationInfo.dataDir, "code_cache/flymefreeform/launcher-symbols")
         val finished = AtomicBoolean(false)
@@ -88,7 +82,6 @@ internal class LauncherHookInstaller(
                 }
             } catch (exception: ReflectiveOperationException) {
                 module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_TARGET_UNAVAILABLE", exception)
-
             } catch (exception: IOException) {
                 module.log(Log.WARN, TAG, "LAUNCHER_DEX_IO_FAILED", exception)
             } catch (exception: RuntimeException) {
@@ -134,8 +127,6 @@ internal class LauncherHookInstaller(
             }
         module.log(Log.INFO, TAG, "LAUNCHER_CORNER_INPUT_SUPPRESS_INSTALLED")
     }
-
-
     private fun installResolved(target: ColorOsLauncherInputTarget) {
         try {
             if (target.suppressByReturn) {
@@ -334,8 +325,6 @@ internal class LauncherHookInstaller(
 
     private companion object {
         const val TAG = "FlymeFreeform"
-        /** 实验开关：覆盖层消费触摸期间停用桌面侧钩子。 */
-        const val DISABLED_FOR_CONSUME_EXPERIMENT = true
         const val RESOLUTION_TIMEOUT_MS = 10_000L
         const val CLAIM_LOG_INTERVAL_MS = 2_000L
         const val PILFER_FAILURE_LOG_INTERVAL_MS = 10_000L
