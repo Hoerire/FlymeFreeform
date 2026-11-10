@@ -70,7 +70,9 @@ internal class FlexibleWindowLimitHook(
                             // 直接作为上限值：这是用户在设置里明确指定的个数，不做放宽合并。
                             settings.zoomMaxWindowCount
                         } else if (settings.zoomAllowAnyApp) {
-                            true
+                            // 解除限制只对应用负责：系统分享面板 / 选择器保持系统原判，
+                            // 否则系统会认为"这个界面支持小窗"，把分享开成小窗。
+                            if (isSystemSheet(chain.args)) original else true
                         } else {
                             original
                         }
@@ -84,6 +86,25 @@ internal class FlexibleWindowLimitHook(
         return count
     }
 
+    /** 系统分享面板 / 选择器所在的包。 */
+    private fun isSystemSheet(args: List<Any?>): Boolean {
+        val intent = args.filterIsInstance<android.content.Intent>().firstOrNull()
+            ?: args.firstNotNullOfOrNull { candidate ->
+                candidate?.let { task ->
+                    runCatching {
+                        task.javaClass.getMethod("getBaseIntent").invoke(task) as? android.content.Intent
+                    }.getOrNull()
+                }
+            }
+            ?: return false
+        val target = intent.component?.packageName
+            ?: runCatching {
+                intent.javaClass.getMethod("getPackage").invoke(intent) as? String
+            }.getOrNull()
+            ?: return false
+        return target in SYSTEM_SHEET_PACKAGES
+    }
+
     private fun shortName(className: String): String = className.substringAfterLast('.')
 
     private companion object {
@@ -91,5 +112,11 @@ internal class FlexibleWindowLimitHook(
         const val MANAGER_CLASS = "com.android.server.wm.FlexibleWindowManagerService"
         const val CONTROLLER_CLASS = "com.android.server.wm.FlexibleTaskController"
         const val UTILS_CLASS = "com.android.server.wm.FlexibleWindowUtils"
+
+        /** 系统分享面板与选择器所在的包；解除限制不为它们背书。 */
+        val SYSTEM_SHEET_PACKAGES = setOf(
+            "com.android.intentresolver",
+            "com.google.android.intentresolver",
+        )
     }
 }
