@@ -89,12 +89,14 @@ internal data class ColorOsLauncherInputTarget(
         ): ColorOsLauncherInputTarget {
             val ownerClass = loader.loadClass(symbols.inputOwnerClass ?: symbols.serviceClass)
             val serviceClass = loader.loadClass(symbols.serviceClass)
+            // 两种形态都接受：Receiver 回调 (InputEvent)Z，或代理入口 (Service, InputEvent)Z。
             val input = ownerClass.declaredMethods.firstOrNull { method ->
                 method.name == symbols.inputMethod &&
-                    method.parameterTypes.size == 2 &&
-                    method.parameterTypes[0] == serviceClass &&
-                    method.parameterTypes[1] == InputEvent::class.java &&
-                    method.returnType == Boolean::class.javaPrimitiveType
+                    method.returnType == Boolean::class.javaPrimitiveType &&
+                    method.parameterTypes.isNotEmpty() &&
+                    method.parameterTypes.last() == InputEvent::class.java &&
+                    (method.parameterTypes.size == 1 ||
+                        method.parameterTypes[0] == serviceClass)
             } ?: throw NoSuchMethodException("LAUNCHER_DEX_INPUT_NOT_UNIQUE")
             input.isAccessible = true
             return ColorOsLauncherInputTarget(input, null, null, suppressByReturn = true)

@@ -11,7 +11,7 @@ internal object LauncherDexQuery {
     /** ColorOS 17 起厂商基类被移除，输入入口回到 AOSP 的 TouchInteractionService。 */
     const val AOSP_SERVICE_CLASS = "com.android.quickstep.TouchInteractionService"
     const val INPUT_MONITOR_CLASS = "android.view.InputMonitor"
-    const val RULE_VERSION = "launcher-input-v2-dexkit-2.3.0"
+    const val RULE_VERSION = "launcher-input-v3-dexkit-2.3.0"
 
     /**
      * 解析结果。
@@ -76,6 +76,26 @@ internal object LauncherDexQuery {
      * 按参数类型全局找唯一匹配，不依赖类名。
      */
     private fun findOnAospService(bridge: DexKitBridge): Symbols {
+        // 首选 InputEventReceiver 的回调：桌面刚拿到触摸的位置，
+        // 在这里返回 true 桌面整条手势链都不会启动（16 的 onInputEvent 等价物）。
+        val receiver = bridge.findMethod {
+            matcher {
+                name = "onInputEvent"
+                paramTypes("android.view.InputEvent")
+                returnType = "boolean"
+            }
+        }.singleOrNull()
+        if (receiver != null) {
+            return Symbols(
+                inputMethod = receiver.name,
+                monitorField = null,
+                wrapperClass = null,
+                pilferMethod = null,
+                serviceClass = AOSP_SERVICE_CLASS,
+                inputOwnerClass = receiver.className,
+            )
+        }
+        // 退而求其次：InputConsumerProxy 形态——已在上滑接管之后，只能"事后"抑制。
         val hits = bridge.findMethod {
             matcher {
                 paramTypes(AOSP_SERVICE_CLASS, "android.view.InputEvent")

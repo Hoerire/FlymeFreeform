@@ -99,6 +99,14 @@ internal class LauncherHookInstaller(
     }
 
 
+
+    /** Receiver 形态没有 Context 参数，退回进程的 Application。 */
+    private fun applicationContext(): Context? = runCatching {
+        Class.forName("android.app.ActivityThread")
+            .getMethod("currentApplication")
+            .invoke(null) as? Context
+    }.getOrNull()
+
     /**
      * ColorOS 17 通道：入口是 (TouchInteractionService, InputEvent) -> boolean。
      * 命中触发区时返回 true，桌面拿不到这次事件，上滑不会把多任务拉起来。
@@ -109,8 +117,12 @@ internal class LauncherHookInstaller(
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .setId("flymefreeform.launcher.corner_input_suppress")
             .intercept { chain ->
-                val owner = chain.getArg(0) as? Context ?: return@intercept chain.proceed()
-                val event = chain.getArg(1) as? MotionEvent ?: return@intercept chain.proceed()
+                // 两种形态：Receiver 回调 (InputEvent)，或代理入口 (Service, InputEvent)。
+                val event = chain.args.firstNotNullOfOrNull { it as? MotionEvent }
+                    ?: return@intercept chain.proceed()
+                val owner = chain.args.firstNotNullOfOrNull { it as? Context }
+                    ?: applicationContext()
+                    ?: return@intercept chain.proceed()
                 if (shouldSuppress(owner, event)) true else chain.proceed()
             }
         module.log(Log.INFO, TAG, "LAUNCHER_CORNER_INPUT_SUPPRESS_INSTALLED")
