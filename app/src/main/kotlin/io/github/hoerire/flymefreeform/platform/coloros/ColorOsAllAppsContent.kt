@@ -200,15 +200,16 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
                         if (data == null || itemType(item) == 0) {
                             // 工具（截屏/录屏这类取屏入口）与现造快捷方式都先收起面板、等窗口提交
                             // 不可见帧后再执行，否则取屏工具会把手里的面板一起截进画面。
-                            onClick(true) {
-                                // 静态工具走它自己的 handle()；动态条目（如「最近文件」）不在
-                                // ToolEntryHelper.mTools 里，也没法用我们自己的分发打开，
-                                // 此时原样调用系统适配器的点击实现，跟系统侧边栏保持一致。
-                                if (!launchEntry(alias, item)) {
-                                    panelLog("PANEL_ENTRY_NATIVE_" + (alias ?: "?"))
-                                    runCatching { invokeClick.call(original, index, clickType) }
-                                }
+                            // 静态工具（截屏、扫一扫这类）需要先收面板再 handle，否则会把面板
+                            // 一起截进画面；动态条目（最近文件等）既不在 mTools 里，也没有
+                            // 包名/动作可代发，它依赖面板仍然可见时的系统点击实现，因此
+                            // 必须原样交回适配器，不能塞进"先收后执行"的通道。
+                            val ours = hasStaticTool(alias) || canLaunchByOurselves(item)
+                            if (!ours && index != null) {
+                                panelLog("PANEL_ENTRY_NATIVE_" + (alias ?: "?"))
+                                return@newProxyInstance invokeClick.call(original, index, clickType)
                             }
+                            onClick(true) { launchEntry(alias, item) }
                             return@newProxyInstance nativeUnit
                         }
                         when {
@@ -351,6 +352,39 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
      * 1. 工具（type=0，如微信扫一扫/支付宝付款码）调它自己的 `handle()`，系统就是这么做；
      * 2. 应用快捷方式按 pkg/activity 或 intentString 启动。
      */
+
+    /** 该 alias 是否是 ToolEntryHelper.mTools 里的静态工具（只查表，不执行）。 */
+    private fun hasStaticTool(alias: String?): Boolean {
+        if (alias.isNullOrEmpty()) return false
+        return try {
+            val helper = Class.forName(
+                "com.oplus.smartsidebar.panelview.edgepanel.data.entrybeans.ToolEntryHelper",
+                false,
+                view.javaClass.classLoader,
+            )
+            val instance = helper.getMethod("getActiveInstance").invoke(null)
+            val field = helper.getDeclaredField("mTools").apply { isAccessible = true }
+            (field.get(instance) as? Map<*, *>)?.containsKey(alias) == true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /** 条目自身是否带有包名/动作，能由我们直接代发（现造快捷方式走这条路）。 */
+    private fun canLaunchByOurselves(item: Any?): Boolean {
+        val bean = try {
+            item?.javaClass?.getMethod("getEntryBean")?.invoke(item)
+        } catch (_: Throwable) {
+            null
+        } ?: return false
+        val cls = bean.javaClass
+        val pkg = runCatching { cls.getMethod("getPkg").invoke(bean) as? String }.getOrNull()
+        val activity = runCatching { cls.getMethod("getActivity").invoke(bean) as? String }.getOrNull()
+        if (!pkg.isNullOrEmpty() && !activity.isNullOrEmpty()) return true
+        val uri = runCatching { cls.getMethod("getIntentString").invoke(bean) as? String }.getOrNull()
+        return !uri.isNullOrEmpty()
+    }
+
     private fun launchEntry(alias: String?, item: Any?): Boolean {
         if (!alias.isNullOrEmpty() && launchTool(alias)) return true
         panelLog("PANEL_TOOL_FALLBACK_" + (alias ?: "?"))
