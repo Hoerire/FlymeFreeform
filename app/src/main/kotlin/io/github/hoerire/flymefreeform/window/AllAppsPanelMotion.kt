@@ -30,7 +30,9 @@ internal object AllAppsPanelMotion {
             if (bezierAxis(0.4f, 0.2f, u) < progress) low = u else high = u
             u = (low + high) / 2f
         }
-        return bezierAxis(0f, 1f, u)
+        // 取上界而不是中点：中点会在曲线顶部留 1/256 的抖动（实测 alpha 会倒退 4e-5），
+        // 上界随 progress 单调不减，退场判定不会再被判成"往回走"。
+        return bezierAxis(0f, 1f, high)
     }
 
     private fun bezierAxis(p1: Float, p2: Float, u: Float): Float {
