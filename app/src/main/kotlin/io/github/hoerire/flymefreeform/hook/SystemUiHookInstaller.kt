@@ -54,6 +54,28 @@ internal class SystemUiHookInstaller(
     }
 
     /**
+     * 实验（1089）：在 SystemUI 里重建 gesture monitor，只做诊断计数，不驱动 UI。
+     *
+     * 目的：确认 pilferPointers() 之后，普通应用进程的通道还能不能持续收到 MOVE。
+     * system_server 侧已实测"抢完 10ms 内就被 CANCEL，move=0"，这一版拿来对照。
+     * 同时 system_server 侧暂时不抢流（shouldStartPilfer 恒 false），避免两处互抢。
+     */
+    private fun startGestureMonitor(context: Context) {
+        try {
+            val monitor = SystemUiGestureMonitor(context, module, configuration)
+            gestureMonitor = monitor
+            monitor.start()
+            module.log(Log.INFO, TAG, "SUI_GESTURE_MONITOR_DIAGNOSTIC_ENABLED")
+        } catch (exception: ReflectiveOperationException) {
+            module.log(Log.WARN, TAG, "CORNER_MONITOR_API_UNAVAILABLE", exception)
+        } catch (exception: RuntimeException) {
+            module.log(Log.WARN, TAG, "CORNER_MONITOR_START_FAILED", exception)
+        } catch (exception: LinkageError) {
+            module.log(Log.WARN, TAG, "CORNER_MONITOR_LINKAGE_FAILED", exception)
+        }
+    }
+
+    /**
      * SystemUI 侧的角区 SPY 窗口已停用。
      *
      * 那是两个真的接收触摸的 size×size 窗口（INPUT_FEATURE_SPY，通道名
@@ -69,26 +91,6 @@ internal class SystemUiHookInstaller(
             module.log(Log.WARN, TAG, "SYSTEMUI_CORNER_SPY_START_FAILED", exception)
         } catch (exception: LinkageError) {
             module.log(Log.WARN, TAG, "SYSTEMUI_CORNER_SPY_LINKAGE_FAILED", exception)
-        }
-    }
-
-    /**
-     * SystemUI 侧不再建 gesture monitor。
-     *
-     * pilfer 抢下的是"这个 monitor 通道"，monitor 建在 SystemUI 时抢完的 MOVE 全落到
-     * SystemUI，system_server 里的扇形判定只收到 DOWN，永远不 Activate（实测 35 次按下
-     * 只有 1 次呼出）。monitor 已移到 ColorOsFreeformCoordinator（见 SystemServerGestureMonitor）。
-     * 这里保留空实现，只为不销毁作用域与其它 hook 的装配顺序。
-     */
-    private fun startGestureMonitor(context: Context) {
-        try {
-            module.log(Log.INFO, TAG, "SYSTEMUI_GESTURE_MONITOR_DISABLED_MOVED_TO_SYSTEM_SERVER")
-        } catch (exception: ReflectiveOperationException) {
-            module.log(Log.WARN, TAG, "CORNER_MONITOR_API_UNAVAILABLE", exception)
-        } catch (exception: RuntimeException) {
-            module.log(Log.WARN, TAG, "CORNER_MONITOR_START_FAILED", exception)
-        } catch (exception: LinkageError) {
-            module.log(Log.WARN, TAG, "CORNER_MONITOR_LINKAGE_FAILED", exception)
         }
     }
 
