@@ -208,7 +208,7 @@ internal fun ZoomOptionsScreen(
         item(key = "gesture_title") {
             SectionTitle(
                 text = stringResource(R.string.zoom_group_gesture_title),
-                note = stringResource(R.string.zoom_group_gesture_note),
+                note = null,
             )
         }
         item(key = "gesture") {
