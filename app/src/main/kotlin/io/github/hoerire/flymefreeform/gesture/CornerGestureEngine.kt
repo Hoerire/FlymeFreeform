@@ -133,6 +133,16 @@ internal class CornerGestureEngine {
         return GestureAction.Update(activeSide, x, y)
     }
 
+    /**
+     * 抢流之后系统会重发一次 DOWN 来重启这条流。那不是一次新手势，只是基准点变了：
+     * 把 origin 挪到新位置，保留 claimed / phase，后续 MOVE 继续走 Update。
+     * 如果在这里走 down()，phase 会被打回 Armed，扇形就再也收不到 Update。
+     */
+    fun rebase(x: Float, y: Float) {
+        originX = x
+        originY = y
+    }
+
     fun up(pointerId: Int): GestureAction {
         if (pointerId != this.pointerId) return cancel()
         if (!claimed) {
