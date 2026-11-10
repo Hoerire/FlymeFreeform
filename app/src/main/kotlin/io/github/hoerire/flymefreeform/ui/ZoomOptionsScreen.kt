@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Block
-import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Layers
@@ -143,7 +143,8 @@ internal fun ZoomOptionsScreen(
                     title = stringResource(R.string.zoom_launcher_shortcut_title),
                     summary = stringResource(R.string.zoom_launcher_shortcut_summary),
                     enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.Bolt, sub) },
+                    // 快捷方式＝长按桌面图标后展开的那列操作项，用竖排三点直接表达那个菜单。
+                    startAction = { PreferenceIcon(Icons.Rounded.MoreVert, sub) },
                 )
                 SwitchPreference(
                     checked = state.settings.zoomLauncherCard,
