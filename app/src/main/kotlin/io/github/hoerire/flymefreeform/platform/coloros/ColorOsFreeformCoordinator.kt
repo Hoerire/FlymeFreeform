@@ -996,16 +996,23 @@ internal class ColorOsFreeformCoordinator(
                 // 保持挂起时窗口要能点选，但整屏可触摸会把底部上滑手势一起吃掉
                 // （用户实测：扇形出来后上滑回不了桌面）。把窗口的可触摸区域裁到
                 // 手势条以上，底部那一条继续交给系统。
-                val metrics = context.resources.displayMetrics
-                val gestureBar = (BOTTOM_GESTURE_INSET_DP * metrics.density).toInt()
-                touchableRegion.set(
-                    0,
-                    0,
-                    metrics.widthPixels,
-                    (metrics.heightPixels - gestureBar).coerceAtLeast(1),
-                )
-                // TOUCHABLE_INSETS_REGION：按上面的 Region 判定可触摸范围（隐藏常量，值 3）。
-                setTouchableInsets(TOUCHABLE_INSETS_REGION)
+                // touchableRegion / setTouchableInsets 都是 @hide，只能反射；
+                // 反射失败就退回"整屏可触摸"，不影响点选，只是底部手势仍被拦。
+                runCatching {
+                    val metrics = context.resources.displayMetrics
+                    val gestureBar = (BOTTOM_GESTURE_INSET_DP * metrics.density).toInt()
+                    val region = android.graphics.Region()
+                    region.set(
+                        0,
+                        0,
+                        metrics.widthPixels,
+                        (metrics.heightPixels - gestureBar).coerceAtLeast(1),
+                    )
+                    javaClass.getField("touchableRegion").set(this, region)
+                    javaClass
+                        .getMethod("setTouchableInsets", Integer.TYPE)
+                        .invoke(this, TOUCHABLE_INSETS_REGION)
+                }
             }
             title = "FlymeFreeformCornerOverlay"
         }
