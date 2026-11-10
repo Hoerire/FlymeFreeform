@@ -11,6 +11,7 @@ import android.os.Process
 import android.util.Log
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
+import io.github.hoerire.flymefreeform.log.ModuleLog
 import io.github.hoerire.flymefreeform.platform.coloros.ColorOsAllAppsContent
 import io.github.hoerire.flymefreeform.platform.coloros.ColorOsAllAppsEndpoint
 import io.github.hoerire.flymefreeform.platform.coloros.ColorOsSidebarEntryEndpoint
@@ -273,7 +274,7 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
     private fun applyToolLaunchZoom(intent: Intent?, options: Bundle?) {
         if (intent == null || options == null) return
         if (!configuration.snapshot.zoomLaunchSidebarEffective) {
-            module.log(Log.INFO, TAG, "ZOOM_SCENE_SIDEBAR_OFF")
+            ModuleLog.info("ZOOM_SCENE_SIDEBAR_OFF")
             return
         }
         val target = intent.component?.packageName ?: intent.getPackage() ?: return
