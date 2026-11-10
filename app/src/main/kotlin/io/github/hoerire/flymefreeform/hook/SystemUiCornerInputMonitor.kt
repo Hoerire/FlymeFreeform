@@ -45,23 +45,6 @@ internal class SystemUiCornerInputMonitor(
     private val environmentState = ModuleEnvironmentState(configuration) { code, exception ->
         module.log(Log.WARN, TAG, code, exception)
     }
-    private val inputFeaturesField: Field =
-        WindowManager.LayoutParams::class.java.getField("inputFeatures").apply {
-            isAccessible = true
-        }
-    private val setTrustedOverlayMethod: Method =
-        WindowManager.LayoutParams::class.java.getMethod("setTrustedOverlay").apply {
-            isAccessible = true
-        }
-    private val getViewRootImplMethod: Method =
-        View::class.java.getDeclaredMethod("getViewRootImpl").apply {
-            isAccessible = true
-        }
-    private val pilferPointersMethod: Method =
-        InputManager::class.java.getDeclaredMethod("pilferPointers", IBinder::class.java).apply {
-            isAccessible = true
-        }
-    private val bindings = linkedMapOf<CornerSide, CornerBinding>()
 
     private var settings = ModuleSettingsSnapshot(enabled = false)
     private var pendingSettings: ModuleSettingsSnapshot? = null
@@ -234,10 +217,9 @@ internal class SystemUiCornerInputMonitor(
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
             setFitInsetsTypes(0)
             setTrustedOverlayMethod.invoke(this)
-            inputFeaturesField.setInt(
-                this,
-                inputFeaturesField.getInt(this) or INPUT_FEATURE_SPY,
-            )
+            // 不设 INPUT_FEATURE_SPY：SPY 窗口"只看不吃"，系统的手势链会收到同一批事件，
+            // 只能靠 pilfer 去抢（ColorOS 17 上抢不过）。去掉后触摸由本窗口消费，
+            // 系统那条 swipe-up 收不到 DOWN，就不会拉起多任务。
         }
 
     private fun ensureMainThread() {
@@ -378,7 +360,6 @@ internal class SystemUiCornerInputMonitor(
 
     private companion object {
         const val TAG = "FlymeFreeform"
-        const val INPUT_FEATURE_SPY = 1 shl 2
         const val CORNER_GESTURE_WINDOW_TYPE = 2024
         const val CORNER_INPUT_CHANNEL_TITLE = "FlymeFreeform-corner-input"
         const val PILFER_FAILURE_LOG_INTERVAL_MS = 10_000L
