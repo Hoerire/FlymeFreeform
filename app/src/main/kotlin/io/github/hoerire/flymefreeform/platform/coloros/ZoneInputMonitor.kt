@@ -8,7 +8,7 @@ import android.view.InputEvent
 import android.view.InputEventReceiver
 import android.view.InputMonitor
 import android.view.MotionEvent
-import io.github.hoerire.flymefreeform.config.ProcessConfiguration
+import io.github.hoerire.flymefreeform.hook.ProcessConfiguration
 import io.github.hoerire.flymefreeform.gesture.CornerTriggerRegion
 
 /**
