@@ -81,14 +81,22 @@ internal class SystemServerHookInstaller(
      */
     @SuppressLint("BlockedPrivateApi", "PrivateApi")
     private fun installInputFilter(classLoader: ClassLoader) {
-        runCatching {
-            // 不按名字加载 services.jar 里的类：从 LocalServices 的注册表按类名找实例，
-            // 接口类型从 setInputFilter 的参数上取，避免 ClassNotFoundException。
+        installInputFilterAttempt(classLoader, ATTEMPT_LIMIT)
+    }
+
+    /**
+     * 尝试注册输入过滤器；InputManagerService 由 system_server 稍后注册，
+     * 因此找不到时按固定间隔重试，直到成功或用尽次数。
+     */
+    @SuppressLint("BlockedPrivateApi", "PrivateApi")
+    private fun installInputFilterAttempt(classLoader: ClassLoader, remaining: Int) {
+        val resolved = runCatching {
             val localServices = Class.forName("com.android.server.LocalServices", false, classLoader)
             val field = localServices.getDeclaredField("sLocalServiceObjects").apply { isAccessible = true }
             val services = field.get(null) as? Map<*, *> ?: error("no local services")
+            // 不同版本包名不同（com.android.server.input / android.hardware.input），按简单类名匹配。
             val ims = services.values.firstOrNull {
-                it?.javaClass?.name == "android.hardware.input.InputManagerService"
+                it?.javaClass?.simpleName == "InputManagerService"
             } ?: error("InputManagerService not found")
             val setter = ims.javaClass.methods.firstOrNull {
                 it.name == "setInputFilter" && it.parameterTypes.size == 1
@@ -109,8 +117,19 @@ internal class SystemServerHookInstaller(
                 }
             }
             setter.invoke(ims, proxy)
-            module.log(Log.INFO, TAG, "INPUT_FILTER_REGISTERED", null)
-        }.onFailure { module.log(Log.WARN, TAG, "INPUT_FILTER_REGISTER_FAILED", it) }
+            true
+        }
+        resolved.onSuccess { module.log(Log.INFO, TAG, "INPUT_FILTER_REGISTERED", null) }
+        resolved.onFailure { error ->
+            if (remaining <= 1) {
+                module.log(Log.WARN, TAG, "INPUT_FILTER_REGISTER_FAILED", error)
+            } else {
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                    { installInputFilterAttempt(classLoader, remaining - 1) },
+                    FILTER_RETRY_MS,
+                )
+            }
+        }
     }
     /**
      * 跟踪前台应用，供排除列表判定。
@@ -168,6 +187,8 @@ internal class SystemServerHookInstaller(
     private companion object {
         const val TAG = "FlymeFreeform"
         const val ACTIVITY_TASK_MANAGER_CLASS = "com.android.server.wm.ActivityTaskManagerService"
+        const val ATTEMPT_LIMIT = 20
+        const val FILTER_RETRY_MS = 3000L
         const val FLEXIBLE_TASK_CONTROLLER_CLASS = "com.android.server.wm.FlexibleTaskController"
     }
 }
