@@ -147,6 +147,10 @@ internal class ColorOsFreeformCoordinator(
     // 从 Activate（开始 pilfer）到 UP/CANCEL 之间为 true。
     // 这段时间里的重复 DOWN 不能当新流处理，否则会把引擎打回 Armed。
     private var pilferSessionActive = false
+    // 抢流期间收到系统 CANCEL 后的观察窗：只有在没有任何 MOVE 为这条流"续命"时，
+    // 才认定为流已断，按取消收场。见 [scheduleCancelWatch]。
+    private var cancelWatchToken = 0L
+    private var cancelWatchScheduled = false
     private var overlay: CornerRadialOverlayView? = null
     private var morePanelActive = false
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
@@ -569,14 +573,25 @@ internal class ColorOsFreeformCoordinator(
                     )
                 }
                 MotionEvent.ACTION_UP -> gestureEngine.up(event.getPointerId(event.actionIndex))
-                // 抢流之后系统必然给旧流发一次 CANCEL，那是 Pilfer 的副作用，不是用户取消。
-                // 当成取消会立刻复位引擎，扇形就定格在最后一帧。
+                // 抢流之后系统可能给旧流发一次 CANCEL。直接当成取消会立刻复位引擎，
+                // 所以先挂一个观察窗：观察窗内没有任何 MOVE 才认定为流已断、按取消收场；
+                // 有 MOVE 说明流还活着，观察窗随即作废（见 cancelWatchOnActivity）。
                 MotionEvent.ACTION_CANCEL ->
-                    if (pilferSessionActive) GestureAction.Ignore else gestureEngine.cancel()
+                    if (pilferSessionActive) {
+                        scheduleCancelWatch()
+                        GestureAction.Ignore
+                    } else {
+                        gestureEngine.cancel()
+                    }
                 // 多指按下不再取消主手势，只忽略新增的那根手指。
                 MotionEvent.ACTION_POINTER_DOWN -> GestureAction.Ignore
                 else -> if (gestureEngine.isClaimed) gestureEngine.cancel() else GestureAction.Ignore
             }
+        if (event.actionMasked == MotionEvent.ACTION_MOVE ||
+            event.actionMasked == MotionEvent.ACTION_UP
+        ) {
+            cancelWatchOnActivity()
+        }
         if (action is GestureAction.Ignore) {
             debug("SYSTEM_GESTURE_IGNORE")
         }
@@ -924,6 +939,38 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
+    /**
+     * 抢流后流被系统 CANCEL 时启动观察窗。
+     *
+     * 背景：pilfer 是在 MOVE 帧调用，此时 pointer 已分发，系统夺流时会重发 DOWN 并
+     * CANCEL 旧流；重启后的通道**可能不再投递任何事件**（实机 02:17:36 那次：CANCEL 之后
+     * 3.2 秒零 MOVE，菜单定格）。这时没有任何"是否还在交互"的外部依据，
+     * 唯一可靠的判据是「观察窗内有没有 MOVE 给这条流续命」。
+     */
+    private fun scheduleCancelWatch() {
+        if (cancelWatchScheduled) return
+        cancelWatchScheduled = true
+        val token = ++cancelWatchToken
+        handler.postDelayed(
+            {
+                cancelWatchScheduled = false
+                if (token != cancelWatchToken) return@postDelayed
+                if (!pilferSessionActive) return@postDelayed
+                trace("SYSTEM_GESTURE_CANCELLED_CLOSE")
+                pilferSessionActive = false
+                cancelActiveGesture()
+                removeOverlay()
+            },
+            CANCEL_WATCH_MS,
+        )
+    }
+
+    /** 有 MOVE/UP 到来说明这条流还活着，观察窗作废（重复 DOWN 不算，重启后它可能照样是死流）。 */
+    private fun cancelWatchOnActivity() {
+        cancelWatchToken++
+        cancelWatchScheduled = false
+    }
+
     private fun cancelActiveGesture() {
         activeGestureConfig = null
         gestureEngine.cancel()
@@ -1167,6 +1214,8 @@ internal class ColorOsFreeformCoordinator(
     private companion object {
         const val CATALOG_THREAD_NAME = "FlymeFreeform-Catalog"
         const val MONITOR_NAME = "flymefreeform-corner"
+        /** 抢流被 CANCEL 后，等这么久没有 MOVE 就按取消收场。 */
+        const val CANCEL_WATCH_MS = 150L
         const val OVERLAY_PREWARM_LIFETIME_MS = 400L
         // 窗口层级实测：APPLICATION_OVERLAY=111000，INPUT_METHOD=131000。
         // 用 APPLICATION_OVERLAY 时键盘一弹出就盖住扇形，故选输入法对话框层（141000），
