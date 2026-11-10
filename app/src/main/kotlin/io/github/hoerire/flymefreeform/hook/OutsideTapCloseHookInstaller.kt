@@ -17,6 +17,7 @@ import io.github.hoerire.flymefreeform.config.OutsideTapCloseMode
 import io.github.hoerire.flymefreeform.gesture.OutsideTapGestureEngine
 import io.github.hoerire.flymefreeform.logic.CloseDecision
 import io.github.hoerire.flymefreeform.logic.ClosePolicy
+import io.github.hoerire.flymefreeform.logic.LaunchInFlight
 import io.github.hoerire.flymefreeform.platform.coloros.ColorOsDisplayContentImeAccess
 import io.github.hoerire.flymefreeform.platform.coloros.ColorOsTaskImeBoundsAccess
 import java.lang.reflect.Field
@@ -266,16 +267,24 @@ internal class OutsideTapCloseHookInstaller(
                     // 通知、应用内跳转），而用户的规则只有一条——不允许窗口被收成贴边浮标。
                     // 判据只看这次退出是不是系统自己的"该谁退出"裁决（determine*/updateTaskMaxNum*），
                     // 用户拖到边缘走的拖拽入口不经过这里。
-                    val decision = ClosePolicy.decide(
-                        autoCloseEnabled = true,
-                        isFloatExitStrategy = isFloatExit,
-                        fromSystemVerdict = fromLimit,
-                    )
+                    // 只有"被新应用顶掉"才收窗：最近 1.5 秒内有界面启动。迷你窗变形
+                    //（ColorOS 17 也走同一套退场裁决）没有启动发生，保持系统原策略。
+                    val launching = LaunchInFlight.active()
+                    val decision = if (!launching) {
+                        CloseDecision.KeepOriginal
+                    } else {
+                        ClosePolicy.decide(
+                            autoCloseEnabled = true,
+                            isFloatExitStrategy = isFloatExit,
+                            fromSystemVerdict = fromLimit,
+                        )
+                    }
                     // 常驻诊断：每次"要收浮标"的退出都留一行，便于确认是否被接管。
                     module.log(
                         Log.DEBUG,
                         TAG,
-                        "ZOOM_CLOSE_POLICY_" + decision.name + "_limit" + (if (fromLimit) 1 else 0),
+                        "ZOOM_CLOSE_POLICY_" + decision.name + "_limit" + (if (fromLimit) 1 else 0) +
+                            "_launch" + (if (launching) 1 else 0),
                         null,
                     )
                     if (decision == CloseDecision.ReplaceWithToBack) {
