@@ -42,9 +42,6 @@ internal object ModulePreferences {
 
     /** 窗口超过数量限制时，自动关闭旧窗口而不是收成贴边浮标。 */
     /** 侧边栏进程就绪：由模块在侧边栏进程内发出，system_server 收到后才去读目录。 */
-    /** SystemUI 菜单项请求显示扇形（system_server 侧接收）。 */
-    const val ACTION_SHOW_RADIAL = "io.github.hoerire.flymefreeform.action.SHOW_RADIAL"
-
     const val ACTION_SIDEBAR_READY = "io.github.hoerire.flymefreeform.action.SIDEBAR_READY"
 
     const val KEY_AUTO_CLOSE_WINDOW = "auto_close_window_v1"
