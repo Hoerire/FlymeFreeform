@@ -21,6 +21,14 @@ internal data class ModuleSettingsSnapshot(
     val verboseLogEnabled: Boolean = ModulePreferences.DEFAULT_VERBOSE_LOG,
     /** 这些应用在前台时不触发扇形菜单。 */
     val blacklistPackages: List<String> = emptyList(),
+    /**
+     * 小窗交互总开关（界面名「启用交互」）。
+     *
+     * 默认关闭。关闭时下面所有小窗相关能力都不介入系统：hook 里一律读 [zoomInteractionActive]
+     * 派生的有效值，等于把整页能力整体摘掉，不会和别的模块抢同一批入口。
+     * 唯独「窗外关闭」不受它控制。
+     */
+    val zoomInteractionEnabled: Boolean = ModulePreferences.DEFAULT_ZOOM_INTERACTION_ENABLED,
     /** 小窗扩展·数量上限：系统允许的最大小窗数至少要达到该值。 */
     val zoomMaxWindowCount: Int = ModulePreferences.DEFAULT_ZOOM_MAX_WINDOW_COUNT,
     /** 小窗扩展·解除应用准入：isSupportFlexibleWindow 一律放行。 */
@@ -48,6 +56,19 @@ internal data class ModuleSettingsSnapshot(
     val radialKeepOpen: Boolean = ModulePreferences.DEFAULT_RADIAL_KEEP_OPEN,
 ) {
 
+    /** 模块总开关 + 小窗交互总开关同时打开，才允许小窗相关 hook 介入。 */
+    val zoomInteractionActive: Boolean
+        get() = enabled && zoomInteractionEnabled
+
+    val zoomAllowAnyAppEffective: Boolean get() = zoomInteractionActive && zoomAllowAnyApp
+    val zoomLaunchEffective: Boolean get() = zoomInteractionActive && zoomLaunch
+    val zoomLauncherShortcutEffective: Boolean get() = zoomInteractionActive && zoomLauncherShortcut
+    val zoomLauncherCardEffective: Boolean get() = zoomInteractionActive && zoomLauncherCard
+    val autoCloseWindowEffective: Boolean get() = zoomInteractionActive && autoCloseWindow
+    val handleSwipeUpToMiniEffective: Boolean get() = zoomInteractionActive && handleSwipeUpToMiniEnabled
+    val zoomMaxWindowCountEffective: Int
+        get() = if (zoomInteractionActive) zoomMaxWindowCount else ModulePreferences.DEFAULT_ZOOM_MAX_WINDOW_COUNT
+
     fun isBlacklisted(packageName: String?): Boolean =
         packageName != null && blacklistPackages.any { it == packageName }
 
@@ -69,6 +90,10 @@ internal data class ModuleSettingsSnapshot(
             .putInt(
                 ModulePreferences.KEY_ZOOM_MAX_WINDOW_COUNT,
                 ModulePreferences.coerceZoomMaxWindowCount(zoomMaxWindowCount),
+            )
+            .putBoolean(
+                ModulePreferences.KEY_ZOOM_INTERACTION_ENABLED,
+                zoomInteractionEnabled,
             )
             .putBoolean(ModulePreferences.KEY_ZOOM_ALLOW_ANY_APP, zoomAllowAnyApp)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH, zoomLaunch)
@@ -176,8 +201,14 @@ internal data class ModuleSettingsSnapshot(
                 PinnedTargetCodec.decodeLegacy(preferences.getString(ModulePreferences.KEY_CORNER_PINS, "").orEmpty())
             }
             val bothCornersDisabled = !leftEnabled && !rightEnabled
+            val zoomInteractionEnabled =
+                preferences.getBoolean(
+                    ModulePreferences.KEY_ZOOM_INTERACTION_ENABLED,
+                    ModulePreferences.DEFAULT_ZOOM_INTERACTION_ENABLED,
+                )
             return ModuleSettingsSnapshot(
                 enabled = enabled,
+                zoomInteractionEnabled = zoomInteractionEnabled,
                 leftCornerEnabled = if (bothCornersDisabled) true else leftEnabled,
                 rightCornerEnabled = if (bothCornersDisabled) true else rightEnabled,
                 cornerTriggerRangeDp = cornerTriggerRangeDp,
