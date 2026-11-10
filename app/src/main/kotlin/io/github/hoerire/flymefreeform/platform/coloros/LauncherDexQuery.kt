@@ -8,19 +8,32 @@ import org.luckypray.dexkit.result.FieldUsingType
 /** 桌面输入适配的字节码证据；查询结果不持有 native bridge 或宿主对象。 */
 internal object LauncherDexQuery {
     const val SERVICE_CLASS = "com.android.quickstep.OplusBaseTouchInteractionService"
+    /** ColorOS 17 起厂商基类被移除，输入入口回到 AOSP 的 TouchInteractionService。 */
+    const val AOSP_SERVICE_CLASS = "com.android.quickstep.TouchInteractionService"
     const val INPUT_MONITOR_CLASS = "android.view.InputMonitor"
-    const val RULE_VERSION = "launcher-input-v1-dexkit-2.3.0"
+    const val RULE_VERSION = "launcher-input-v2-dexkit-2.3.0"
 
+    /**
+     * 解析结果。
+     *
+     * [pilferMethod] 为空表示走"按返回值消费"的通道（17 的混淆构建）：
+     * 输入入口变成一个 (TouchInteractionService, InputEvent) 的 boolean 方法，
+     * 返回 true 即表示这次事件被消费，桌面的上滑不会开始。
+     */
     data class Symbols(
         val inputMethod: String,
-        val monitorField: String,
-        val wrapperClass: String,
-        val pilferMethod: String,
+        val monitorField: String?,
+        val wrapperClass: String?,
+        val pilferMethod: String?,
+        val serviceClass: String = SERVICE_CLASS,
+        /** 输入入口所在类；为空表示就是 [serviceClass] 本身。 */
+        val inputOwnerClass: String? = null,
     )
 
     fun find(bridge: DexKitBridge): Symbols {
-        val service = bridge.getClassData(SERVICE_CLASS)
-            ?: throw NoSuchMethodException("LAUNCHER_DEX_SERVICE_MISSING")
+        val vendor = bridge.getClassData(SERVICE_CLASS)
+        if (vendor == null) return findOnAospService(bridge)
+        val service = vendor
         val input = service.methods.findMethod {
             matcher {
                 paramTypes("android.view.InputEvent")
@@ -55,5 +68,29 @@ internal object LauncherDexQuery {
         }
         return candidates.singleOrNull()
             ?: throw NoSuchFieldException("LAUNCHER_DEX_MONITOR_NOT_UNIQUE")
+    }
+
+    /**
+     * ColorOS 17：厂商基类消失，输入入口被挪进混淆类，签名为
+     * (TouchInteractionService, InputEvent) -> boolean，返回 true 即消费。
+     * 按参数类型全局找唯一匹配，不依赖类名。
+     */
+    private fun findOnAospService(bridge: DexKitBridge): Symbols {
+        val hits = bridge.findMethod {
+            matcher {
+                paramTypes(AOSP_SERVICE_CLASS, "android.view.InputEvent")
+                returnType = "boolean"
+            }
+        }
+        val single = hits.singleOrNull()
+            ?: throw NoSuchMethodException("LAUNCHER_DEX_INPUT_NOT_UNIQUE")
+        return Symbols(
+            inputMethod = single.name,
+            monitorField = null,
+            wrapperClass = null,
+            pilferMethod = null,
+            serviceClass = AOSP_SERVICE_CLASS,
+            inputOwnerClass = single.className,
+        )
     }
 }

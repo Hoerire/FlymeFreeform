@@ -98,12 +98,33 @@ internal class LauncherHookInstaller(
         executor.shutdown()
     }
 
+
+    /**
+     * ColorOS 17 通道：入口是 (TouchInteractionService, InputEvent) -> boolean。
+     * 命中触发区时返回 true，桌面拿不到这次事件，上滑不会把多任务拉起来。
+     */
+    private fun installSuppress(target: ColorOsLauncherInputTarget) {
+        module
+            .hook(target.inputMethod)
+            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+            .setId("flymefreeform.launcher.corner_input_suppress")
+            .intercept { chain ->
+                val owner = chain.getArg(0) as? Context ?: return@intercept chain.proceed()
+                val event = chain.getArg(1) as? MotionEvent ?: return@intercept chain.proceed()
+                if (shouldSuppress(owner, event)) true else chain.proceed()
+            }
+        module.log(Log.INFO, TAG, "LAUNCHER_CORNER_INPUT_SUPPRESS_INSTALLED")
+    }
     private fun installResolved(target: ColorOsLauncherInputTarget) {
         try {
+            if (target.suppressByReturn) {
+                installSuppress(target)
+                return
+            }
             inputMonitorField = target.monitorField
             pilferPointers = { wrapper ->
                 try {
-                    target.pilferMethod.invoke(wrapper)
+                    target.pilferMethod?.invoke(wrapper)
                 } catch (exception: InvocationTargetException) {
                     throw exception.targetException
                 }
