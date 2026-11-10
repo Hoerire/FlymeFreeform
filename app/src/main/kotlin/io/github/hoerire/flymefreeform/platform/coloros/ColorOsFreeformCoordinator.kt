@@ -468,7 +468,11 @@ internal class ColorOsFreeformCoordinator(
     private val pilferEngine = CornerGestureEngine()
     private var pilferConfig: CornerGestureConfig? = null
 
-    private fun shouldStartPilfer(event: MotionEvent): Boolean =
+    // 1089 实验：system_server 侧暂不抢流，让 SystemUI 那条诊断通道独占，避免两处互抢。
+    private fun shouldStartPilfer(event: MotionEvent): Boolean = false
+
+    @Suppress("unused")
+    private fun shouldStartPilferImpl(event: MotionEvent): Boolean =
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 pilferEngine.cancel()
