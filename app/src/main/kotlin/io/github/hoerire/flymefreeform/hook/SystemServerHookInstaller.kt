@@ -93,16 +93,20 @@ internal class SystemServerHookInstaller(
     @SuppressLint("BlockedPrivateApi", "PrivateApi")
     private fun installInputFilterAttempt(classLoader: ClassLoader, remaining: Int) {
         val resolved = runCatching {
+            // 不加载 IMS 的 Class（ClassNotFound：该加载器看不到 services.jar 的类），
+            // 改为遍历 LocalServices 里所有 Map 型静态字段，按类名找实例。
             val localServices = Class.forName("com.android.server.LocalServices", false, classLoader)
-            // 用 LocalServices 自身的加载器去取 IMS：services.jar 里的类只在这个加载器可见。
-            val imsClass = Class.forName(
-                "com.android.server.input.InputManagerService",
-                false,
-                localServices.classLoader,
-            )
-            val ims = localServices
-                .getMethod("getService", Class::class.java)
-                .invoke(null, imsClass)
+            val ims = localServices.declaredFields
+                .filter { Map::class.java.isAssignableFrom(it.type) }
+                .mapNotNull { field ->
+                    runCatching {
+                        field.isAccessible = true
+                        (field.get(null) as? Map<*, *>)?.values?.firstOrNull {
+                            it?.javaClass?.simpleName == "InputManagerService"
+                        }
+                    }.getOrNull()
+                }
+                .firstOrNull()
                 ?: error("InputManagerService not registered yet")
             val setter = ims.javaClass.methods.firstOrNull {
                 it.name == "setInputFilter" && it.parameterTypes.size == 1
