@@ -62,10 +62,7 @@ internal class SystemUiHookInstaller(
      */
     private fun startGestureMonitor(context: Context) {
         try {
-            val monitor = SystemUiGestureMonitor(context, module, configuration)
-            gestureMonitor = monitor
-            monitor.start()
-            module.log(Log.INFO, TAG, "SUI_GESTURE_MONITOR_DIAGNOSTIC_ENABLED")
+            module.log(Log.INFO, TAG, "SYSTEMUI_GESTURE_MONITOR_DISABLED_MOVED_TO_SYSTEM_SERVER")
         } catch (exception: ReflectiveOperationException) {
             module.log(Log.WARN, TAG, "CORNER_MONITOR_API_UNAVAILABLE", exception)
         } catch (exception: RuntimeException) {
