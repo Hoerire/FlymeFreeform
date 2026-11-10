@@ -171,11 +171,34 @@ internal class ColorOsFreeformCoordinator(
             environmentState.observe { applySettings(configuration.snapshot) }
             registerPackageObserver()
             registerPinnedTargetsObserver()
+            registerRadialMenuReceiver()
             configuration.observe {
                 handler.post { applySettings(configuration.snapshot) }
             }
         }
         logger(Log.INFO, "SYSTEM_GESTURE_COORDINATOR_READY", null)
+    }
+
+
+    /** 接收 SystemUI 菜单项的「显示扇形」请求。 */
+    private fun registerRadialMenuReceiver() {
+        runCatching {
+            context.registerReceiver(
+                object : android.content.BroadcastReceiver() {
+                    override fun onReceive(receiver: android.content.Context?, intent: android.content.Intent?) {
+                        val action = intent?.action ?: return
+                        if (action == ModulePreferences.ACTION_SHOW_RADIAL) {
+                            showRadialFromMenu()
+                        }
+                    }
+                },
+                android.content.IntentFilter(ModulePreferences.ACTION_SHOW_RADIAL),
+                null,
+                null,
+                android.content.Context.RECEIVER_EXPORTED,
+            )
+            logger(Log.INFO, "SYSTEM_RADIAL_RECEIVER_INSTALLED", null)
+        }.onFailure { logger(Log.WARN, "SYSTEM_RADIAL_RECEIVER_FAILED", it) }
     }
 
     private fun registerPackageObserver() {
