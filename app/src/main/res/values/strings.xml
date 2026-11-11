@@ -66,7 +66,6 @@
     <string name="verbose_log_summary">开启后记录详细的诊断日志，在 LSPosed 里导出给开发者，立即生效</string>
     <string name="outside_tap_close_title">窗外关闭</string>
     <string name="outside_tap_close_summary">点击小窗外部区域时的响应方式</string>
-    <string name="outside_tap_mode_bottom">底部关闭</string>
     <string name="outside_tap_mode_disabled">不执行</string>
     <string name="outside_tap_mode_single">单击关闭</string>
     <string name="outside_tap_mode_double">双击关闭</string>
