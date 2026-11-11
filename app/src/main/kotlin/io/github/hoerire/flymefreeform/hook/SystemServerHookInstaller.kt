@@ -103,8 +103,11 @@ internal class SystemServerHookInstaller(
                 .mapNotNull { field ->
                     runCatching {
                         field.isAccessible = true
+                        // 不能按 simpleName 精确比较：ColorOS 上实例常常是厂商子类
+                        // （如 OplusInputManagerService），精确匹配会一直返回 null，
+                        // 表现为 INPUT_FILTER_REGISTER_FAILED + "not registered yet"。
                         (field.get(null) as? Map<*, *>)?.values?.firstOrNull {
-                            it?.javaClass?.simpleName == "InputManagerService"
+                            it?.javaClass?.name?.contains("InputManagerService") == true
                         }
                     }.getOrNull()
                 }
