@@ -131,7 +131,7 @@ internal class CornerRadialOverlayView(
     private val backdropAlphaState = mutableStateOf(BACKDROP_ALPHA)
 
     fun setBackdropAlpha(alpha: Float) {
-        backdropAlphaState.value = alpha.coerceIn(0f, 0.6f)
+        backdropAlphaState.value = alpha.coerceIn(0f, 1f)
     }
 
 

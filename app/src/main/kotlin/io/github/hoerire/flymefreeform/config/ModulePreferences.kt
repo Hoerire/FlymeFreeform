@@ -96,8 +96,8 @@ internal object ModulePreferences {
     /** 默认全透明：呼出扇形时不压暗身后内容。 */
     const val DEFAULT_BACKGROUND_EFFECT = 0
 
-    /** 遮罩端：-45 对应 45% 不透明度。 */
-    const val MIN_BACKGROUND_EFFECT = -45
+    /** 遮罩端：-100 对应完全不透明（背景全黑，扇形仍绘制在遮罩之上）。 */
+    const val MIN_BACKGROUND_EFFECT = -100
 
     /** 模糊端：60 对应 60dp 模糊半径。 */
     const val MAX_BACKGROUND_EFFECT = 60
