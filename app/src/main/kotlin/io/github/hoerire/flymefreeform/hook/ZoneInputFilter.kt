@@ -8,29 +8,17 @@ import android.view.InputEvent
 import io.github.libxposed.api.XposedModule
 
 /**
- * 全局输入过滤器。
+ * 全局输入过滤器（第一阶段：只透传 + 探针）。
  *
  * Gesture Monitor 是多份副本，逐个吞事件拦不住彼此；InputFilter 运行在分发之前，
- * 是唯一能一次性作用于所有接收方的闸门。
- *
- * 这里承担两件事：
- * 1. 原样透传（默认行为，与没有过滤器时一致）；
- * 2. 双击关闭——把可能的双击按下扣住，判定清楚再决定补发还是丢弃，
- *    详见 [OutsideTapDoubleTapFilter]。是否介入完全由 [OutsideTapGate] 决定。
+ * 是唯一能一次性作用于所有接收方的闸门。这一版只验证「能装上、能收到事件、透传不影响触摸」，
+ * 暂不丢弃任何事件。
  */
 internal class ZoneInputFilter(
     private val module: XposedModule,
-    doubleTapTimeout: Long,
 ) : Binder() {
     private var host: IBinder? = null
     private var events = 0
-
-    /** 双击闸门：只在「双击模式 + 有普通小窗 + 落在窗外」时介入。 */
-    private val doubleTap = OutsideTapDoubleTapFilter(
-        touchSlop = (8 * android.content.res.Resources.getSystem().displayMetrics.density).toInt(),
-        doubleTapTimeout = doubleTapTimeout,
-        forward = { event, policyFlags -> forward(event, policyFlags) },
-    )
 
     override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
         when (code) {
@@ -56,7 +44,7 @@ internal class ZoneInputFilter(
                     events++
                     module.log(Log.INFO, TAG, "INPUT_FILTER_EVENT_" + (event?.javaClass?.simpleName ?: "?"), null)
                 }
-                doubleTap.filter(event, policyFlags)
+                forward(event, policyFlags)
                 return true
             }
         }
@@ -71,7 +59,7 @@ internal class ZoneInputFilter(
             events++
             module.log(Log.INFO, TAG, "INPUT_FILTER_EVENT_" + (event?.javaClass?.simpleName ?: "?"), null)
         }
-        doubleTap.filter(event, policyFlags)
+        forward(event, policyFlags)
     }
 
     /** 原样转发给系统；第一阶段不丢弃任何事件。 */

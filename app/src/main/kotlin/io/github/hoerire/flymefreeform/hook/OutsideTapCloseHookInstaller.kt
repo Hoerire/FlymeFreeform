@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Rect
 import android.graphics.Region
+import android.graphics.RegionIterator
 import android.os.SystemClock
 import android.util.Log
 import android.view.InputDevice
@@ -24,6 +25,8 @@ import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.util.IdentityHashMap
 import java.util.WeakHashMap
+import kotlin.math.ceil
+import kotlin.math.floor
 
 /** 扩展 ColorOS 自有全局指针监听，只处理已验证的普通小窗窗外短点击。 */
 @SuppressLint("PrivateApi")
@@ -350,8 +353,12 @@ internal class OutsideTapCloseHookInstaller(
     ) {
         private val controllerField = listenerClass.requiredField("this$0")
 
-        /** 双击关闭由输入线程触发，关闭动作必须回到主线程执行。 */
-        private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        // 底部横条点击：命中后单击直接关窗，独立于双击/单击关闭那套判定。
+        // 这里刻意不做任何防穿透处理——横条本身就在窗内，点击照常交给窗口。
+        private var handleTapTask: Any? = null
+        private var handleTapDownX = 0f
+        private var handleTapDownY = 0f
+        private var handleTapDownTime = 0L
 
         private val contextField = controllerClass.requiredField("mContext")
         private val flexibleTasksField = controllerClass.requiredField("mFlexibleTasks")
@@ -444,30 +451,74 @@ internal class OutsideTapCloseHookInstaller(
             val mode =
                 if (settings.enabled && environmentAllowed()) settings.outsideTapCloseMode
                 else OutsideTapCloseMode.Disabled
-            if (mode == OutsideTapCloseMode.Disabled) {
-                OutsideTapGate.clear()
-                return clearProtection(caption, "MODE_OFF")
-            }
+            if (mode == OutsideTapCloseMode.Disabled) return clearProtection(caption, "MODE_OFF")
             if (!isOrdinaryZoom(controller, task)) return clearProtection(caption, "NOT_ZOOM")
-            // 两种模式都不再扩展触摸区：用户要的正是"小窗开着也能操作下层应用"。
-            // 不穿透改由输入过滤器负责——它扣住窗外的那一下，判定清楚再决定
-            // 补发（不是单击）还是丢弃并关窗。这里只把"窗口在哪、怎么关"同步给闸门。
-            val guardBounds = visibleTaskBounds(controller, task)
-            val displayContentForIme = getDisplayContent.invokeUnwrapped(task)
-            val imeBounds =
-                displayContentForIme
-                    ?.let { visibleImeRegion(it) }
-                    ?.let { region -> Rect().also { region.getBounds(it) } }
-            OutsideTapGate.update(
-                nextMode = mode,
-                windowBounds = guardBounds,
-                excluded = imeBounds,
-                onClose = {
-                    mainHandler.post { closeTask(controller, task) }
-                },
-            )
-            diag { "OUTSIDE_TAP_GUARD_" + mode.name + "_bounds_" + (guardBounds != null) }
-            return clearProtection(caption, "INPUT_GUARD_ACTIVE")
+            if (hasMenuShowing.invokeUnwrapped(controller) == true) {
+                return clearProtection(caption, "MENU_SHOWING")
+            }
+            val displayContent = getDisplayContent.invokeUnwrapped(task)
+                ?: return clearProtection(caption, "NO_DISPLAY")
+            if (isIgnoreExpandRegion.invokeUnwrapped(controller, displayContent) == true) {
+                return clearProtection(caption, "IGNORE_REGION")
+            }
+            val captionView = caption as? View ?: return clearProtection(caption, "NOT_VIEW")
+            val localWidth = captionView.width
+            val localHeight = captionView.height
+            val visibleBounds = visibleTaskBounds(controller, task)
+                ?: return clearProtection(caption, "NO_BOUNDS")
+            val displayBounds = getDisplayBounds.invokeUnwrapped(displayContent) as? Rect
+                ?: return clearProtection(caption, "NO_DISPLAY_BOUNDS")
+            if (localWidth <= 0 || localHeight <= 0) {
+                return clearProtection(caption, "CAPTION_ZERO")
+            }
+            if (visibleBounds.isEmpty || displayBounds.isEmpty) {
+                return clearProtection(caption, "BOUNDS_EMPTY")
+            }
+            val scaleX = visibleBounds.width().toFloat() / localWidth
+            val scaleY = visibleBounds.height().toFloat() / localHeight
+            if (!scaleX.isFinite() || !scaleY.isFinite() || scaleX <= 0f || scaleY <= 0f) {
+                return clearProtection(caption, "SCALE_INVALID")
+            }
+            if (kotlin.math.abs(scaleX - scaleY) > SCALE_TOLERANCE) {
+                diag { "REGION_SCALE_MISMATCH_" + scaleX + "_" + scaleY }
+                return clearProtection(caption, "SCALE_MISMATCH")
+            }
+
+            val outsideOnScreen = Region(displayBounds)
+            outsideOnScreen.op(visibleBounds, Region.Op.DIFFERENCE)
+            allFlexibleTaskBounds(controller).forEach { bounds ->
+                outsideOnScreen.op(bounds, Region.Op.DIFFERENCE)
+            }
+            val context = contextField.get(controller) as? Context ?: return clearProtection(caption)
+            val statusBarBottom = displayBounds.top + statusBarHeight(context)
+            if (statusBarBottom > displayBounds.top) {
+                outsideOnScreen.op(
+                    Rect(displayBounds.left, displayBounds.top, displayBounds.right, statusBarBottom),
+                    Region.Op.DIFFERENCE,
+                )
+            }
+            val excludedRegion =
+                updateTapExcludeRegion.invokeUnwrapped(controller, displayContent, null) as? Region
+            if (excludedRegion != null && !excludedRegion.isEmpty) {
+                outsideOnScreen.op(excludedRegion, Region.Op.DIFFERENCE)
+            }
+            visibleImeRegion(displayContent)?.let { imeRegion ->
+                outsideOnScreen.op(imeRegion, Region.Op.DIFFERENCE)
+            }
+            if (outsideOnScreen.isEmpty) return clearProtection(caption, "OUTSIDE_EMPTY")
+
+            val localOutside =
+                screenToCaptionRegion(
+                    screenRegion = outsideOnScreen,
+                    visibleBounds = visibleBounds,
+                    scaleX = scaleX,
+                    scaleY = scaleY,
+                )
+            if (localOutside.isEmpty) return clearProtection(caption, "LOCAL_OUTSIDE_EMPTY")
+            val protectedRegion = Region(originalRegion)
+            protectedRegion.op(localOutside, Region.Op.UNION)
+            diag { "REGION_OK" }
+            return ProtectedTouchableRegion(task, protectedRegion)
         }
 
         /**
@@ -533,11 +584,15 @@ internal class OutsideTapCloseHookInstaller(
         private fun isProtected(task: Any): Boolean =
             synchronized(protectedTasks) { protectedTasks.containsKey(task) }
 
-        /** 输入法当前的可触摸区域；不可见时返回 null。 */
-        fun visibleImeRegion(displayContent: Any): Region? {
-            val imeWindow = inputMethodWindow.get(displayContent) ?: return null
-            if (isWindowVisible.invokeUnwrapped(imeWindow) != true) return null
-            return Region().also { getTouchableRegion.invokeUnwrapped(imeWindow, it) }
+        private fun allFlexibleTaskBounds(controller: Any): List<Rect> {
+            val tasks = flexibleTasksField.get(controller) ?: return emptyList()
+            val taskSnapshot =
+                synchronized(tasks) {
+                    (tasks as? Iterable<*>)?.filterNotNull()?.toList().orEmpty()
+                }
+            return taskSnapshot.mapNotNull { flexibleTask ->
+                visibleTaskBounds(controller, flexibleTask)?.takeUnless { it.isEmpty }
+            }
         }
 
         private fun visibleTaskBounds(controller: Any, task: Any): Rect? {
@@ -545,6 +600,34 @@ internal class OutsideTapCloseHookInstaller(
             val imeBounds = (inputMethodTaskBounds.get(task) as? Rect)?.let(::Rect)
             if (imeBounds != null && !imeBounds.isEmpty) return imeBounds
             return (getVisibleBounds.invokeUnwrapped(controller, task) as? Rect)?.let(::Rect)
+        }
+
+        private fun visibleImeRegion(displayContent: Any): Region? {
+            val imeWindow = inputMethodWindow.get(displayContent) ?: return null
+            if (isWindowVisible.invokeUnwrapped(imeWindow) != true) return null
+            return Region().also { getTouchableRegion.invokeUnwrapped(imeWindow, it) }
+        }
+
+        private fun screenToCaptionRegion(
+            screenRegion: Region,
+            visibleBounds: Rect,
+            scaleX: Float,
+            scaleY: Float,
+        ): Region {
+            val result = Region()
+            val iterator = RegionIterator(screenRegion)
+            val screenRect = Rect()
+            while (iterator.next(screenRect)) {
+                val localRect =
+                    Rect(
+                        floor((screenRect.left - visibleBounds.left) / scaleX).toInt(),
+                        floor((screenRect.top - visibleBounds.top) / scaleY).toInt(),
+                        ceil((screenRect.right - visibleBounds.left) / scaleX).toInt(),
+                        ceil((screenRect.bottom - visibleBounds.top) / scaleY).toInt(),
+                    )
+                if (!localRect.isEmpty) result.op(localRect, Region.Op.UNION)
+            }
+            return result
         }
 
         fun beforeOriginal(
@@ -563,6 +646,7 @@ internal class OutsideTapCloseHookInstaller(
                     MotionEvent.ACTION_POINTER_DOWN,
                     MotionEvent.ACTION_CANCEL,
                     -> {
+                        cancelHandleTap()
                         engine.interrupt()
                         null
                     }
@@ -575,11 +659,17 @@ internal class OutsideTapCloseHookInstaller(
                         updateOutsideTap(engine, controller, event)
                     }
                     MotionEvent.ACTION_UP -> {
-                        if (!engine.isTracking) {
+                        val controller = controllerField.get(listener) ?: run {
+                            cancelHandleTap()
                             engine.interrupt()
                             return@synchronized null
                         }
-                        val controller = controllerField.get(listener) ?: run {
+                        // 底部横条点击：单击即关窗，不走窗外那套双击判定。
+                        if (finishHandleTap(controller, event)) {
+                            engine.interrupt()
+                            return@synchronized null
+                        }
+                        if (!engine.isTracking) {
                             engine.interrupt()
                             return@synchronized null
                         }
@@ -590,16 +680,10 @@ internal class OutsideTapCloseHookInstaller(
                             engine.interrupt()
                             return@synchronized null
                         }
-                        // 每次按下都刷新输入法排除区：键盘可能在两次窗口变化之间弹出或收起，
-                        // 只有窗口变化时更新会让闸门在打字期间误扣键盘点击。
-                        runCatching {
-                            val task = getTopZoomTask.invokeUnwrapped(controller)
-                            val displayContent = task?.let { getDisplayContent.invokeUnwrapped(it) }
-                            val rect =
-                                displayContent
-                                    ?.let { visibleImeRegion(it) }
-                                    ?.let { region -> Rect().also { region.getBounds(it) } }
-                            OutsideTapGate.updateExcluded(rect)
+                        // 横条优先：命中后这次手势只用于点横条关窗，不进入窗外判定。
+                        if (beginHandleTap(controller, event) != null) {
+                            engine.interrupt()
+                            return@synchronized null
                         }
                         beginOutsideTap(engine, controller, event, mode)
                     }
@@ -626,12 +710,6 @@ internal class OutsideTapCloseHookInstaller(
         fun closeIfStillValid(listener: Any, task: Any) {
             if (!environmentAllowed()) return
             val controller = controllerField.get(listener) ?: return
-            closeTask(controller, task)
-        }
-
-        /** 执行关闭；调用方保证 controller/task 来源正确。 */
-        fun closeTask(controller: Any, task: Any) {
-            if (!environmentAllowed()) return
             if (getTopZoomTask.invokeUnwrapped(controller) !== task || !isOrdinaryZoom(controller, task)) {
                 return
             }
@@ -786,6 +864,53 @@ internal class OutsideTapCloseHookInstaller(
             return !visibleBounds.isEmpty && !visibleBounds.contains(pointX, pointY)
         }
 
+        /** 坐标是否落在小窗底部横条上（窗内底部若干 dp）。 */
+        fun isOnBottomHandle(controller: Any, task: Any, x: Float, y: Float): Boolean {
+            val bounds = visibleTaskBounds(controller, task) ?: return false
+            if (bounds.isEmpty) return false
+            val density = (contextField.get(controller) as? Context)
+                ?.resources?.displayMetrics?.density ?: 1f
+            val handleHeight = (HANDLE_HEIGHT_DP * density).toInt().coerceAtLeast(1)
+            val px = x.toInt()
+            val py = y.toInt()
+            if (px < bounds.left || px > bounds.right) return false
+            return py >= bounds.bottom - handleHeight && py <= bounds.bottom
+        }
+
+        /** 记录一次横条按下；返回 task 表示这次手势按在横条上。 */
+        fun beginHandleTap(controller: Any, event: MotionEvent): Any? {
+            val task = getTopZoomTask.invokeUnwrapped(controller) ?: return null
+            if (!isOrdinaryZoom(controller, task)) return null
+            if (!isOnBottomHandle(controller, task, event.rawX, event.rawY)) return null
+            handleTapTask = task
+            handleTapDownX = event.rawX
+            handleTapDownY = event.rawY
+            handleTapDownTime = event.eventTime
+            return task
+        }
+
+        /** 抬手判定：短点击且没移动就关闭；返回 true 表示这次手势已消费。 */
+        fun finishHandleTap(controller: Any, event: MotionEvent): Boolean {
+            val task = handleTapTask ?: return false
+            handleTapTask = null
+            if (!isOrdinaryZoom(controller, task)) return true
+            val configuration = viewConfiguration(controller)
+            val slop = configuration.scaledTouchSlop.toFloat()
+            val dx = event.rawX - handleTapDownX
+            val dy = event.rawY - handleTapDownY
+            val moved = dx * dx + dy * dy > slop * slop
+            val tooLong = event.eventTime - handleTapDownTime > ViewConfiguration.getLongPressTimeout()
+            if (!moved && !tooLong) {
+                io.github.hoerire.flymefreeform.log.ModuleLog.info("BOTTOM_HANDLE_CLOSE")
+                closeTask(controller, task)
+            }
+            return true
+        }
+
+        fun cancelHandleTap() {
+            handleTapTask = null
+        }
+
         private fun isInsideVisibleIme(displayContent: Any, x: Int, y: Int): Boolean {
             val imeWindow = inputMethodWindow.get(displayContent) ?: return false
             if (isWindowVisible.invokeUnwrapped(imeWindow) != true) return false
@@ -829,6 +954,9 @@ internal class OutsideTapCloseHookInstaller(
         const val WINDOW_STATE_CLASS = "com.android.server.wm.WindowState"
         const val FLEXIBLE_CAPTION_VIEW_CLASS = "com.android.server.wm.FlexibleCaptionView"
         const val ORDINARY_ZOOM_STATE = 1
+
+        /** 小窗底部横条的高度（dp）：点在这个范围内算"点横条"，单击直接关窗。 */
+        const val HANDLE_HEIGHT_DP = 28f
         const val SCALE_TOLERANCE = 0.02f
         const val FAILURE_LOG_INTERVAL_MS = 10_000L
     }
