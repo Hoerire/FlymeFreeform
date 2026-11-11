@@ -693,7 +693,7 @@ internal class OutsideTapCloseHookInstaller(
                             return@synchronized null
                         }
                         // 底部关闭优先：命中后这次手势只用于点底部关窗，不进入窗外判定。
-                        if (beginHandleTap(controller, event, settings) != null) {
+                        if (beginHandleTap(controller, event, mode) != null) {
                             engine.interrupt()
                             return@synchronized null
                         }
@@ -760,7 +760,9 @@ internal class OutsideTapCloseHookInstaller(
             mode: OutsideTapCloseMode,
         ): Any? {
             if (
+                // Disabled 什么都不做；BottomTap 只认底部横条，不跟踪窗外点击。
                 mode == OutsideTapCloseMode.Disabled ||
+                    mode == OutsideTapCloseMode.BottomTap ||
                     isCanRespondEvent.invokeUnwrapped(controller) != true ||
                     event.pointerCount != 1 ||
                     event.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER ||
@@ -903,9 +905,10 @@ internal class OutsideTapCloseHookInstaller(
         fun beginHandleTap(
             controller: Any,
             event: MotionEvent,
-            settings: io.github.hoerire.flymefreeform.config.ModuleSettingsSnapshot,
+            mode: OutsideTapCloseMode,
         ): Any? {
-            if (!settings.bottomCloseEffective) return null
+            // 只有「底部关闭」这一档才处理底部横条；它与单击/双击三选一。
+            if (mode != OutsideTapCloseMode.BottomTap) return null
             val task = getTopZoomTask.invokeUnwrapped(controller) ?: return null
             if (!isOrdinaryZoom(controller, task)) return null
             if (!isOnBottomHandle(controller, task, event.rawX, event.rawY)) return null

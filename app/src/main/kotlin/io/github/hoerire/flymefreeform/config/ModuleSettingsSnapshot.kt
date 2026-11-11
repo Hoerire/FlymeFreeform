@@ -55,8 +55,6 @@ internal data class ModuleSettingsSnapshot(
     val zoomExcludedPackages: List<String> = emptyList(),
     /** 桌面长按快捷项转小窗；false 时保持全屏。 */
     val zoomLauncherShortcut: Boolean = ModulePreferences.DEFAULT_ZOOM_LAUNCHER_SHORTCUT,
-    /** 底部关闭：点小窗底部横条直接关窗。 */
-    val bottomClose: Boolean = ModulePreferences.DEFAULT_BOTTOM_CLOSE,
     val autoCloseWindow: Boolean = ModulePreferences.DEFAULT_AUTO_CLOSE_WINDOW,
     /** 桌面卡片与负一屏转小窗；false 时保持全屏。 */
     val zoomLauncherCard: Boolean = ModulePreferences.DEFAULT_ZOOM_LAUNCHER_CARD,
@@ -83,9 +81,6 @@ internal data class ModuleSettingsSnapshot(
     val zoomLauncherShortcutEffective: Boolean get() = zoomInteractionActive && zoomLauncherShortcut
     val zoomLauncherCardEffective: Boolean get() = zoomInteractionActive && zoomLauncherCard
     val autoCloseWindowEffective: Boolean get() = zoomInteractionActive && autoCloseWindow
-
-    /** 底部关闭同样受「轻量打开」总闸控制。 */
-    val bottomCloseEffective: Boolean get() = zoomInteractionActive && bottomClose
     /** 快速上滑转迷你独立于「轻量打开」，只跟模块总开关走。 */
     val handleSwipeUpToMiniEffective: Boolean get() = enabled && handleSwipeUpToMiniEnabled
     val zoomMaxWindowCountEffective: Int
@@ -159,7 +154,6 @@ internal data class ModuleSettingsSnapshot(
                 ModulePreferences.KEY_OUTSIDE_TAP_CLOSE_MODE,
                 outsideTapCloseMode.storedValue,
             )
-            .putBoolean(ModulePreferences.KEY_BOTTOM_CLOSE, bottomClose)
             .putBoolean(
                 ModulePreferences.KEY_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
                 handleSwipeUpToMiniEnabled,
@@ -256,10 +250,6 @@ internal data class ModuleSettingsSnapshot(
                 pinsSaved = pinsSaved,
                 pinnedTargets = pins,
                 outsideTapCloseMode = outsideTapCloseMode,
-                bottomClose = preferences.getBoolean(
-                    ModulePreferences.KEY_BOTTOM_CLOSE,
-                    ModulePreferences.DEFAULT_BOTTOM_CLOSE,
-                ),
                 handleSwipeUpToMiniEnabled = handleSwipeUpToMiniEnabled,
                 pauseInLandscape = preferences.getBoolean(
                     ModulePreferences.KEY_PAUSE_IN_LANDSCAPE,

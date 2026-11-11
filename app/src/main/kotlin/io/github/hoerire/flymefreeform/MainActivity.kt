@@ -45,7 +45,6 @@ class MainActivity : ComponentActivity() {
                     onRadialHitRangeChange = repository::setRadialHitRangeDp,
                     onRadialIconSizeChange = repository::setRadialIconSizeDp,
                     onOutsideTapCloseModeChange = repository::setOutsideTapCloseMode,
-                    onBottomCloseChange = repository::setBottomCloseEnabled,
                     onHandleSwipeUpToMiniEnabledChange =
                         repository::setHandleSwipeUpToMiniEnabled,
                     onPauseInLandscapeChange = repository::setPauseInLandscape,

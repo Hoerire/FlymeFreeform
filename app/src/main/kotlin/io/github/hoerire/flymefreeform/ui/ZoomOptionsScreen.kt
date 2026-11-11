@@ -14,7 +14,6 @@ import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.SwipeUp
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material.icons.rounded.VerticalAlignBottom
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -61,7 +60,6 @@ internal fun ZoomOptionsScreen(
     onAutoCloseWindowChange: (Boolean) -> Unit,
     onNavigateToZoomExcluded: () -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
-    onBottomCloseChange: (Boolean) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
 ) {
     val enabled = state.settingsEditable && state.settings.enabled
@@ -75,6 +73,7 @@ internal fun ZoomOptionsScreen(
             DropdownItem(text = stringResource(R.string.outside_tap_mode_disabled)),
             DropdownItem(text = stringResource(R.string.outside_tap_mode_single)),
             DropdownItem(text = stringResource(R.string.outside_tap_mode_double)),
+            DropdownItem(text = stringResource(R.string.outside_tap_mode_bottom)),
         )
     SettingsPage(
         title = stringResource(R.string.zoom_limit_removed_title),
@@ -210,14 +209,6 @@ internal fun ZoomOptionsScreen(
                     summary = stringResource(R.string.handle_swipe_up_to_mini_summary),
                     enabled = enabled,
                     startAction = { PreferenceIcon(Icons.Rounded.SwipeUp, enabled) },
-                )
-                SwitchPreference(
-                    checked = state.settings.bottomClose,
-                    onCheckedChange = onBottomCloseChange,
-                    title = stringResource(R.string.bottom_close_title),
-                    summary = stringResource(R.string.bottom_close_summary),
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.VerticalAlignBottom, enabled) },
                 )
                 OverlaySpinnerPreference(
                     items = outsideTapItems,
