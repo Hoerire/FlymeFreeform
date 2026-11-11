@@ -1044,8 +1044,10 @@ internal class ColorOsFreeformCoordinator(
         // 以前这里给手势区开了例外，结果挂起的扇形一直留在窗口栈里，
         // 回到桌面后重新显示出来，看起来就是"扇形自己弹出来"。
         trace("SYSTEM_OVERLAY_OUTSIDE_CLOSE")
+        // 只启动缩回动画：cancelActiveGesture 内部会调 overlay.cancelGesture()，
+        // 动画播完由 completeRadialExit → onDismissRequested 收场。
+        // 紧跟着 removeOverlay 会把窗口立刻拆掉，动画一帧都看不到。
         cancelActiveGesture()
-        removeOverlay()
     }
 
     /**
@@ -1109,7 +1111,6 @@ internal class ColorOsFreeformCoordinator(
                     // 主窗口又不可触摸，菜单会一直挂在屏幕上无法关闭。
                     trace("SYSTEM_OVERLAY_TOUCH_BLANK_CLOSE")
                     cancelActiveGesture()
-                    removeOverlay()
                 } else {
                     trace("SYSTEM_HIT_RELEASE_TOUCH_REGION")
                     view.finishGesture()
@@ -1173,7 +1174,6 @@ internal class ColorOsFreeformCoordinator(
                 trace("SYSTEM_GESTURE_CANCELLED_CLOSE")
                 pilferSessionActive = false
                 cancelActiveGesture()
-                removeOverlay()
             },
             CANCEL_WATCH_MS,
         )

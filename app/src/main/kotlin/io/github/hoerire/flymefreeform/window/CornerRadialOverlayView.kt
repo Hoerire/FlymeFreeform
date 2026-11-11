@@ -590,9 +590,18 @@ internal class CornerRadialOverlayView(
     ) {
         val direction = if (layout.side == CornerSide.Left) 1f else -1f
         val overshoot = direction * RadialEntryMotion.HORIZONTAL_OVERSHOOT_DP * metrics.pixelsPerBaseDp * motion.horizontalOvershoot
+        val itemCount = layout.itemCenters.size.coerceAtLeast(1)
         layout.itemCenters.forEachIndexed { index, destination ->
-            val centerX = layout.origin.x + (destination.x - layout.origin.x) * motion.radialProgress + overshoot
-            val centerY = layout.origin.y + (destination.y - layout.origin.y) * motion.radialProgress
+            // 逐个图标交错飞出：以前所有格共用 motion.radialProgress，
+            // 整个扇形像一块铁板一样整体平移，看起来只有"展开 / 回弹"两段。
+            // 这里给每一格分配一个起始偏移，靠后的格子晚一点出发，
+            // 扇形就有了"依次铺开"的层次；收回时顺序自然反过来。
+            val startAt =
+                if (itemCount > 1) ITEM_STAGGER_RATIO * index / (itemCount - 1) else 0f
+            val localProgress =
+                ((motion.radialProgress - startAt) / (1f - ITEM_STAGGER_RATIO)).coerceIn(0f, 1f)
+            val centerX = layout.origin.x + (destination.x - layout.origin.x) * localProgress + overshoot * localProgress
+            val centerY = layout.origin.y + (destination.y - layout.origin.y) * localProgress
             val ringProgress = itemRings.getOrNull(index)?.value ?: 0f
             // 选中项放大：复用每格原有 0→1 的进度动画，1f→1.2f 平滑放大；
             // 不再绘制白色描边外圈（原实现用同一进度画 SELECTION_RING_ALPHA 的圆环）。
@@ -1149,6 +1158,14 @@ internal class CornerRadialOverlayView(
     private data class ExitRequest(val pendingCommit: RadialEntry?, val entryProgress: Float)
 
     private companion object {
+        /**
+         * 交错比例：整段入场里最多有这么长的时间用于"逐格错开"。
+         *
+         * 0.35 意味着第 0 格立即出发、最后一格晚 35% 出发，但所有格子都在动画结束时归位。
+         * 再大就会让最后一格显得"迟到"，再小又回到整体平移的观感。
+         */
+        const val ITEM_STAGGER_RATIO = 0.35f
+
         val EMPTY_LAYOUT =
             RadialLayout(
                 side = CornerSide.Right,
