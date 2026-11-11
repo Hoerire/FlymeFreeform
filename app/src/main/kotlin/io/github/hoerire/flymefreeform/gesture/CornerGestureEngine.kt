@@ -72,6 +72,14 @@ internal object AdaptiveCornerGestureConfig {
     private const val INWARD_DP = 14f
     private const val UPWARD_DP = 4f
     private const val REVERSE_TOLERANCE_DP = 8f
+
+    /**
+     * upward / inward 超过这个比值就按「垂直上滑」处理，不接管。
+     *
+     * 角区手势是斜着滑出来的（两者量级相近），系统上滑回桌面几乎是纯垂直。
+     * 3 倍留足余量：手指抖一点、稍微斜一点的正常呼出都不会被误判成上滑。
+     */
+    private const val VERTICAL_UPWARD_RATIO = 3f
 }
 
 /** 单指角落手势状态机；不持有 MotionEvent，便于跨进程入口复用与单元测试。 */
@@ -122,6 +130,14 @@ internal class CornerGestureEngine {
         }
         if (!claimed) {
             if (inward < config.inwardThreshold || upward < config.upwardThreshold) {
+                return GestureAction.PassThrough
+            }
+            // 垂直上滑不是角区手势：那是系统的「回桌面 / 最近任务」。
+            // 以前只要求 inward ≥ 14dp、upward ≥ 4dp，手指从角落往上滑时
+            // 随便一点横向抖动就超过 49px，于是上滑回桌面会顺手把扇形拉起来
+            // （用户实测：回桌面后扇形自己又弹出来）。
+            // 角区手势是斜向的，inward 与 upward 量级相当；垂直上滑则 upward 远大于 inward。
+            if (upward > inward * VERTICAL_UPWARD_RATIO) {
                 return GestureAction.PassThrough
             }
             claimed = true
