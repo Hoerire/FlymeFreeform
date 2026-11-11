@@ -76,7 +76,7 @@ internal class OutsideTapCloseHookInstaller(
                     },
                 )
             // 触摸回调里需要读当前配置：由外层注入，避免反射类持有 configuration。
-            ColorOsOutsideTapAccess.currentSettings = { configuration.snapshot }
+            ColorOsOutsideTapAccess.settingsProvider = { configuration.snapshot }
             module
                 .hook(updateTouchableRegion)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -117,7 +117,7 @@ internal class OutsideTapCloseHookInstaller(
             // 只挂小窗标题层自己的分发入口，影响面仅限于小窗。
             runCatching {
                 val dispatchTouchEvent =
-                    captionClass.requiredMethod("dispatchTouchEvent", MotionEvent::class.java)
+                    captionClass.requiredMethod("dispatchTouchEvent", arrayOf(MotionEvent::class.java))
                 module
                     .hook(dispatchTouchEvent)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -619,13 +619,6 @@ internal class OutsideTapCloseHookInstaller(
 
         fun controllerOfCaption(caption: Any): Any? = captionControllerField.get(caption)
 
-        /** 当前配置快照（由外层注入，避免在反射类里持有引用）。 */
-        var currentSettings: () -> io.github.hoerire.flymefreeform.config.ModuleSettingsSnapshot? = { null }
-
-        /** 从横条 view 反查它所属的小窗控制器。 */
-        fun controllerOf(view: View): Any? = synchronized(bottomHandleViews) {
-            bottomHandleViews[view]?.controller
-        }
 
         fun clearProtection(caption: Any, reason: String = ""): ProtectedTouchableRegion? {
             if (reason.isNotEmpty()) diag { "REGION_FAIL_" + reason }
@@ -941,7 +934,7 @@ internal class OutsideTapCloseHookInstaller(
         fun onCaptionTouch(caption: Any, event: MotionEvent) {
             val task = captionTaskField.get(caption) ?: return
             val controller = captionControllerField.get(caption) ?: return
-            val settings = currentSettings() ?: return
+            val settings = settingsProvider() ?: return
             if (settings.outsideTapCloseMode != OutsideTapCloseMode.BottomTap) return
             if (!isOrdinaryZoom(controller, task)) return
             val bounds = visibleTaskBounds(controller, task) ?: return
@@ -1008,6 +1001,13 @@ internal class OutsideTapCloseHookInstaller(
         private fun statusBarHeight(context: Context): Int {
             val id = context.resources.getIdentifier("status_bar_height", "dimen", "android")
             return if (id != 0) context.resources.getDimensionPixelSize(id) else 0
+        }
+
+        companion object {
+            /** 当前配置快照；由外层在安装时注入，避免反射类持有 configuration。 */
+            @Volatile
+            var settingsProvider: () -> io.github.hoerire.flymefreeform.config.ModuleSettingsSnapshot? =
+                { null }
         }
     }
 
