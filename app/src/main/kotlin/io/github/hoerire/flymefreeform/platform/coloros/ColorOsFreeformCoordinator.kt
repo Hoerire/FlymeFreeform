@@ -761,7 +761,9 @@ internal class ColorOsFreeformCoordinator(
     ) {
         entryLaunchGeneration++
         entryCatalog.cancelLaunch()
-        removeOverlay()
+        // 旧浮层马上要被新浮层顶掉，必须立即摘除：防闪延迟会让 removeOverlay 提前
+        // return，随后 overlay 被新 view 覆盖，旧窗口就再也没人持有、无法移除。
+        removeOverlay(immediate = true)
         // 扇形呼出时收掉「更多」面板：面板是应用层之上的 overlay，留着会盖住扇形，
         // 也会盖住随后打开的小窗。这里只做这一件事，面板内部状态机不动。
         if (sidebar.isPanelActive()) {
@@ -1230,6 +1232,25 @@ internal class ColorOsFreeformCoordinator(
         overlay?.cancelGesture()
     }
 
+    /**
+     * 摘掉一份已经失去归属的浮层。
+     *
+     * 只清这一份 view 自己的资源，不动 [overlay] / [touchRegion] 等字段——
+     * 它们此刻已经属于新浮层，碰了会把正在用的那份一起弄坏。
+     */
+    private fun detachAbandonedOverlay(view: CornerRadialOverlayView) {
+        runCatching { view.disposeOverlay() }
+            .onFailure { logOverlayFailure("SYSTEM_OVERLAY_DISPOSE_FAILED", it) }
+        try {
+            windowManager.removeViewImmediate(view)
+            trace("SYSTEM_OVERLAY_ABANDONED_REMOVED")
+        } catch (_: IllegalArgumentException) {
+            // 已被系统移除。
+        } catch (exception: RuntimeException) {
+            logger(Log.WARN, "SYSTEM_OVERLAY_REMOVE_FAILED", exception)
+        }
+    }
+
     private fun removeOverlay(immediate: Boolean = false) {
         val view = overlay ?: return
         // 点击贴边浮标/窗外时，角触手势会先呼出再立刻收起，表现为屏幕闪一下。
@@ -1243,7 +1264,13 @@ internal class ColorOsFreeformCoordinator(
                 handler.postDelayed(
                     {
                         overlayRemovePending = false
-                        if (overlay === view) removeOverlay()
+                        if (overlay === view) {
+                            removeOverlay()
+                        } else {
+                            // 延迟期间 overlay 已被新浮层顶掉：这份 view 已无人持有，
+                            // 不在这里摘掉就会永久留在窗口栈里（表现为扇形定格、关不掉）。
+                            detachAbandonedOverlay(view)
+                        }
                     },
                     MIN_OVERLAY_VISIBLE_MS - elapsed,
                 )
