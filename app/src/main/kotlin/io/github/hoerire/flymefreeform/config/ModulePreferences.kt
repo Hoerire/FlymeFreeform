@@ -91,7 +91,8 @@ internal object ModulePreferences {
     const val DEFAULT_PAUSE_IN_LANDSCAPE = true
     const val DEFAULT_PAUSE_IN_GAME_MODE = true
     const val DEFAULT_VERBOSE_LOG = false
-    const val DEFAULT_FROSTED_PERCENT = 22
+    /** 默认全透明：呼出扇形时不压暗身后内容。 */
+    const val DEFAULT_FROSTED_PERCENT = 0
     const val MIN_FROSTED_PERCENT = 0
     const val MAX_FROSTED_PERCENT = 45
 
