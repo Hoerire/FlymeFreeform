@@ -366,7 +366,15 @@ internal class ColorOsFreeformCoordinator(
                         false
                     } else {
                         enqueuePointerEvent(event, generation)
-                        shouldStartPilfer(event)
+                        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                            // 角落按下就立刻抢流：只要应用先收到一帧 MOVE，它就会把
+                            // 这次拖动当成横向滚动滚一段，抢回来再回弹就是"横移"。
+                            // 与其等位移阈值，不如从 DOWN 起就不让应用参与。
+                            shouldStartPilfer(event)
+                            true
+                        } else {
+                            shouldStartPilfer(event)
+                        }
                     }
                 },
                 logger = logger,
