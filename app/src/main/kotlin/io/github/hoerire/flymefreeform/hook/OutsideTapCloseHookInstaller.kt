@@ -721,7 +721,6 @@ internal class OutsideTapCloseHookInstaller(
                     }
                     MotionEvent.ACTION_UP -> {
                         val controller = controllerField.get(listener) ?: run {
-                            cancelHandleTap()
                             engine.interrupt()
                             return@synchronized null
                         }
