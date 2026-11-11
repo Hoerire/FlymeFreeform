@@ -783,7 +783,8 @@ internal class ColorOsFreeformCoordinator(
         // 保持挂起只影响「抬手后是否收起」，与窗口是否可触摸无关：
         // 触摸统一由 attachTouchRegion() 那块小窗口接住。
         val keepOpen = lastSettings.radialKeepOpen
-        val params = createOverlayParams()
+        val density = context.resources.displayMetrics.density
+        val params = createOverlayParams(density = density)
         var view: CornerRadialOverlayView? = null
         try {
             view = CornerRadialOverlayView(context, this, ::debug)
@@ -807,7 +808,11 @@ internal class ColorOsFreeformCoordinator(
                 trace("SYSTEM_OVERLAY_TYPE_" + OVERLAY_WINDOW_TYPE)
             } catch (exception: RuntimeException) {
                 // 输入法层的窗口类型被系统拒绝时，退回普通悬浮窗，至少保证扇形可用。
-                val fallback = createOverlayParams(type = FALLBACK_OVERLAY_TYPE)
+                val fallback =
+                    createOverlayParams(
+                        type = FALLBACK_OVERLAY_TYPE,
+                        density = context.resources.displayMetrics.density,
+                    )
                 windowManager.addView(view, fallback)
                 overlayWindowType = FALLBACK_OVERLAY_TYPE
                 logger(Log.WARN, "SYSTEM_OVERLAY_TYPE_FALLBACK_" + FALLBACK_OVERLAY_TYPE, exception)
@@ -988,7 +993,7 @@ internal class ColorOsFreeformCoordinator(
     }
 
     private fun showBuiltInMorePanel(view: CornerRadialOverlayView) {
-        val params = createOverlayParams()
+        val params = createOverlayParams(density = context.resources.displayMetrics.density)
         try {
             windowManager.updateViewLayout(view, params)
             view.showBuiltInMorePanel()
@@ -1166,6 +1171,7 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun createOverlayParams(
         type: Int = overlayWindowType,
+        density: Float = 0f,
     ): WindowManager.LayoutParams {
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -1184,10 +1190,20 @@ internal class ColorOsFreeformCoordinator(
             setFitInsetsTypes(0)
             windowAnimations = 0
             title = "FlymeFreeformCornerOverlay"
-            // 背景模糊（FLAG_BLUR_BEHIND）在本模块的窗口类型上不可用：
-            // TYPE_INPUT_METHOD_DIALOG 只会在 addView 那一次被系统尝试应用，
-            // 之后 updateViewLayout 不再生效，且每次尝试都会引发一次全屏合成（表现为闪烁）。
-            // 因此这里不做模糊，压暗仍由 Compose 那一层负责。
+            // 背景模糊：必须先声明为「受信任浮层」，否则 ColorOS 会静默忽略
+            // FLAG_BLUR_BEHIND（窗口类型不是限制，缺的是这个标记）。
+            // setTrustedOverlay 在部分版本是隐藏 API，用反射并在失败时静默降级。
+            if (BLUR_RADIUS_DP > 0f) {
+                runCatching {
+                    WindowManager.LayoutParams::class.java
+                        .getMethod("setTrustedOverlay")
+                        .invoke(this)
+                }
+                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                if (density > 0f) {
+                    blurBehindRadius = (BLUR_RADIUS_DP * density).toInt()
+                }
+            }
         }
     }
 
@@ -1480,6 +1496,9 @@ internal class ColorOsFreeformCoordinator(
         const val VERTICAL_ABORT_RATIO = 2.5f
         /** 读不到系统导航栏高度时的兜底值（dp）。 */
         const val BOTTOM_GESTURE_INSET_DP = 40f
+
+        /** 呼出扇形时的背景模糊半径（dp）。 */
+        const val BLUR_RADIUS_DP = 28f
 
 
         /** WindowManager.LayoutParams.TOUCHABLE_INSETS_REGION 是 @hide 常量。 */
