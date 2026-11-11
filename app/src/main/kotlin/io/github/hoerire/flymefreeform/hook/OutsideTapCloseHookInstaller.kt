@@ -87,6 +87,16 @@ internal class OutsideTapCloseHookInstaller(
                         return@intercept chain.proceed()
                     }
                     access.rememberRegion(caption, originalRegion)
+                    // 顺便登记底部横条：它的触摸 hook 需要知道"这个 view 属于哪个 task"。
+                    runCatching {
+                        val task = access.taskOf(caption) ?: return@runCatching
+                        val owner = access.controllerOfCaption(caption)
+                        if (owner != null &&
+                            configuration.snapshot.outsideTapCloseMode == OutsideTapCloseMode.BottomTap
+                        ) {
+                            access.rememberBottomHandle(caption, task, owner)
+                        }
+                    }
                     val protectedRegion =
                         try {
                             access.buildProtectedRegion(caption, originalRegion, configuration.snapshot)
@@ -106,6 +116,34 @@ internal class OutsideTapCloseHookInstaller(
                     access.markProtected(caption, protectedRegion.task)
                     result
                 }
+            // 底部关闭：直接 hook 横条 View 的触摸。
+            //
+            // 不再用"坐标落在小窗底部"去猜——那套在窗口缩放、IME、横屏下都会偏，
+            // 而且需要额外反射，反而更容易出问题。这里拿到 FlexibleCaptionView
+            // 自己的 mBottomHandleView，只对这一个 view 的点击做判定。
+            runCatching {
+                val viewClass = classLoader.loadClass("android.view.View")
+                val onTouchEvent =
+                    viewClass.getDeclaredMethod("onTouchEvent", android.view.MotionEvent::class.java)
+                module
+                    .hook(onTouchEvent)
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .setId("flymefreeform.system.bottom_handle_tap")
+                    .intercept { chain ->
+                        val view = chain.thisObject as? View
+                        val event = chain.getArg(0) as? MotionEvent
+                        if (view != null && event != null) {
+                            val controller = access.controllerOf(view)
+                            if (controller != null) {
+                                runCatching {
+                                    access.handleBottomHandleTouch(view, controller, event)
+                                }
+                            }
+                        }
+                        chain.proceed()
+                    }
+                module.log(Log.INFO, TAG, "BOTTOM_HANDLE_TOUCH_HOOK_INSTALLED", null)
+            }.onFailure { logFailure("BOTTOM_HANDLE_TOUCH_HOOK_FAILED", it) }
             // 小窗创建初期窗口仍为全屏尺寸，无法计算窗外区域；动画结束后重新触发一次。
             runCatching {
                 val addFlexibleTask =
@@ -589,6 +627,15 @@ internal class OutsideTapCloseHookInstaller(
             synchronized(protectedTasks) { protectedTasks[task] = Unit }
         }
 
+        fun taskOf(caption: Any): Any? = captionTaskField.get(caption)
+
+        fun controllerOfCaption(caption: Any): Any? = captionControllerField.get(caption)
+
+        /** 从横条 view 反查它所属的小窗控制器。 */
+        fun controllerOf(view: View): Any? = synchronized(bottomHandleViews) {
+            bottomHandleViews[view]?.controller
+        }
+
         fun clearProtection(caption: Any, reason: String = ""): ProtectedTouchableRegion? {
             if (reason.isNotEmpty()) diag { "REGION_FAIL_" + reason }
             val task = captionTaskField.get(caption)
@@ -661,7 +708,6 @@ internal class OutsideTapCloseHookInstaller(
                     MotionEvent.ACTION_POINTER_DOWN,
                     MotionEvent.ACTION_CANCEL,
                     -> {
-                        cancelHandleTap()
                         engine.interrupt()
                         null
                     }
@@ -679,11 +725,6 @@ internal class OutsideTapCloseHookInstaller(
                             engine.interrupt()
                             return@synchronized null
                         }
-                        // 底部横条点击：单击即关窗，不走窗外那套双击判定。
-                        if (finishHandleTap(controller, event)) {
-                            engine.interrupt()
-                            return@synchronized null
-                        }
                         if (!engine.isTracking) {
                             engine.interrupt()
                             return@synchronized null
@@ -692,11 +733,6 @@ internal class OutsideTapCloseHookInstaller(
                     }
                     MotionEvent.ACTION_DOWN -> {
                         val controller = controllerField.get(listener) ?: run {
-                            engine.interrupt()
-                            return@synchronized null
-                        }
-                        // 底部关闭优先：命中后这次手势只用于点底部关窗，不进入窗外判定。
-                        if (beginHandleTap(controller, event, mode) != null) {
                             engine.interrupt()
                             return@synchronized null
                         }
@@ -900,55 +936,71 @@ internal class OutsideTapCloseHookInstaller(
         }
 
         /**
-         * 记录一次「底部关闭」的按下；返回 task 表示这次手势按在小窗底部。
+         * 小窗底部横条（FlexibleCaptionView.mBottomHandleView）。
          *
-         * 只在设置开启时介入。这个功能不做任何防穿透处理：底部那一条本来就是窗口
-         * 自己的装饰区域，点击照常交给窗口，我们只在抬手确认是短点击后关窗。
+         * 这个功能不做任何防穿透：横条本来就在窗口内部，点击照常交给窗口，
+         * 我们只把它的点击事件拦出来直接关窗。
          */
-        fun beginHandleTap(
+        private class HandleBinding(val task: Any, val controller: Any)
+
+        private val bottomHandleViews = java.util.WeakHashMap<Any, HandleBinding>()
+
+        private fun bottomHandleField(captionClass: Class<*>, name: String): Field? =
+            runCatching { captionClass.getDeclaredField(name).apply { isAccessible = true } }.getOrNull()
+
+        /** 记录 caption 的底部横条与所属 task/controller，供触摸 hook 使用。 */
+        fun rememberBottomHandle(caption: Any, task: Any, controller: Any): View? {
+            val view = bottomHandleField(caption.javaClass, "mBottomHandleView")
+                ?.get(caption) as? View ?: return null
+            synchronized(bottomHandleViews) { bottomHandleViews[view] = HandleBinding(task, controller) }
+            return view
+        }
+
+        fun taskForBottomHandle(view: Any): Any? = synchronized(bottomHandleViews) {
+            bottomHandleViews[view]?.task
+        }
+
+        fun forgetBottomHandle(view: Any) {
+            synchronized(bottomHandleViews) { bottomHandleViews.remove(view) }
+        }
+
+        /**
+         * 横条点击判定：DOWN 记录、UP 比对位移与时长，短点击才关窗。
+         *
+         * 关窗必须 post 到主线程：输入回调线程直接调 WMS 会和窗口退出流程抢锁，
+         * watchdog 超时就是整机界面重启（实测过）。
+         */
+        fun handleBottomHandleTouch(
+            view: View,
             controller: Any,
             event: MotionEvent,
-            mode: OutsideTapCloseMode,
-        ): Any? {
-            // 只有「底部关闭」这一档才处理底部横条；它与单击/双击三选一。
-            if (mode != OutsideTapCloseMode.BottomTap) return null
-            // 这条路径运行在每次触摸按下时，反射调用失败一律当作"没命中"，
-            // 不能让异常从输入回调里冒出去。
-            return runCatching {
-                val task = getTopZoomTask.invokeUnwrapped(controller) ?: return null
-                if (!isOrdinaryZoom(controller, task)) return null
-                if (!isOnBottomHandle(controller, task, event.rawX, event.rawY)) return null
-                handleTapTask = task
-                handleTapDownX = event.rawX
-                handleTapDownY = event.rawY
-                handleTapDownTime = event.eventTime
-                task
-            }.getOrNull()
-        }
-
-        /** 抬手判定：短点击且没移动就关闭；返回 true 表示这次手势已消费。 */
-        fun finishHandleTap(controller: Any, event: MotionEvent): Boolean {
-            val task = handleTapTask ?: return false
-            handleTapTask = null
-            if (!isOrdinaryZoom(controller, task)) return true
-            val configuration = viewConfiguration(controller)
-            val slop = configuration.scaledTouchSlop.toFloat()
-            val dx = event.rawX - handleTapDownX
-            val dy = event.rawY - handleTapDownY
-            val moved = dx * dx + dy * dy > slop * slop
-            val tooLong = event.eventTime - handleTapDownTime > ViewConfiguration.getLongPressTimeout()
-            if (!moved && !tooLong) {
-                io.github.hoerire.flymefreeform.log.ModuleLog.info("BOTTOM_HANDLE_CLOSE")
-                // 必须回主线程关窗：这里运行在输入回调线程，直接调 WMS 关窗会和
-                // 窗口自身的退出流程抢锁，严重时触发 system_server watchdog 重启
-                // （实测：开启底部关闭后点横条，整机界面重启）。
-                mainHandler.post { runCatching { closeTask(controller, task) } }
+        ): Boolean {
+            val task = taskForBottomHandle(view) ?: return false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    handleTapTask = task
+                    handleTapDownX = event.x
+                    handleTapDownY = event.y
+                    handleTapDownTime = event.eventTime
+                }
+                MotionEvent.ACTION_UP -> {
+                    val active = handleTapTask ?: return false
+                    handleTapTask = null
+                    if (active !== task) return false
+                    val configuration = viewConfiguration(controller)
+                    val slop = configuration.scaledTouchSlop.toFloat()
+                    val dx = event.x - handleTapDownX
+                    val dy = event.y - handleTapDownY
+                    val moved = dx * dx + dy * dy > slop * slop
+                    val tooLong = event.eventTime - handleTapDownTime > ViewConfiguration.getLongPressTimeout()
+                    if (!moved && !tooLong) {
+                        io.github.hoerire.flymefreeform.log.ModuleLog.info("BOTTOM_HANDLE_CLOSE")
+                        mainHandler.post { runCatching { closeTask(controller, task) } }
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> handleTapTask = null
             }
-            return true
-        }
-
-        fun cancelHandleTap() {
-            handleTapTask = null
+            return false
         }
 
         private fun isInsideVisibleIme(displayContent: Any, x: Int, y: Int): Boolean {
