@@ -979,7 +979,7 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun applyBackdropPassThrough(view: CornerRadialOverlayView) {
         try {
-            val params = createOverlayParams().apply { dimAmount = 0f }
+            val params = createOverlayParams()
             windowManager.updateViewLayout(view, params)
             detachTouchRegion()
             debug("SYSTEM_BACKDROP_PASS_THROUGH_OK")
@@ -1128,7 +1128,9 @@ internal class ColorOsFreeformCoordinator(
      * 这样才不会有"一个全屏可触摸窗口把底部手势一起吃掉"的问题——
      * 这也是 v744 的做法：它的角区窗口带 FLAG_NOT_TOUCHABLE，事件全走 monitor。
      *
-     * 背景暗度改用系统的 FLAG_DIM_BEHIND + dimAmount：调暗由系统合成，不消费触摸。
+     * 不再使用 FLAG_DIM_BEHIND：它会让系统对下层窗口做调暗合成，实测每次呼出都会让
+     * 屏幕内容左右抖一下。遮罩改回由 Compose 画（窗口本身 NOT_TOUCHABLE，不影响触摸）。
+     * windowAnimations 也显式置 0，避免系统给新窗口套上默认的进入动画。
      */
     private fun createOverlayParams(
         type: Int = overlayWindowType,
@@ -1141,15 +1143,14 @@ internal class ColorOsFreeformCoordinator(
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_DIM_BEHIND,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.FILL
             layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
             setFitInsetsTypes(0)
-            dimAmount = OVERLAY_DIM_AMOUNT
+            windowAnimations = 0
             title = "FlymeFreeformCornerOverlay"
         }
     }
@@ -1437,15 +1438,23 @@ internal class ColorOsFreeformCoordinator(
         const val SESSION_GAP_MS = 800L
         /** 读不到系统导航栏高度时的兜底值（dp）。 */
         const val BOTTOM_GESTURE_INSET_DP = 40f
-        /** 背景暗度：交给系统的 FLAG_DIM_BEHIND，不再用 Compose 画黑块。 */
-        const val OVERLAY_DIM_AMOUNT = 0.35f
         /** WindowManager.LayoutParams.TOUCHABLE_INSETS_REGION 是 @hide 常量。 */
         const val TOUCHABLE_INSETS_REGION = 3
         const val OVERLAY_PREWARM_LIFETIME_MS = 400L
         // 窗口层级实测：APPLICATION_OVERLAY=111000，INPUT_METHOD=131000。
         // 用 APPLICATION_OVERLAY 时键盘一弹出就盖住扇形，故选输入法对话框层（141000），
         // 只压在键盘之上，仍低于状态栏等更高层系统窗口。被系统拒绝时回落到 APPLICATION_OVERLAY。
-        const val OVERLAY_WINDOW_TYPE = WindowManager.LayoutParams.TYPE_INPUT_METHOD_DIALOG
+        /**
+         * 浮层窗口类型。
+         *
+         * 以前用的是 TYPE_INPUT_METHOD_DIALOG（2012）。系统把它当输入法窗口，它出现/消失时
+         * 会触发 IME 区域变化 → 前台应用 adjustResize 重排，表现就是"呼出时画面左右抖一下"
+         * （用户实测：QQ 聊天页呼出扇形，整页内容横向抖）。
+         *
+         * 改用 TYPE_NAVIGATION_BAR_PANEL（2024）：系统级面板，不参与 IME/adjustResize 的
+         * 那套通知。v744 的角区窗口用的也是这个类型。
+         */
+        const val OVERLAY_WINDOW_TYPE = WindowManager.LayoutParams.TYPE_NAVIGATION_BAR_PANEL
         const val FALLBACK_OVERLAY_TYPE = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         const val OVERLAY_FAILURE_LOG_INTERVAL_MS = 10_000L
 

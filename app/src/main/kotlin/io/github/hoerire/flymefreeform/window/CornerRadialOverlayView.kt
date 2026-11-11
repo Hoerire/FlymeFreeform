@@ -11,6 +11,7 @@ import android.view.KeyEvent
 import android.view.RoundedCorner
 import android.view.WindowInsets
 import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -523,8 +524,8 @@ internal class CornerRadialOverlayView(
         val itemColors = LocalRadialItemColors.current
         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
             if (backdropOnlyState.value) {
-                // 背景暗度已由窗口的 FLAG_DIM_BEHIND + dimAmount 提供（系统合成，不消费触摸），
-                // 这里不再叠一层黑块，否则会出现双重压暗。
+                // 「更多」面板期间不画遮罩：那块面板是系统的独立窗口，我们这层暗度会把它压暗，
+                // 看起来就是"一层黑色遮罩盖在更多菜单上"。
                 return@Canvas
             }
             val panel =
@@ -564,7 +565,9 @@ internal class CornerRadialOverlayView(
                 iconScale = exitSample.iconScale + (entrySample.iconScale - 1f) * (1f - dismissalBlend),
             )
             val visual = dismissal ?: entrySample
-            // 同上：暗度交给窗口 dim，绘制层只画图标和面板。
+            // 遮罩由这里画（窗口不再用 FLAG_DIM_BEHIND）：随内容透明度一起淡入淡出，
+            // 比系统 dim 更贴合入场/收回的节奏。
+            drawRect(Color.Black, alpha = BACKDROP_ALPHA * visual.contentAlpha)
             val alpha = visual.contentAlpha * if (panelModeState.value) handoffVisuals.contentAlpha else 1f
             if (alpha <= 0f) return@Canvas
             drawRadialItems(
@@ -1165,6 +1168,9 @@ internal class CornerRadialOverlayView(
          * 再大就会让最后一格显得"迟到"，再小又回到整体平移的观感。
          */
         const val ITEM_STAGGER_RATIO = 0.35f
+
+        /** 背景遮罩不透明度（窗口不再使用 FLAG_DIM_BEHIND，由绘制层提供）。 */
+        const val BACKDROP_ALPHA = 0.22f
 
         val EMPTY_LAYOUT =
             RadialLayout(
