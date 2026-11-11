@@ -968,10 +968,20 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
-    /** 面板打开期间把遮罩切成不可触摸，避免吞掉面板上的首次点击。 */
+    /**
+     * 面板打开期间让出屏幕：去掉暗度、摘掉触摸层。
+     *
+     * 两件事都必须做，否则面板会被我们自己的东西盖住：
+     * - dimAmount 归零：否则窗口的 FLAG_DIM_BEHIND 会把下层的系统面板压暗，
+     *   看起来就是"一层黑色半透明遮罩盖在更多菜单上"；
+     * - 摘掉 [CornerTouchRegionView]：那块窗口覆盖屏幕下半部分且可触摸，
+     *   留着会把面板上的点击全部吃掉（用户实测：更多菜单点不动）。
+     */
     private fun applyBackdropPassThrough(view: CornerRadialOverlayView) {
         try {
-            windowManager.updateViewLayout(view, createOverlayParams())
+            val params = createOverlayParams().apply { dimAmount = 0f }
+            windowManager.updateViewLayout(view, params)
+            detachTouchRegion()
             debug("SYSTEM_BACKDROP_PASS_THROUGH_OK")
         } catch (exception: RuntimeException) {
             logger(Log.WARN, "SYSTEM_BACKDROP_PASS_THROUGH_FAILED", exception)
