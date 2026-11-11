@@ -78,6 +78,9 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setOutsideTapCloseMode(mode: OutsideTapCloseMode) =
         updateSettings { it.copy(outsideTapCloseMode = mode) }
 
+    fun setBottomCloseEnabled(enabled: Boolean) =
+        updateSettings { it.copy(bottomClose = enabled) }
+
     fun setHandleSwipeUpToMiniEnabled(enabled: Boolean) =
         updateSettings { it.copy(handleSwipeUpToMiniEnabled = enabled) }
 

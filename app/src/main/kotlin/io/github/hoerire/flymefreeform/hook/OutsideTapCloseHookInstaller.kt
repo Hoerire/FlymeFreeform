@@ -692,8 +692,8 @@ internal class OutsideTapCloseHookInstaller(
                             engine.interrupt()
                             return@synchronized null
                         }
-                        // 横条优先：命中后这次手势只用于点横条关窗，不进入窗外判定。
-                        if (beginHandleTap(controller, event) != null) {
+                        // 底部关闭优先：命中后这次手势只用于点底部关窗，不进入窗外判定。
+                        if (beginHandleTap(controller, event, settings) != null) {
                             engine.interrupt()
                             return@synchronized null
                         }
@@ -894,8 +894,18 @@ internal class OutsideTapCloseHookInstaller(
             return py >= bounds.bottom - handleHeight && py <= bounds.bottom
         }
 
-        /** 记录一次横条按下；返回 task 表示这次手势按在横条上。 */
-        fun beginHandleTap(controller: Any, event: MotionEvent): Any? {
+        /**
+         * 记录一次「底部关闭」的按下；返回 task 表示这次手势按在小窗底部。
+         *
+         * 只在设置开启时介入。这个功能不做任何防穿透处理：底部那一条本来就是窗口
+         * 自己的装饰区域，点击照常交给窗口，我们只在抬手确认是短点击后关窗。
+         */
+        fun beginHandleTap(
+            controller: Any,
+            event: MotionEvent,
+            settings: io.github.hoerire.flymefreeform.config.ModuleSettingsSnapshot,
+        ): Any? {
+            if (!settings.bottomCloseEffective) return null
             val task = getTopZoomTask.invokeUnwrapped(controller) ?: return null
             if (!isOrdinaryZoom(controller, task)) return null
             if (!isOnBottomHandle(controller, task, event.rawX, event.rawY)) return null
