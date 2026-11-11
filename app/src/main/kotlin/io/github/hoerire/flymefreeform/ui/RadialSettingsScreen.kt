@@ -3,6 +3,7 @@ package io.github.hoerire.flymefreeform.ui
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.ScreenRotation
@@ -42,6 +43,7 @@ internal fun RadialSettingsScreen(
     onCornerTriggerRangeChange: (Int) -> Unit,
     onRadialHitRangeChange: (Int) -> Unit,
     onRadialIconSizeChange: (Int) -> Unit,
+    onFrostedPercentChange: (Int) -> Unit,
 
     onRadialKeepOpenChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
@@ -146,6 +148,20 @@ internal fun RadialSettingsScreen(
                     coerceDp = ModulePreferences::coerceRadialIconSizeDp,
                     onPreviewChange = { iconSizePreviewDp = it },
                     onCommit = onRadialIconSizeChange,
+                )
+                RemoteDpSliderPreference(
+                    icon = Icons.Rounded.BlurOn,
+                    confirmedValue = state.settings.frostedPercent,
+                    isUpdating = state.isUpdating,
+                    enabled = enabled,
+                    title = stringResource(R.string.radial_frosted_title),
+                    summary = stringResource(R.string.radial_frosted_summary),
+                    minDp = ModulePreferences.MIN_FROSTED_PERCENT,
+                    maxDp = ModulePreferences.MAX_FROSTED_PERCENT,
+                    coerceDp = ModulePreferences::coerceFrostedPercent,
+                    onPreviewChange = {},
+                    onCommit = onFrostedPercentChange,
+                    showDpUnit = false,
                 )
                 // 这两项只暂停扇形菜单的呼出，其余能力不受影响，因此归在扇形这一页。
                 SwitchPreference(

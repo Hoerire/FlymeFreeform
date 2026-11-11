@@ -55,6 +55,8 @@ internal data class ModuleSettingsSnapshot(
     val zoomExcludedPackages: List<String> = emptyList(),
     /** 桌面长按快捷项转小窗；false 时保持全屏。 */
     val zoomLauncherShortcut: Boolean = ModulePreferences.DEFAULT_ZOOM_LAUNCHER_SHORTCUT,
+    /** 扇形呼出时磨砂底色的浓度（百分比）。 */
+    val frostedPercent: Int = ModulePreferences.DEFAULT_FROSTED_PERCENT,
     val autoCloseWindow: Boolean = ModulePreferences.DEFAULT_AUTO_CLOSE_WINDOW,
     /** 桌面卡片与负一屏转小窗；false 时保持全屏。 */
     val zoomLauncherCard: Boolean = ModulePreferences.DEFAULT_ZOOM_LAUNCHER_CARD,
@@ -145,6 +147,10 @@ internal data class ModuleSettingsSnapshot(
             .putInt(
                 ModulePreferences.KEY_RADIAL_HIT_RANGE_DP,
                 ModulePreferences.coerceRadialHitRangeDp(radialHitRangeDp),
+            )
+            .putInt(
+                ModulePreferences.KEY_FROSTED_PERCENT,
+                ModulePreferences.coerceFrostedPercent(frostedPercent),
             )
             .putInt(
                 ModulePreferences.KEY_RADIAL_ICON_SIZE_DP,
@@ -240,6 +246,12 @@ internal data class ModuleSettingsSnapshot(
                 rightCornerEnabled = if (bothCornersDisabled) true else rightEnabled,
                 cornerTriggerRangeDp = cornerTriggerRangeDp,
                 radialHitRangeDp = radialHitRangeDp,
+                frostedPercent = ModulePreferences.coerceFrostedPercent(
+                    preferences.getInt(
+                        ModulePreferences.KEY_FROSTED_PERCENT,
+                        ModulePreferences.DEFAULT_FROSTED_PERCENT,
+                    ),
+                ),
                 radialIconSizeDp =
                     ModulePreferences.coerceRadialIconSizeDp(
                         preferences.getInt(

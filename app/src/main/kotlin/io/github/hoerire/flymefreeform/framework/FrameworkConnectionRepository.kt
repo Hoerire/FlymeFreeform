@@ -75,6 +75,11 @@ internal class FrameworkConnectionRepository(private val context: Context) {
             )
         }
 
+    fun setFrostedPercent(percent: Int) =
+        updateSettings {
+            it.copy(frostedPercent = ModulePreferences.coerceFrostedPercent(percent))
+        }
+
     fun setOutsideTapCloseMode(mode: OutsideTapCloseMode) =
         updateSettings { it.copy(outsideTapCloseMode = mode) }
 

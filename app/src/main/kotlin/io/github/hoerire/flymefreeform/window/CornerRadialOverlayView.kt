@@ -126,6 +126,13 @@ internal class CornerRadialOverlayView(
     private val selectedIndexState = mutableIntStateOf(NO_SELECTION)
     private val panelModeState = mutableStateOf(false)
     private val backdropOnlyState = mutableStateOf(false)
+
+    /** 磨砂底色浓度（0..1），由设置注入；默认对应原来的半透明黑遮罩。 */
+    private val frostedAlphaState = mutableStateOf(BACKDROP_ALPHA)
+
+    fun setFrostedAlpha(alpha: Float) {
+        frostedAlphaState.value = alpha.coerceIn(0f, FROSTED_ALPHA_MAX)
+    }
     private val backdropAlpha = mutableFloatStateOf(1f)
     private var backdropAnimator: ValueAnimator? = null
     private val exitRequestState = mutableStateOf<ExitRequest?>(null)
@@ -318,6 +325,25 @@ internal class CornerRadialOverlayView(
         metrics: AdaptiveOverlayMetrics,
         layout: RadialLayout,
     ) {
+        // 磨砂颗粒：预生成一次，固定位置，避免每帧随机导致画面"沸腾"。
+        // 用确定性伪随机（不走 Random），保证重组后颗粒分布不变。
+        val frostedGrain =
+            remember(metrics.displayWidth, metrics.displayHeight) {
+                buildList {
+                    val width = metrics.displayWidth.toFloat()
+                    val height = metrics.displayHeight.toFloat()
+                    if (width <= 0f || height <= 0f) return@buildList
+                    var seed = 0x9E3779B9.toInt()
+                    repeat(FROSTED_GRAIN_COUNT) {
+                        seed = seed * 1664525 + 1013904223
+                        val gx = ((seed ushr 8) and 0xFFFF) / 65535f
+                        seed = seed * 1664525 + 1013904223
+                        val gy = ((seed ushr 8) and 0xFFFF) / 65535f
+                        add(androidx.compose.ui.geometry.Offset(gx * width, gy * height))
+                    }
+                }
+            }
+        val frostedAlpha = frostedAlphaState
         val panelProgress = remember { Animatable(0f) }
         val panelContentProgress = remember { Animatable(0f) }
         val radialHandoffProgress = remember { Animatable(0f) }
@@ -567,7 +593,23 @@ internal class CornerRadialOverlayView(
             val visual = dismissal ?: entrySample
             // 遮罩由这里画（窗口不再用 FLAG_DIM_BEHIND）：随内容透明度一起淡入淡出，
             // 比系统 dim 更贴合入场/收回的节奏。
-            drawRect(Color.Black, alpha = BACKDROP_ALPHA * visual.contentAlpha)
+            //
+            // 磨砂质感：底色之上叠一层极细的随机颗粒。真背景模糊在本模块的窗口类型上
+            // 不可用（ColorOS 只对特定窗口类型做 cross-window blur），颗粒层用几乎
+            // 不可见的明暗噪点制造"毛玻璃"观感，代价只是一次 drawPoints。
+            val backdropAlpha = frostedAlpha.value * visual.contentAlpha
+            if (backdropAlpha > 0f) {
+                drawRect(Color.Black, alpha = backdropAlpha)
+                if (backdropAlpha > 0f) {
+                    drawPoints(
+                        points = frostedGrain,
+                        pointMode = androidx.compose.ui.graphics.PointMode.Points,
+                        color = Color.White.copy(alpha = backdropAlpha * FROSTED_GRAIN_ALPHA),
+                        strokeWidth = FROSTED_GRAIN_STROKE,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                    )
+                }
+            }
             val alpha = visual.contentAlpha * if (panelModeState.value) handoffVisuals.contentAlpha else 1f
             if (alpha <= 0f) return@Canvas
             drawRadialItems(
@@ -1170,8 +1212,16 @@ internal class CornerRadialOverlayView(
         const val ITEM_STAGGER_RATIO = 0.35f
 
         /** 背景遮罩不透明度（窗口不再使用 FLAG_DIM_BEHIND，由绘制层提供）。 */
-        /** 遮罩透明度：呼出时把身后内容压暗到这个程度。 */
+        /** 磨砂底色默认浓度：即原来的半透明黑遮罩。 */
         const val BACKDROP_ALPHA = 0.22f
+
+        /** 滑条上限：再浓就会盖住身后内容。 */
+        const val FROSTED_ALPHA_MAX = 0.45f
+
+        /** 颗粒数量与强度：足够密才像毛玻璃，又不会让每帧绘制变重。 */
+        const val FROSTED_GRAIN_COUNT = 2400
+        const val FROSTED_GRAIN_ALPHA = 0.05f
+        const val FROSTED_GRAIN_STROKE = 1.2f
 
         val EMPTY_LAYOUT =
             RadialLayout(

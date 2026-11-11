@@ -287,6 +287,8 @@ internal class ColorOsFreeformCoordinator(
             settings.pinsSaved != lastSettings.pinsSaved ||
                 settings.pinnedTargets != lastSettings.pinnedTargets
         lastSettings = settings
+        // 磨砂浓度随设置实时生效：已有浮层直接改，没有则在下次创建时按新值绘制。
+        overlay?.setFrostedAlpha(settings.frostedPercent / 100f)
         // monitor 只看"模块是否启用 + 角落是否开启"，不再看环境：
         // 环境判定本来就分两层（isInCornerZone 与 handlePointerEvent 都会拒），
         // 若这里还按环境决定是否注销，改设置时一旦环境判定暂时为 false，
