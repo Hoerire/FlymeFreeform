@@ -89,29 +89,82 @@ internal class SystemServerHookInstaller(
     }
 
     /**
+     * 找到 system_server 里的 InputManagerService 实例。
+     *
+     * 三条路依次尝试，并把走过的路记进日志——这个实例在不同 ROM 上暴露的位置不一样，
+     * 之前只按 LocalServices 找，ColorOS 17 上一直取不到：
+     *
+     * 1. LocalServices 的 Map 静态字段（AOSP 的标准位置）；
+     * 2. InputManagerService 自身的静态字段（部分厂商把它挂成单例）；
+     * 3. 从 WindowManagerService 的字段里找（WMS 持有输入管理器引用）。
+     *
+     * 全都拿不到时，把 LocalServices 里实际有哪些实例写进日志，便于一次定位。
+     */
+    private fun resolveInputManagerService(classLoader: ClassLoader): Any? {
+        val byName = { value: Any? ->
+            value?.javaClass?.name?.contains("InputManagerService") == true
+        }
+        // 1. LocalServices
+        val localServices =
+            runCatching { Class.forName("com.android.server.LocalServices", false, classLoader) }
+                .getOrNull()
+        if (localServices != null) {
+            for (field in localServices.declaredFields) {
+                if (!Map::class.java.isAssignableFrom(field.type)) continue
+                val map = runCatching {
+                    field.isAccessible = true
+                    field.get(null) as? Map<*, *>
+                }.getOrNull() ?: continue
+                map.values.firstOrNull(byName)?.let {
+                    module.log(Log.INFO, TAG, "INPUT_FILTER_IMS_FROM_LOCAL_SERVICES", null)
+                    return it
+                }
+                runCatching {
+                    val names = map.values.map { it?.javaClass?.simpleName ?: "?" }.take(12)
+                    module.log(Log.INFO, TAG, "LOCAL_SERVICES_DUMP_" + names.joinToString(","), null)
+                }
+            }
+        }
+        // 2. InputManagerService 自身的静态字段
+        runCatching {
+            val cls = Class.forName("com.android.server.input.InputManagerService", false, classLoader)
+            for (field in cls.declaredFields) {
+                if (!java.lang.reflect.Modifier.isStatic(field.modifiers)) continue
+                val value = runCatching {
+                    field.isAccessible = true
+                    field.get(null)
+                }.getOrNull()
+                if (byName(value)) {
+                    module.log(Log.INFO, TAG, "INPUT_FILTER_IMS_FROM_STATIC", null)
+                    return value
+                }
+            }
+        }
+        // 3. 从 WindowManagerService 的字段里找
+        runCatching {
+            val wmsClass = Class.forName("com.android.server.wm.WindowManagerService", false, classLoader)
+            for (field in wmsClass.declaredFields) {
+                val value = runCatching {
+                    field.isAccessible = true
+                    field.get(null)
+                }.getOrNull()
+                if (byName(value)) {
+                    module.log(Log.INFO, TAG, "INPUT_FILTER_IMS_FROM_WMS", null)
+                    return value
+                }
+            }
+        }
+        return null
+    }
+
+    /**
      * 尝试注册输入过滤器；InputManagerService 由 system_server 稍后注册，
      * 因此找不到时按固定间隔重试，直到成功或用尽次数。
      */
     @SuppressLint("BlockedPrivateApi", "PrivateApi")
     private fun installInputFilterAttempt(classLoader: ClassLoader, remaining: Int) {
         val resolved = runCatching {
-            // 不加载 IMS 的 Class（ClassNotFound：该加载器看不到 services.jar 的类），
-            // 改为遍历 LocalServices 里所有 Map 型静态字段，按类名找实例。
-            val localServices = Class.forName("com.android.server.LocalServices", false, classLoader)
-            val ims = localServices.declaredFields
-                .filter { Map::class.java.isAssignableFrom(it.type) }
-                .mapNotNull { field ->
-                    runCatching {
-                        field.isAccessible = true
-                        // 不能按 simpleName 精确比较：ColorOS 上实例常常是厂商子类
-                        // （如 OplusInputManagerService），精确匹配会一直返回 null，
-                        // 表现为 INPUT_FILTER_REGISTER_FAILED + "not registered yet"。
-                        (field.get(null) as? Map<*, *>)?.values?.firstOrNull {
-                            it?.javaClass?.name?.contains("InputManagerService") == true
-                        }
-                    }.getOrNull()
-                }
-                .firstOrNull()
+            val ims = resolveInputManagerService(classLoader)
                 ?: error("InputManagerService not registered yet")
             val setter = ims.javaClass.methods.firstOrNull {
                 it.name == "setInputFilter" && it.parameterTypes.size == 1
