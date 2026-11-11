@@ -781,7 +781,7 @@ internal class ColorOsFreeformCoordinator(
         // 保持挂起只影响「抬手后是否收起」，与窗口是否可触摸无关：
         // 触摸统一由 attachTouchRegion() 那块小窗口接住。
         val keepOpen = lastSettings.radialKeepOpen
-        val params = createOverlayParams()
+        val params = createOverlayParams(context = context)
         var view: CornerRadialOverlayView? = null
         try {
             view = CornerRadialOverlayView(context, this, ::debug)
@@ -983,7 +983,7 @@ internal class ColorOsFreeformCoordinator(
     }
 
     private fun showBuiltInMorePanel(view: CornerRadialOverlayView) {
-        val params = createOverlayParams()
+        val params = createOverlayParams(context = context)
         try {
             windowManager.updateViewLayout(view, params)
             view.showBuiltInMorePanel()
@@ -1161,6 +1161,7 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun createOverlayParams(
         type: Int = overlayWindowType,
+        context: Context? = null,
     ): WindowManager.LayoutParams {
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -1179,6 +1180,15 @@ internal class ColorOsFreeformCoordinator(
             setFitInsetsTypes(0)
             windowAnimations = 0
             title = "FlymeFreeformCornerOverlay"
+            // 呼出扇形时把身后内容做背景模糊，效果与系统下拉/多任务一致，
+            // 比给整屏盖一层黑色遮罩更接近 Flyme 的观感。
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                val density = context?.resources?.displayMetrics?.density ?: 0f
+                if (density > 0f) {
+                    flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                    blurBehindRadius = (BLUR_RADIUS_DP * density).toInt()
+                }
+            }
         }
     }
 
@@ -1471,6 +1481,9 @@ internal class ColorOsFreeformCoordinator(
         const val VERTICAL_ABORT_RATIO = 2.5f
         /** 读不到系统导航栏高度时的兜底值（dp）。 */
         const val BOTTOM_GESTURE_INSET_DP = 40f
+
+        /** 呼出扇形时的背景模糊半径（dp）；与系统下拉通知那种观感接近。 */
+        const val BLUR_RADIUS_DP = 28f
         /** WindowManager.LayoutParams.TOUCHABLE_INSETS_REGION 是 @hide 常量。 */
         const val TOUCHABLE_INSETS_REGION = 3
         const val OVERLAY_PREWARM_LIFETIME_MS = 400L

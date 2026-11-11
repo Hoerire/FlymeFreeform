@@ -1170,7 +1170,13 @@ internal class CornerRadialOverlayView(
         const val ITEM_STAGGER_RATIO = 0.35f
 
         /** 背景遮罩不透明度（窗口不再使用 FLAG_DIM_BEHIND，由绘制层提供）。 */
-        const val BACKDROP_ALPHA = 0.22f
+        /**
+         * 遮罩透明度。
+         *
+         * 呼出时的压暗交给窗口的背景模糊（FLAG_BLUR_BEHIND），这里只留极淡的一层，
+         * 用来把扇形和模糊后的背景拉开一点点层次，不再承担"盖住内容"的作用。
+         */
+        const val BACKDROP_ALPHA = 0.06f
 
         val EMPTY_LAYOUT =
             RadialLayout(
