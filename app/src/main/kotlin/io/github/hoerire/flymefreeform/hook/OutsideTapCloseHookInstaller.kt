@@ -96,7 +96,7 @@ internal class OutsideTapCloseHookInstaller(
                         }
                         chain.proceed()
                     }
-                module.log(Log.INFO, TAG, "BOTTOM_CLOSE_TOUCH_HOOK_INSTALLED", null)
+                io.github.hoerire.flymefreeform.log.ModuleLog.info("BOTTOM_CLOSE_TOUCH_HOOK_INSTALLED")
             }.onFailure { logFailure("BOTTOM_CLOSE_TOUCH_HOOK_FAILED", it) }
             module
                 .hook(updateTouchableRegion)
@@ -203,7 +203,7 @@ internal class OutsideTapCloseHookInstaller(
                     }
                     result
                 }
-            module.log(Log.INFO, TAG, "OUTSIDE_TAP_INPUT_REGION_HOOK_INSTALLED")
+            io.github.hoerire.flymefreeform.log.ModuleLog.info("OUTSIDE_TAP_INPUT_REGION_HOOK_INSTALLED")
         } catch (exception: ReflectiveOperationException) {
             module.log(Log.WARN, TAG, "OUTSIDE_TAP_TARGET_UNAVAILABLE", exception)
         } catch (exception: LinkageError) {
@@ -344,7 +344,7 @@ internal class OutsideTapCloseHookInstaller(
                 }
                 chain.proceed()
             }
-        module.log(Log.INFO, TAG, "ZOOM_REPLACE_TO_CLOSE_INSTALLED", null)
+        io.github.hoerire.flymefreeform.log.ModuleLog.info("ZOOM_REPLACE_TO_CLOSE_INSTALLED")
     }
 
 

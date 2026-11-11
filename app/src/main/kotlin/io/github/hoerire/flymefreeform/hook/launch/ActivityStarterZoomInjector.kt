@@ -75,7 +75,7 @@ internal class ActivityStarterZoomInjector(
                 }
             installedHooks++
         }
-        module.log(Log.INFO, TAG, "ZOOM_STARTER_HOOK_INSTALLED_" + installedHooks, null)
+        io.github.hoerire.flymefreeform.log.ModuleLog.info("ZOOM_STARTER_HOOK_INSTALLED_" + installedHooks, null)
     }
 
     /**

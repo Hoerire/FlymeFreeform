@@ -41,7 +41,7 @@ internal class SystemUiHookInstaller(
                     }
                     result
                 }
-            module.log(Log.INFO, TAG, "SYSTEMUI_HOOK_INSTALLED")
+            io.github.hoerire.flymefreeform.log.ModuleLog.info("SYSTEMUI_HOOK_INSTALLED")
         } catch (exception: ReflectiveOperationException) {
             module.log(Log.WARN, TAG, "SYSTEMUI_APPLICATION_TARGET_UNAVAILABLE", exception)
         } catch (exception: LinkageError) {

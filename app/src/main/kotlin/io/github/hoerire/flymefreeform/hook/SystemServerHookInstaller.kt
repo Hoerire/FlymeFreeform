@@ -65,7 +65,7 @@ internal class SystemServerHookInstaller(
                     }
                     result
                 }
-            module.log(Log.INFO, TAG, "SYSTEM_FREEFORM_READY_HOOK_INSTALLED")
+            io.github.hoerire.flymefreeform.log.ModuleLog.info("SYSTEM_FREEFORM_READY_HOOK_INSTALLED")
         } catch (exception: ReflectiveOperationException) {
             module.log(Log.WARN, TAG, "SYSTEM_FREEFORM_TARGET_UNAVAILABLE", exception)
         } catch (exception: LinkageError) {
@@ -100,7 +100,7 @@ internal class SystemServerHookInstaller(
                     }
                     chain.proceed()
                 }
-            module.log(Log.INFO, TAG, "SYSTEM_FOREGROUND_OBSERVER_INSTALLED")
+            io.github.hoerire.flymefreeform.log.ModuleLog.info("SYSTEM_FOREGROUND_OBSERVER_INSTALLED")
         } catch (exception: ReflectiveOperationException) {
             module.log(Log.WARN, TAG, "SYSTEM_FOREGROUND_OBSERVER_UNAVAILABLE", exception)
         } catch (exception: LinkageError) {

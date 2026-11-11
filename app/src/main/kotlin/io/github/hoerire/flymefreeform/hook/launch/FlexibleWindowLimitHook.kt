@@ -27,7 +27,7 @@ internal class FlexibleWindowLimitHook(
         total += installOn(classLoader, MANAGER_CLASS)
         total += installOn(classLoader, CONTROLLER_CLASS)
         total += installOn(classLoader, UTILS_CLASS)
-        module.log(Log.INFO, TAG, "ZOOM_LIMIT_HOOK_INSTALLED_" + total, null)
+        io.github.hoerire.flymefreeform.log.ModuleLog.info("ZOOM_LIMIT_HOOK_INSTALLED_" + total, null)
     }
 
     private fun installOn(classLoader: ClassLoader, className: String): Int {

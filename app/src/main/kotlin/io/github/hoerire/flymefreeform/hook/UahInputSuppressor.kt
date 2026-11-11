@@ -55,7 +55,7 @@ internal class UahInputSuppressor(
                         val now = android.os.SystemClock.uptimeMillis()
                         if (now - lastProbeAt > PROBE_INTERVAL_MS) {
                             lastProbeAt = now
-                            module.log(Log.INFO, TAG, "UAH_EVENT_" + event.actionMasked, null)
+                            io.github.hoerire.flymefreeform.log.ModuleLog.info("UAH_EVENT_" + event.actionMasked, null)
                         }
                     }
                 }
@@ -75,7 +75,7 @@ internal class UahInputSuppressor(
                         }
                         suppressing = true
                         if (VerboseLog.enabled) {
-                            module.log(Log.INFO, TAG, "UAH_SUPPRESS_DOWN", null)
+                            io.github.hoerire.flymefreeform.log.ModuleLog.info("UAH_SUPPRESS_DOWN")
                         }
                         null
                     }
@@ -88,7 +88,7 @@ internal class UahInputSuppressor(
                     else -> if (suppressing) null else chain.proceed()
                 }
             }
-        module.log(Log.INFO, TAG, "UAH_INPUT_HOOK_INSTALLED_" + method.name, null)
+        io.github.hoerire.flymefreeform.log.ModuleLog.info("UAH_INPUT_HOOK_INSTALLED_" + method.name, null)
         }
     }
 

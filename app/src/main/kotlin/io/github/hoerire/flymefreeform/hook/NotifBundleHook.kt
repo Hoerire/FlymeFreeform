@@ -46,7 +46,7 @@ internal class NotifBundleHook(
                     }
             }.isSuccess
             if (hooked) {
-                module.log(Log.INFO, TAG, "NOTIF_BUNDLE_HOOKED_" + target.simpleName)
+                io.github.hoerire.flymefreeform.log.ModuleLog.info("NOTIF_BUNDLE_HOOKED_" + target.simpleName)
                 return
             }
         }
@@ -135,7 +135,7 @@ internal class NotifBundleHook(
                 }
             showHooked = true
         }.onFailure { module.log(Log.WARN, TAG, "NOTIF_HEADS_UP_SHOW_HOOK_FAILED", it) }
-        module.log(Log.INFO, TAG, "NOTIF_HEADS_UP_CTOR_HOOKS_" + hooks + "_SHOW_" + showHooked)
+        io.github.hoerire.flymefreeform.log.ModuleLog.info("NOTIF_HEADS_UP_CTOR_HOOKS_" + hooks + "_SHOW_" + showHooked)
     }
 
     /**

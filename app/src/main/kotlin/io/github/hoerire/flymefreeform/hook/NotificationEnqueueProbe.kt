@@ -39,7 +39,7 @@ internal class NotificationEnqueueProbe(private val module: XposedModule) {
                     .onFailure { module.log(Log.WARN, TAG, "NOTIF_ENQUEUE_PROBE_FAILED", it) }
                 chain.proceed()
             }
-        module.log(Log.INFO, TAG, "NOTIF_ENQUEUE_PROBE_INSTALLED")
+        io.github.hoerire.flymefreeform.log.ModuleLog.info("NOTIF_ENQUEUE_PROBE_INSTALLED")
     }
 
     /** 探针只读取通知携带的字��，关闭「详细日志」时不产生任何提取开销。 */

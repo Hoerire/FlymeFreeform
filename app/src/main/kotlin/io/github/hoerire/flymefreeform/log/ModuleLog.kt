@@ -36,8 +36,17 @@ internal object ModuleLog {
         emit(Log.DEBUG, tag + " " + message(), throwable)
     }
 
-    /** 关键日志：始终输出（hook 安装、状态切换等）。 */
-    fun info(code: String, throwable: Throwable? = null) = emit(Log.INFO, code, throwable)
+    /**
+     * 状态日志：同样受「详细日志」控制。
+     *
+     * 关闭详细日志时模块应当完全静默——一次操作里会打出十几行状态点
+     * （挖角、启动判定、浮层起落、手势生命周期），逐条判断哪条"重要"必然遗漏，
+     * 所以统一收口：只有异常（[warn]）无条件输出。
+     */
+    fun info(code: String, throwable: Throwable? = null) {
+        if (!VerboseLog.enabled) return
+        emit(Log.INFO, code, throwable)
+    }
 
     fun warn(code: String, throwable: Throwable? = null) = emit(Log.WARN, code, throwable)
 
