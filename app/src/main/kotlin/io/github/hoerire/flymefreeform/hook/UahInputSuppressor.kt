@@ -1,6 +1,7 @@
 package io.github.hoerire.flymefreeform.hook
 
 import android.util.Log
+import io.github.hoerire.flymefreeform.log.VerboseLog
 import android.view.InputDevice
 import android.view.MotionEvent
 import io.github.hoerire.flymefreeform.gesture.CornerTriggerRegion
@@ -50,10 +51,12 @@ internal class UahInputSuppressor(
                 val event = chain.args.firstNotNullOfOrNull { it as? MotionEvent }
                 if (event != null) {
                     // 探针：确认这个接收器在真机上到底有没有收到事件（限流，避免刷屏）。
-                    val now = android.os.SystemClock.uptimeMillis()
-                    if (now - lastProbeAt > PROBE_INTERVAL_MS) {
-                        lastProbeAt = now
-                        module.log(Log.INFO, TAG, "UAH_EVENT_" + event.actionMasked, null)
+                    if (VerboseLog.enabled) {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (now - lastProbeAt > PROBE_INTERVAL_MS) {
+                            lastProbeAt = now
+                            module.log(Log.INFO, TAG, "UAH_EVENT_" + event.actionMasked, null)
+                        }
                     }
                 }
                 if (event == null) {
@@ -71,7 +74,9 @@ internal class UahInputSuppressor(
                             return@intercept chain.proceed()
                         }
                         suppressing = true
-                        module.log(Log.INFO, TAG, "UAH_SUPPRESS_DOWN", null)
+                        if (VerboseLog.enabled) {
+                            module.log(Log.INFO, TAG, "UAH_SUPPRESS_DOWN", null)
+                        }
                         null
                     }
                     MotionEvent.ACTION_UP,

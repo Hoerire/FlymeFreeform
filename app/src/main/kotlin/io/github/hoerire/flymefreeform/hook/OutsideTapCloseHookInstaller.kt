@@ -281,7 +281,9 @@ internal class OutsideTapCloseHookInstaller(
                         fieldInHierarchy(exiting.javaClass, "mTask")?.get(exiting)
                     }
                     if (io.github.hoerire.flymefreeform.logic.RecentZoomTask.isRecent(exitingTask)) {
-                        module.log(Log.DEBUG, TAG, "ZOOM_CLOSE_POLICY_KEEP_RECENT", null)
+                        if (VerboseLog.enabled) {
+                            module.log(Log.DEBUG, TAG, "ZOOM_CLOSE_POLICY_KEEP_RECENT", null)
+                        }
                         return@intercept chain.proceed()
                     }
                     val frames = Throwable().stackTrace
@@ -314,14 +316,16 @@ internal class OutsideTapCloseHookInstaller(
                             fromSystemVerdict = fromLimit,
                         )
                     }
-                    // 常驻诊断：每次"要收浮标"的退出都留一行，便于确认是否被接管。
-                    module.log(
-                        Log.DEBUG,
-                        TAG,
-                        "ZOOM_CLOSE_POLICY_" + decision.name + "_limit" + (if (fromLimit) 1 else 0) +
-                            "_launch" + (if (launching) 1 else 0),
-                        null,
-                    )
+                    // 每次"要收浮标"的退出留一行诊断，仅详细日志开启时输出。
+                    if (VerboseLog.enabled) {
+                        module.log(
+                            Log.DEBUG,
+                            TAG,
+                            "ZOOM_CLOSE_POLICY_" + decision.name + "_limit" + (if (fromLimit) 1 else 0) +
+                                "_launch" + (if (launching) 1 else 0),
+                            null,
+                        )
+                    }
                     if (decision == CloseDecision.ReplaceWithToBack) {
                         val current = strategy ?: return@intercept chain.proceed()
                         val task = runCatching {
@@ -329,7 +333,9 @@ internal class OutsideTapCloseHookInstaller(
                         }.getOrNull()
                         val back = task?.let { runCatching { backConstructor.newInstance(it, true) }.getOrNull() }
                         if (task != null && back != null) {
-                            module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE", null)
+                            if (VerboseLog.enabled) {
+                                module.log(Log.DEBUG, TAG, "ZOOM_REPLACE_TO_CLOSE", null)
+                            }
                             // 同帧替换为 ToBack，但不再隐藏 surface：退场动画交给系统照常播完。
                             return@intercept chain.proceed(arrayOf(back))
                         }

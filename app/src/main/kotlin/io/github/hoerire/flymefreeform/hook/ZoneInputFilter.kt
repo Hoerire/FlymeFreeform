@@ -1,6 +1,7 @@
 package io.github.hoerire.flymefreeform.hook
 
 import android.os.Binder
+import io.github.hoerire.flymefreeform.log.VerboseLog
 import android.os.IBinder
 import android.os.Parcel
 import android.util.Log
@@ -40,7 +41,7 @@ internal class ZoneInputFilter(
                     data.readParcelable<InputEvent>(InputEvent::class.java.classLoader)
                 }.getOrNull()
                 val policyFlags = data.readInt()
-                if (events < PROBE_LIMIT) {
+                if (VerboseLog.enabled && events < PROBE_LIMIT) {
                     events++
                     module.log(Log.INFO, TAG, "INPUT_FILTER_EVENT_" + (event?.javaClass?.simpleName ?: "?"), null)
                 }
@@ -55,7 +56,7 @@ internal class ZoneInputFilter(
     fun filterFromProxy(args: Array<Any?>?) {
         val event = args?.getOrNull(0) as? InputEvent
         val policyFlags = (args?.getOrNull(1) as? Int) ?: 0
-        if (events < PROBE_LIMIT) {
+        if (VerboseLog.enabled && events < PROBE_LIMIT) {
             events++
             module.log(Log.INFO, TAG, "INPUT_FILTER_EVENT_" + (event?.javaClass?.simpleName ?: "?"), null)
         }
