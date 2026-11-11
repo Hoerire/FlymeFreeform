@@ -1036,10 +1036,13 @@ internal class ColorOsFreeformCoordinator(
         val height = metrics.heightPixels.toFloat()
         val inset = bottomGestureInsetPx(metrics).toFloat()
         val menuTop = height - inset - height * CornerTouchRegionView.HEIGHT_FRACTION
-        // 底部手势区：让系统处理，不动菜单。
-        if (y >= height - inset) return
-        // 菜单区域：触摸窗口负责，这里不重复处理。
-        if (y >= menuTop) return
+        // 菜单区域：由触摸窗口处理点选与空白关闭，这里不重复。
+        val inMenuRegion = y >= menuTop && y < height - inset
+        if (inMenuRegion) return
+        // 其余一律关闭，**包括底部手势区**：
+        // 从底部上滑是"离开当前界面"（回桌面 / 进多任务），扇形必须一起收起来。
+        // 以前这里给手势区开了例外，结果挂起的扇形一直留在窗口栈里，
+        // 回到桌面后重新显示出来，看起来就是"扇形自己弹出来"。
         trace("SYSTEM_OVERLAY_OUTSIDE_CLOSE")
         cancelActiveGesture()
         removeOverlay()
