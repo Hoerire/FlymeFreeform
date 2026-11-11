@@ -36,6 +36,14 @@ internal class OutsideTapDoubleTapFilter(
     private var capturing = false
     private var awaitingSecondTap = false
 
+    /**
+     * 双击已经成立、正在吞掉第二击剩余事件。
+     *
+     * 第二击的 DOWN 被丢弃后，如果不管后续事件，UP 会走到"未捕获就放行"那条分支，
+     * 应用收到一个没有 DOWN 的孤立 UP（用户实测：双击的第二下会点到下层应用）。
+     */
+    private var swallowingUntilUp = false
+
     fun filter(event: InputEvent?, policyFlags: Int) {
         val motion = event as? MotionEvent
         if (motion == null) {
@@ -62,6 +70,7 @@ internal class OutsideTapDoubleTapFilter(
             firstDown = null
             firstUp?.recycle()
             firstUp = null
+            swallowingUntilUp = true
             ModuleLog.info("OUTSIDE_TAP_DOUBLE_FIRED")
             event.recycle()
             OutsideTapGate.performClose()
@@ -78,6 +87,10 @@ internal class OutsideTapDoubleTapFilter(
     }
 
     private fun handleMove(event: MotionEvent) {
+        if (swallowingUntilUp) {
+            event.recycle()
+            return
+        }
         if (!capturing) {
             forward(event, lastPolicyFlags)
             return
@@ -96,6 +109,11 @@ internal class OutsideTapDoubleTapFilter(
     }
 
     private fun handleUp(event: MotionEvent) {
+        if (swallowingUntilUp) {
+            swallowingUntilUp = false
+            event.recycle()
+            return
+        }
         if (!capturing) {
             forward(event, lastPolicyFlags)
             return
@@ -116,6 +134,11 @@ internal class OutsideTapDoubleTapFilter(
     }
 
     private fun handleCancel(event: MotionEvent) {
+        if (swallowingUntilUp) {
+            swallowingUntilUp = false
+            event.recycle()
+            return
+        }
         if (capturing || awaitingSecondTap) {
             ModuleLog.info("OUTSIDE_TAP_CANCEL_FLUSH")
             flushPending()
