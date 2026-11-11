@@ -119,15 +119,15 @@ internal class NavigationInterceptionHook(
      */
     private fun carve(args: List<Any?>): Array<Any?>? {
         val settings = configuration.snapshot
-        if (!settings.enabled) return
-        if (!settings.leftCornerEnabled && !settings.rightCornerEnabled) return
+        if (!settings.enabled) return null
+        if (!settings.leftCornerEnabled && !settings.rightCornerEnabled) return null
         val index = args.indexOfFirst { it is Array<*> || it is Collection<*> }
-        if (index < 0) return
-        val original = args[index] ?: return
-        val rects = readRectangles(original) ?: return
-        if (rects.isEmpty()) return
+        if (index < 0) return null
+        val original = args[index] ?: return null
+        val rects = readRectangles(original) ?: return null
+        if (rects.isEmpty()) return null
         val corners = cornerRects(rects, settings)
-        if (corners.isEmpty()) return
+        if (corners.isEmpty()) return null
         var carved = rects
         for (corner in corners) carved = subtract(carved, corner)
         // 判"有没有真的改动"要比内容，不能比数量：
