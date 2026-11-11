@@ -1,48 +1,37 @@
 package io.github.hoerire.flymefreeform.hook
 
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import android.view.InputEvent
 import android.view.MotionEvent
 import io.github.hoerire.flymefreeform.log.ModuleLog
+import kotlin.math.abs
 
 /**
- * 双击关闭的输入闸门：在事件分发之前扣住可能的双击。
+ * 双击关闭的第二击拦截。
  *
- * 只在 [OutsideTapGate] 判定「双击模式 + 有普通小窗 + 落点在窗外」时介入；
- * 其余情况一律原样放行，行为与没有这个过滤器时完全一致。
+ * 设计前提（来自实际使用）：**第一击照常穿透给下层应用**，用户本来就在小窗外
+ * 继续操作。只有"第一击之后很快又点了一下"——也就是他真的在做双击——那一击才
+ * 需要拦下来，否则应用会被点到两次。
  *
- * 判定流程：
- * - DOWN：扣住，等后续事件决定；
- * - MOVE 超过 [touchSlop]：判为滑动，把扣住的事件补发，之后这条路全部放行；
- * - 超时（[doubleTapTimeout]）没等到第二击：补发这一下，应用晚一点收到；
- * - 第二击在超时内到达：两下都丢弃，并关闭小窗。
+ * 这样做的代价最小：
+ * - 单击完全无延迟，也不需要缓存／补发任何事件；
+ * - 第二击到达时时间差已经确定，判定是即时的，同样没有延迟；
+ * - 只需要在输入线程记一个"上一击的时间和位置"，其余事件原样放行。
  *
- * 单击因此会延迟约 [doubleTapTimeout]（系统 300ms），这是双击判定的固有代价。
+ * 是否介入由 [OutsideTapGate] 决定：双击模式、有普通小窗、落点在窗外、
+ * 且不在输入法上。
  */
 internal class OutsideTapDoubleTapFilter(
     private val touchSlop: Int,
     private val doubleTapTimeout: Long,
     private val forward: (InputEvent?, Int) -> Unit,
 ) {
-    private val handler = Handler(Looper.getMainLooper())
-    private val flushRunnable = Runnable { flushPending() }
+    private var lastDownAt = 0L
+    private var lastX = 0f
+    private var lastY = 0f
 
-    private var firstDown: MotionEvent? = null
-    private var firstUp: MotionEvent? = null
-    private var firstDownAt = 0L
-    private var lastPolicyFlags = 0
-    private var capturing = false
-    private var awaitingSecondTap = false
-
-    /**
-     * 双击已经成立、正在吞掉第二击剩余事件。
-     *
-     * 第二击的 DOWN 被丢弃后，如果不管后续事件，UP 会走到"未捕获就放行"那条分支，
-     * 应用收到一个没有 DOWN 的孤立 UP（用户实测：双击的第二下会点到下层应用）。
-     */
-    private var swallowingUntilUp = false
+    /** 正在吞掉第二击的剩余事件（MOVE / UP / CANCEL）。 */
+    private var swallowing = false
 
     fun filter(event: InputEvent?, policyFlags: Int) {
         val motion = event as? MotionEvent
@@ -50,142 +39,45 @@ internal class OutsideTapDoubleTapFilter(
             forward(event, policyFlags)
             return
         }
-        lastPolicyFlags = policyFlags
         when (motion.actionMasked) {
-            MotionEvent.ACTION_DOWN -> handleDown(motion)
-            MotionEvent.ACTION_MOVE -> handleMove(motion)
-            MotionEvent.ACTION_UP -> handleUp(motion)
-            MotionEvent.ACTION_CANCEL -> handleCancel(motion)
-            else -> if (capturing || awaitingSecondTap) motion.recycle() else forward(event, policyFlags)
+            MotionEvent.ACTION_DOWN -> onDown(motion, policyFlags)
+            else -> {
+                if (swallowing) {
+                    if (motion.actionMasked == MotionEvent.ACTION_UP ||
+                        motion.actionMasked == MotionEvent.ACTION_CANCEL
+                    ) {
+                        swallowing = false
+                    }
+                    motion.recycle()
+                } else {
+                    forward(event, policyFlags)
+                }
+            }
         }
     }
 
-    private fun handleDown(event: MotionEvent) {
-        if (awaitingSecondTap) {
-            // 第二击到达：双击成立，两下都不落到应用。
-            cancelFlush()
-            awaitingSecondTap = false
-            capturing = false
-            firstDown?.recycle()
-            firstDown = null
-            firstUp?.recycle()
-            firstUp = null
-            swallowingUntilUp = true
+    private fun onDown(event: MotionEvent, policyFlags: Int) {
+        val now = SystemClock.uptimeMillis()
+        val withinTimeout = lastDownAt != 0L && now - lastDownAt <= doubleTapTimeout
+        val nearLast =
+            abs(event.rawX - lastX) <= touchSlop && abs(event.rawY - lastY) <= touchSlop
+        if (withinTimeout && nearLast && OutsideTapGate.shouldCapture(event.rawX, event.rawY)) {
+            // 第二击：吞掉它并关窗。第一击早就照常转发给应用了。
+            swallowing = true
+            lastDownAt = 0L
             ModuleLog.info("OUTSIDE_TAP_DOUBLE_FIRED")
             event.recycle()
             OutsideTapGate.performClose()
             return
         }
-        if (!OutsideTapGate.shouldCapture(event.rawX, event.rawY)) {
-            forward(event, lastPolicyFlags)
-            return
-        }
-        capturing = true
-        firstDownAt = SystemClock.uptimeMillis()
-        firstDown = MotionEvent.obtain(event)
-        event.recycle()
-    }
-
-    private fun handleMove(event: MotionEvent) {
-        if (swallowingUntilUp) {
-            event.recycle()
-            return
-        }
-        if (!capturing) {
-            forward(event, lastPolicyFlags)
-            return
-        }
-        val down = firstDown
-        if (down != null) {
-            val dx = event.rawX - down.rawX
-            val dy = event.rawY - down.rawY
-            if (dx * dx + dy * dy > (touchSlop * touchSlop).toFloat()) {
-                // 判为滑动：补发按下，后续正常放行。
-                ModuleLog.info("OUTSIDE_TAP_PASS_SLIDE")
-                flushPending()
-            }
-        }
-        if (capturing) event.recycle() else forward(event, lastPolicyFlags)
-    }
-
-    private fun handleUp(event: MotionEvent) {
-        if (swallowingUntilUp) {
-            swallowingUntilUp = false
-            event.recycle()
-            return
-        }
-        if (!capturing) {
-            forward(event, lastPolicyFlags)
-            return
-        }
-        if (!OutsideTapGate.isDoubleTapMode()) {
-            // 单击模式：抬手就确定是单击，立即丢弃并关窗，不需要等任何窗口。
-            event.recycle()
-            discardPending()
-            ModuleLog.info("OUTSIDE_TAP_SINGLE_FIRED")
-            OutsideTapGate.performClose()
-            return
-        }
-        firstUp = MotionEvent.obtain(event)
-        event.recycle()
-        capturing = false
-        awaitingSecondTap = true
-        scheduleFlush()
-    }
-
-    private fun handleCancel(event: MotionEvent) {
-        if (swallowingUntilUp) {
-            swallowingUntilUp = false
-            event.recycle()
-            return
-        }
-        if (capturing || awaitingSecondTap) {
-            ModuleLog.info("OUTSIDE_TAP_CANCEL_FLUSH")
-            flushPending()
+        // 第一击（或距离太远、超时）：记录后原样放行，让应用正常响应。
+        if (OutsideTapGate.shouldCapture(event.rawX, event.rawY)) {
+            lastDownAt = now
+            lastX = event.rawX
+            lastY = event.rawY
         } else {
-            forward(event, lastPolicyFlags)
+            lastDownAt = 0L
         }
-    }
-
-    private fun scheduleFlush() {
-        cancelFlush()
-        handler.postDelayed(flushRunnable, doubleTapTimeout)
-    }
-
-    private fun cancelFlush() {
-        handler.removeCallbacks(flushRunnable)
-    }
-
-    /** 丢弃扣住的事件，不补发（用于单击成立或取消）。 */
-    private fun discardPending() {
-        cancelFlush()
-        firstDown?.recycle()
-        firstUp?.recycle()
-        firstDown = null
-        firstUp = null
-        capturing = false
-        awaitingSecondTap = false
-    }
-
-    /** 判定不是双击：把扣住的按下与抬起补发出去。 */
-    private fun flushPending() {
-        cancelFlush()
-        val down = firstDown
-        val up = firstUp
-        firstDown = null
-        firstUp = null
-        capturing = false
-        awaitingSecondTap = false
-        if (down == null) {
-            up?.recycle()
-            return
-        }
-        ModuleLog.info("OUTSIDE_TAP_PASS_SINGLE")
-        forward(down, lastPolicyFlags)
-        down.recycle()
-        if (up != null) {
-            forward(up, lastPolicyFlags)
-            up.recycle()
-        }
+        forward(event, policyFlags)
     }
 }
