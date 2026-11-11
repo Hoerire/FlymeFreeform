@@ -353,6 +353,9 @@ internal class OutsideTapCloseHookInstaller(
     ) {
         private val controllerField = listenerClass.requiredField("this$0")
 
+        /** 关窗动作由输入线程触发，必须回到主线程执行，否则会和窗口退出流程抢锁。 */
+        private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
         // 底部横条点击：命中后单击直接关窗，独立于双击/单击关闭那套判定。
         // 这里刻意不做任何防穿透处理——横条本身就在窗内，点击照常交给窗口。
         private var handleTapTask: Any? = null
