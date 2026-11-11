@@ -72,14 +72,6 @@ internal object AdaptiveCornerGestureConfig {
     private const val INWARD_DP = 14f
     private const val UPWARD_DP = 4f
     private const val REVERSE_TOLERANCE_DP = 8f
-
-    /**
-     * upward / inward 超过这个比值就按「垂直上滑」处理，不接管。
-     *
-     * 角区手势是斜着滑出来的（两者量级相近），系统上滑回桌面几乎是纯垂直。
-     * 3 倍留足余量：手指抖一点、稍微斜一点的正常呼出都不会被误判成上滑。
-     */
-    private const val VERTICAL_UPWARD_RATIO = 3f
 }
 
 /** 单指角落手势状态机；不持有 MotionEvent，便于跨进程入口复用与单元测试。 */
@@ -157,6 +149,16 @@ internal class CornerGestureEngine {
     fun rebase(x: Float, y: Float) {
         originX = x
         originY = y
+    }
+
+    private companion object {
+        /**
+         * upward / inward 超过这个比值就按「垂直上滑」处理，不接管。
+         *
+         * 角区手势是斜着滑出来的（两者量级相近），系统上滑回桌面几乎是纯垂直。
+         * 3 倍留足余量：手指抖一点、稍微斜一点的正常呼出都不会被误判成上滑。
+         */
+        const val VERTICAL_UPWARD_RATIO = 3f
     }
 
     fun up(pointerId: Int): GestureAction {
