@@ -1445,16 +1445,12 @@ internal class ColorOsFreeformCoordinator(
         // 用 APPLICATION_OVERLAY 时键盘一弹出就盖住扇形，故选输入法对话框层（141000），
         // 只压在键盘之上，仍低于状态栏等更高层系统窗口。被系统拒绝时回落到 APPLICATION_OVERLAY。
         /**
-         * 浮层窗口类型。
+         * 浮层窗口类型：输入法对话框层，压在其他窗口与输入法之上。
          *
-         * 以前用的是 TYPE_INPUT_METHOD_DIALOG（2012）。系统把它当输入法窗口，它出现/消失时
-         * 会触发 IME 区域变化 → 前台应用 adjustResize 重排，表现就是"呼出时画面左右抖一下"
-         * （用户实测：QQ 聊天页呼出扇形，整页内容横向抖）。
-         *
-         * 改用 TYPE_NAVIGATION_BAR_PANEL（2024）：系统级面板，不参与 IME/adjustResize 的
-         * 那套通知。v744 的角区窗口用的也是这个类型。
+         * 呼出时"画面向屏幕内滑一下又滑回去"是窗口自身的进入动画，不是 IME 区域变化，
+         * 由 [createOverlayParams] 里的 windowAnimations = 0 关闭，与这个类型无关。
          */
-        const val OVERLAY_WINDOW_TYPE = WindowManager.LayoutParams.TYPE_NAVIGATION_BAR_PANEL
+        const val OVERLAY_WINDOW_TYPE = WindowManager.LayoutParams.TYPE_INPUT_METHOD_DIALOG
         const val FALLBACK_OVERLAY_TYPE = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         const val OVERLAY_FAILURE_LOG_INTERVAL_MS = 10_000L
 
