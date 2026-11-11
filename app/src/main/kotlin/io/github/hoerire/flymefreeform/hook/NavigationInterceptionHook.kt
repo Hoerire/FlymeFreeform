@@ -36,6 +36,7 @@ import kotlin.math.min
 internal class NavigationInterceptionHook(
     private val module: XposedModule,
     private val configuration: ProcessConfiguration,
+    private val environment: ModuleEnvironmentState,
 ) {
     private var firstHitReported = false
 
@@ -94,6 +95,8 @@ internal class NavigationInterceptionHook(
                 replay()
             }
         }
+        // 横竖屏切换、进出游戏模式时也要重算：暂停期间应当把挖掉的角落还回去。
+        environment.observe { replay() }
     }
 
     @Volatile private var lastAppliedRangeDp = -1
@@ -115,14 +118,18 @@ internal class NavigationInterceptionHook(
             runCatching { carve(call.args) }
                 .onFailure { ModuleLog.warn("NAV_REGION_REPLAY_CARVE_FAILED", it) }
                 .getOrNull()
-        if (patched == null) {
-            ModuleLog.info("NAV_REGION_REPLAY_NO_CHANGE")
-            return
-        }
+        // patched 为 null 有两种含义：范围没变（本来就不需要重放），
+        // 或者当前环境不该挖角（横屏/游戏模式）——后者必须把原区域交回系统，
+        // 否则挖角会一直留在旧值上，系统手势回不来。
         replaying = true
         try {
-            call.method.invoke(call.target, *patched)
-            ModuleLog.info("NAV_REGION_REPLAYED_" + lastAppliedRangeDp)
+            if (patched != null) {
+                call.method.invoke(call.target, *patched)
+                ModuleLog.info("NAV_REGION_REPLAYED_" + lastAppliedRangeDp)
+            } else {
+                call.method.invoke(call.target, *call.args.toTypedArray())
+                ModuleLog.info("NAV_REGION_RESTORED_" + lastAppliedRangeDp)
+            }
         } catch (throwable: Throwable) {
             ModuleLog.warn("NAV_REGION_REPLAY_FAILED", throwable)
         } finally {
@@ -179,6 +186,9 @@ internal class NavigationInterceptionHook(
     private fun carve(args: List<Any?>): Array<Any?>? {
         val settings = configuration.snapshot
         if (!settings.enabled) return null
+        // 横屏暂停、游戏模式暂停时不做挖角：此时扇形根本不会呼出，
+        // 继续挖掉角落只会白白牺牲系统的边缘返回与上滑。
+        if (!environment.isModuleAllowed()) return null
         if (!settings.leftCornerEnabled && !settings.rightCornerEnabled) return null
         val index = args.indexOfFirst { it is Array<*> || it is Collection<*> }
         if (index < 0) return null
