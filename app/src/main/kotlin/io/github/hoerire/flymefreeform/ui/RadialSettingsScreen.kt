@@ -2,6 +2,7 @@ package io.github.hoerire.flymefreeform.ui
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.material.icons.rounded.PushPin

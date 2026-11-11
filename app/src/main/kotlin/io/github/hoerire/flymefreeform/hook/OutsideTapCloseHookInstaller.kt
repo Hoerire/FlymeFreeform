@@ -1,6 +1,7 @@
 package io.github.hoerire.flymefreeform.hook
 
 import android.annotation.SuppressLint
+import io.github.hoerire.flymefreeform.log.VerboseLog
 import android.content.Context
 import android.graphics.Rect
 import android.graphics.Region
