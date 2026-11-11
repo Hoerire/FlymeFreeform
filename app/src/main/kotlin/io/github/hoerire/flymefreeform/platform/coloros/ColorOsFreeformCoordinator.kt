@@ -287,7 +287,11 @@ internal class ColorOsFreeformCoordinator(
             settings.pinsSaved != lastSettings.pinsSaved ||
                 settings.pinnedTargets != lastSettings.pinnedTargets
         lastSettings = settings
-        if (environmentState.isGestureAllowed(refreshKeyguard = true) && (settings.leftCornerEnabled || settings.rightCornerEnabled)) {
+        // monitor 只看"模块是否启用 + 角落是否开启"，不再看环境：
+        // 环境判定本来就分两层（isInCornerZone 与 handlePointerEvent 都会拒），
+        // 若这里还按环境决定是否注销，改设置时一旦环境判定暂时为 false，
+        // monitor 就被拆掉且再也没人重建——用户实测"改完触发范围，扇形拉不出来"。
+        if (settings.enabled && (settings.leftCornerEnabled || settings.rightCornerEnabled)) {
             val resuming = !pointerRegistered
             if ((resuming || selectionChanged) && settings.pinnedTargets.any { it is PinnedTarget.Sidebar }) entryCatalog.refresh()
             registerPointerListener()
