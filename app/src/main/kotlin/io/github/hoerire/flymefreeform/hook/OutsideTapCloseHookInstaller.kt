@@ -453,9 +453,15 @@ internal class OutsideTapCloseHookInstaller(
             // 不穿透改由输入过滤器负责——它扣住窗外的那一下，判定清楚再决定
             // 补发（不是单击）还是丢弃并关窗。这里只把"窗口在哪、怎么关"同步给闸门。
             val guardBounds = visibleTaskBounds(controller, task)
+            val displayContentForIme = getDisplayContent.invokeUnwrapped(task)
+            val imeBounds =
+                displayContentForIme
+                    ?.let { visibleImeRegion(it) }
+                    ?.let { region -> Rect().also { region.getBounds(it) } }
             OutsideTapGate.update(
                 nextMode = mode,
                 windowBounds = guardBounds,
+                excluded = imeBounds,
                 onClose = {
                     mainHandler.post { closeTask(controller, task) }
                 },
@@ -527,6 +533,13 @@ internal class OutsideTapCloseHookInstaller(
         private fun isProtected(task: Any): Boolean =
             synchronized(protectedTasks) { protectedTasks.containsKey(task) }
 
+        /** 输入法当前的可触摸区域；不可见时返回 null。 */
+        fun visibleImeRegion(displayContent: Any): Region? {
+            val imeWindow = inputMethodWindow.get(displayContent) ?: return null
+            if (isWindowVisible.invokeUnwrapped(imeWindow) != true) return null
+            return Region().also { getTouchableRegion.invokeUnwrapped(imeWindow, it) }
+        }
+
         private fun visibleTaskBounds(controller: Any, task: Any): Rect? {
             // 输入法会单独平移、裁短标题层，Task 原始边界仍可能保持弹出前的尺寸。
             val imeBounds = (inputMethodTaskBounds.get(task) as? Rect)?.let(::Rect)
@@ -576,6 +589,17 @@ internal class OutsideTapCloseHookInstaller(
                         val controller = controllerField.get(listener) ?: run {
                             engine.interrupt()
                             return@synchronized null
+                        }
+                        // 每次按下都刷新输入法排除区：键盘可能在两次窗口变化之间弹出或收起，
+                        // 只有窗口变化时更新会让闸门在打字期间误扣键盘点击。
+                        runCatching {
+                            val task = getTopZoomTask.invokeUnwrapped(controller)
+                            val displayContent = task?.let { getDisplayContent.invokeUnwrapped(it) }
+                            val rect =
+                                displayContent
+                                    ?.let { visibleImeRegion(it) }
+                                    ?.let { region -> Rect().also { region.getBounds(it) } }
+                            OutsideTapGate.updateExcluded(rect)
                         }
                         beginOutsideTap(engine, controller, event, mode)
                     }
