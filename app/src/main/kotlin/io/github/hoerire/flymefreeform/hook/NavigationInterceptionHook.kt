@@ -201,11 +201,12 @@ internal class NavigationInterceptionHook(
             height = max(height, rect.bottom)
         }
         if (width < 1f || height < 1f) return emptyList()
-        // 挖角尺寸跟随 v744 的默认值（44dp，可配置范围 24–120）。
-        // 不能用模块的 84dp 触发范围：那会把屏幕底部两侧挖得太宽，正常上滑回桌面也会失效。
-        // 这里取 44，触发判定仍然是 84，两者不必相等——只需要让"在角落起手"不落进
-        // 系统的 home 手势区即可。
-        val sizeDp = CARVE_SIZE_DP.coerceIn(24, 120)
+        // 挖角尺寸 = 模块的「角落触发范围」：判定认为属于角落的区域，就不该再交给
+        // 系统导航手势处理，两者范围一致才不会出现"扇形起来了、最近任务也起来了"。
+        //
+        // 只影响系统导航手势（底部上滑、边缘返回），不影响点击、应用内滑动与拖拽：
+        // 那些不经过 InputDispatcher 的手势判定表。代价是底部那一圈的边缘返回会失效。
+        val sizeDp = settings.cornerTriggerRangeDp.coerceIn(24, 120)
         val sizePx = (sizeDp * metrics.density).coerceAtLeast(1f)
         val widthPx = sizePx.coerceAtMost(width / 2f)
         val heightPx = sizePx.coerceAtMost(height / 2f)
@@ -251,9 +252,6 @@ internal class NavigationInterceptionHook(
     }
 
     private companion object {
-        /** 挖角尺寸（dp）；v744 的 flyme_coloros_gesture_range_width_dp 默认值。 */
-        const val CARVE_SIZE_DP = 44
-
         /** 与 v744 的 hookNavigationInterceptionRegions 完全一致。 */
         val CANDIDATE_CLASSES =
             listOf(
