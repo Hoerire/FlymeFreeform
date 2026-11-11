@@ -127,8 +127,8 @@ internal class CornerRadialOverlayView(
     private val panelModeState = mutableStateOf(false)
     private val backdropOnlyState = mutableStateOf(false)
 
-    /** 磨砂底色浓度（0..1），由设置注入；默认对应原来的半透明黑遮罩。 */
-    private val frostedAlphaState = mutableStateOf(BACKDROP_ALPHA)
+    /** 磨砂底色浓度（0..1），由设置注入；默认 0 = 完全透明。 */
+    private val frostedAlphaState = mutableStateOf(0f)
 
     fun setFrostedAlpha(alpha: Float) {
         frostedAlphaState.value = alpha.coerceIn(0f, FROSTED_ALPHA_MAX)

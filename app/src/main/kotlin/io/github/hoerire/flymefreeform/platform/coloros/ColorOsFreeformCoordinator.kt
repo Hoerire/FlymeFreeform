@@ -787,6 +787,9 @@ internal class ColorOsFreeformCoordinator(
         var view: CornerRadialOverlayView? = null
         try {
             view = CornerRadialOverlayView(context, this, ::debug)
+            // 每次呼出都按当前设置初始化磨砂浓度：设置变化时浮层通常并不存在，
+            // 只靠 applySettings 里的注入会漏掉"改完再呼出"这条路径。
+            view.setFrostedAlpha(lastSettings.frostedPercent / 100f)
             view.begin(
                 side = side,
                 catalog = catalogSnapshot,
