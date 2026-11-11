@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
                     onCornerTriggerRangeChange = repository::setCornerTriggerRangeDp,
                     onRadialHitRangeChange = repository::setRadialHitRangeDp,
                     onRadialIconSizeChange = repository::setRadialIconSizeDp,
-                    onFrostedPercentChange = repository::setFrostedPercent,
+                    onBackgroundEffectChange = repository::setBackgroundEffect,
                     onOutsideTapCloseModeChange = repository::setOutsideTapCloseMode,
                     onHandleSwipeUpToMiniEnabledChange =
                         repository::setHandleSwipeUpToMiniEnabled,

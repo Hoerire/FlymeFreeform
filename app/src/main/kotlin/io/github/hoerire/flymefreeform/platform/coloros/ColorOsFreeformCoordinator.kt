@@ -160,9 +160,6 @@ internal class ColorOsFreeformCoordinator(
     /** 只负责接触摸的小窗口；主窗口 FLAG_NOT_TOUCHABLE，点选靠它。 */
     private var touchRegion: CornerTouchRegionView? = null
     private var overlay: CornerRadialOverlayView? = null
-
-    /** 手势按下时提前挂上的模糊占位窗口。 */
-    private var blurScratch: CornerRadialOverlayView? = null
     private var morePanelActive = false
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
     private var activeEnvironmentApproved = false
@@ -211,38 +208,6 @@ internal class ColorOsFreeformCoordinator(
      * 这里拿一个 1×1、几乎全透明、不可触摸的窗口把整条链路走一遍，400ms 后移除。
      * 只是优化，任何一步失败都吞掉，不影响真手势。
      */
-    /**
-     * 手势按下时就提前挂一个带模糊的占位窗口。
-     *
-     * 背景模糊要在窗口加入后才开始合成，而真窗口是在 MOVE 越过 touchSlop 才创建的，
-     * 第一帧必然是清晰的——这就是"触发太慢"。这里在 DOWN 先挂一个 1×1、
-     * 几乎透明、不可触摸的窗口把模糊链路激活，激活时再放大复用。
-     */
-    private fun prepareBlurWindow() {
-        if (blurScratch != null) return
-        if (lastSettings.frostedPercent < 0) return
-        runCatching {
-            val scratch = CornerRadialOverlayView(context, this, ::debug)
-            val params = createOverlayParams(density = context.resources.displayMetrics.density)
-            params.width = 1
-            params.height = 1
-            params.alpha = 0.01f
-            windowManager.addView(scratch, params)
-            blurScratch = scratch
-            trace("SYSTEM_OVERLAY_BLUR_SCRATCH_ADDED")
-        }.onFailure { trace("SYSTEM_OVERLAY_BLUR_SCRATCH_FAILED") }
-    }
-
-    /** 收起后清掉占位窗口，避免 blur 一直参与合成。 */
-    private fun disposeBlurWindow() {
-        val scratch = blurScratch ?: return
-        blurScratch = null
-        runCatching {
-            windowManager.removeViewImmediate(scratch)
-            trace("SYSTEM_OVERLAY_BLUR_SCRATCH_REMOVED")
-        }
-    }
-
     private fun prewarmOverlay() {
         var view: CornerRadialOverlayView? = null
         try {
@@ -322,8 +287,7 @@ internal class ColorOsFreeformCoordinator(
             settings.pinsSaved != lastSettings.pinsSaved ||
                 settings.pinnedTargets != lastSettings.pinnedTargets
         lastSettings = settings
-        // 磨砂浓度随设置实时生效：已有浮层直接改，没有则在下次创建时按新值绘制。
-        overlay?.setFrostedAlpha(settings.frostedPercent / 100f)
+        overlay?.setBackdropAlpha(settings.backgroundEffect.coerceAtMost(0).let { -it / 100f })
         // monitor 只看"模块是否启用 + 角落是否开启"，不再看环境：
         // 环境判定本来就分两层（isInCornerZone 与 handlePointerEvent 都会拒），
         // 若这里还按环境决定是否注销，改设置时一旦环境判定暂时为 false，
@@ -690,13 +654,8 @@ internal class ColorOsFreeformCoordinator(
             }
         val action =
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    // 在角落按下就先把这个窗口挂上去（1×1、几乎全透明），
-                    // 让系统有机会开始合成背景模糊；等真正激活时直接放大，
-                    // 呼出的第一帧就是模糊好的画面，而不是清晰跳模糊。
-                    prepareBlurWindow()
+                MotionEvent.ACTION_DOWN ->
                     gestureEngine.down(event.getPointerId(0), event.x, event.y, config)
-                }
                 MotionEvent.ACTION_MOVE -> {
                     val index = event.findPointerIndex(event.getPointerId(0)).coerceAtLeast(0)
                     gestureEngine.move(
@@ -828,11 +787,12 @@ internal class ColorOsFreeformCoordinator(
         var view: CornerRadialOverlayView? = null
         try {
             view = CornerRadialOverlayView(context, this, ::debug)
-            // 每次呼出都按当前设置初始化磨砂浓度：设置变化时浮层通常并不存在，
+            // 负值换算成黑色遮罩浓度；正值走窗口模糊，遮罩为 0。
+            // 每次呼出都按当前设置初始化：设置变化时浮层通常不存在，
             // 只靠 applySettings 里的注入会漏掉"改完再呼出"这条路径。
-            view.setFrostedAlpha(lastSettings.frostedPercent / 100f)
-            // 真窗口已经带上模糊，占位窗口的使命结束，避免两个窗口重复参与合成。
-            disposeBlurWindow()
+            view.setBackdropAlpha(
+                lastSettings.backgroundEffect.coerceAtMost(0).let { -it / 100f },
+            )
             view.begin(
                 side = side,
                 catalog = catalogSnapshot,
@@ -1214,6 +1174,7 @@ internal class ColorOsFreeformCoordinator(
     private fun createOverlayParams(
         type: Int = overlayWindowType,
         density: Float = 0f,
+        backgroundEffect: Int = lastSettings.backgroundEffect,
     ): WindowManager.LayoutParams {
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -1235,7 +1196,8 @@ internal class ColorOsFreeformCoordinator(
             // 背景模糊：必须先声明为「受信任浮层」，否则 ColorOS 会静默忽略
             // FLAG_BLUR_BEHIND（窗口类型不是限制，缺的是这个标记）。
             // setTrustedOverlay 在部分版本是隐藏 API，用反射并在失败时静默降级。
-            if (BLUR_RADIUS_DP > 0f) {
+            val radiusDp = backgroundEffect.coerceAtLeast(0)
+            if (radiusDp > 0) {
                 runCatching {
                     WindowManager.LayoutParams::class.java
                         .getMethod("setTrustedOverlay")
@@ -1243,7 +1205,7 @@ internal class ColorOsFreeformCoordinator(
                 }
                 flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
                 if (density > 0f) {
-                    blurBehindRadius = (BLUR_RADIUS_DP * density).toInt()
+                    blurBehindRadius = (radiusDp * density).toInt()
                 }
             }
         }
@@ -1312,7 +1274,6 @@ internal class ColorOsFreeformCoordinator(
         detachTouchRegion()
         trace("SYSTEM_OVERLAY_REMOVE")
         overlay = null
-        disposeBlurWindow()
         if (sidebar.isPending) sidebar.cancel()
         morePanelActive = false
         val cleanupFailure = view.disposeOverlay()
@@ -1540,8 +1501,7 @@ internal class ColorOsFreeformCoordinator(
         /** 读不到系统导航栏高度时的兜底值（dp）。 */
         const val BOTTOM_GESTURE_INSET_DP = 40f
 
-        /** 呼出扇形时的背景模糊半径（dp）。 */
-        const val BLUR_RADIUS_DP = 28f
+
 
 
         /** WindowManager.LayoutParams.TOUCHABLE_INSETS_REGION 是 @hide 常量。 */

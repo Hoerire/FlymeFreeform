@@ -43,7 +43,7 @@ internal fun RadialSettingsScreen(
     onCornerTriggerRangeChange: (Int) -> Unit,
     onRadialHitRangeChange: (Int) -> Unit,
     onRadialIconSizeChange: (Int) -> Unit,
-    onFrostedPercentChange: (Int) -> Unit,
+    onBackgroundEffectChange: (Int) -> Unit,
 
     onRadialKeepOpenChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
@@ -149,18 +149,19 @@ internal fun RadialSettingsScreen(
                     onPreviewChange = { iconSizePreviewDp = it },
                     onCommit = onRadialIconSizeChange,
                 )
+                // 一条滑条两个方向：0 完全透明，往左加深黑色遮罩，往右加强背景模糊。
                 RemoteDpSliderPreference(
                     icon = Icons.Rounded.BlurOn,
-                    confirmedValue = state.settings.frostedPercent,
+                    confirmedValue = state.settings.backgroundEffect,
                     isUpdating = state.isUpdating,
                     enabled = enabled,
-                    title = stringResource(R.string.radial_frosted_title),
-                    summary = stringResource(R.string.radial_frosted_summary),
-                    minDp = ModulePreferences.MIN_FROSTED_PERCENT,
-                    maxDp = ModulePreferences.MAX_FROSTED_PERCENT,
-                    coerceDp = ModulePreferences::coerceFrostedPercent,
+                    title = stringResource(R.string.radial_effect_title),
+                    summary = stringResource(R.string.radial_effect_summary),
+                    minDp = ModulePreferences.MIN_BACKGROUND_EFFECT,
+                    maxDp = ModulePreferences.MAX_BACKGROUND_EFFECT,
+                    coerceDp = ModulePreferences::coerceBackgroundEffect,
                     onPreviewChange = {},
-                    onCommit = onFrostedPercentChange,
+                    onCommit = onBackgroundEffectChange,
                     showDpUnit = false,
                 )
                 // 这两项只暂停扇形菜单的呼出，其余能力不受影响，因此归在扇形这一页。
