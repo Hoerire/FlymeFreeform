@@ -14,10 +14,8 @@ internal object ModulePreferences {
     const val KEY_CORNER_TRIGGER_RANGE_DP = "corner_trigger_range_dp"
     const val KEY_RADIAL_HIT_RANGE_DP = "radial_hit_range_dp"
 
-    /**
-     * 扇形呼出时的背景效果：负值调黑色遮罩浓度，正值调背景模糊半径，0 为完全透明。
-     */
-    const val KEY_BACKGROUND_EFFECT = "background_effect"
+    /** 扇形呼出时的黑色遮罩浓度（百分比，0 = 完全透明）。 */
+    const val KEY_SHADE_PERCENT = "shade_percent"
 
 
     /** 扇形图标的基准直径（dp）；第三方主题图标与「更多」圆盘都按它对齐。 */
@@ -94,13 +92,9 @@ internal object ModulePreferences {
     const val DEFAULT_PAUSE_IN_GAME_MODE = true
     const val DEFAULT_VERBOSE_LOG = false
     /** 默认全透明：呼出扇形时不压暗身后内容。 */
-    const val DEFAULT_BACKGROUND_EFFECT = 0
-
-    /** 遮罩端：-100 对应完全不透明（背景全黑，扇形仍绘制在遮罩之上）。 */
-    const val MIN_BACKGROUND_EFFECT = -100
-
-    /** 模糊端：60 对应 60dp 模糊半径。 */
-    const val MAX_BACKGROUND_EFFECT = 60
+    const val DEFAULT_SHADE_PERCENT = 0
+    const val MIN_SHADE_PERCENT = 0
+    const val MAX_SHADE_PERCENT = 100
 
     const val DEFAULT_ZOOM_MAX_WINDOW_COUNT = 1
     const val MIN_ZOOM_MAX_WINDOW_COUNT = 1
@@ -132,8 +126,8 @@ internal object ModulePreferences {
     fun coerceZoomMaxWindowCount(value: Int): Int =
         value.coerceIn(MIN_ZOOM_MAX_WINDOW_COUNT, MAX_ZOOM_MAX_WINDOW_COUNT)
 
-    fun coerceBackgroundEffect(value: Int): Int =
-        value.coerceIn(MIN_BACKGROUND_EFFECT, MAX_BACKGROUND_EFFECT)
+    fun coerceShadePercent(value: Int): Int =
+        value.coerceIn(MIN_SHADE_PERCENT, MAX_SHADE_PERCENT)
 
 
     /** 黑名单包名：换行分隔，逐条校验，最多 200 条。 */

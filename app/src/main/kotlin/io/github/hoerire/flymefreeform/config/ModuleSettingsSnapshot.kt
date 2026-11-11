@@ -55,8 +55,8 @@ internal data class ModuleSettingsSnapshot(
     val zoomExcludedPackages: List<String> = emptyList(),
     /** 桌面长按快捷项转小窗；false 时保持全屏。 */
     val zoomLauncherShortcut: Boolean = ModulePreferences.DEFAULT_ZOOM_LAUNCHER_SHORTCUT,
-    /** 背景效果：负值为黑色遮罩浓度，正值为模糊半径，0 为透明。 */
-    val backgroundEffect: Int = ModulePreferences.DEFAULT_BACKGROUND_EFFECT,
+    /** 黑色遮罩浓度（百分比），0 为完全透明。 */
+    val shadePercent: Int = ModulePreferences.DEFAULT_SHADE_PERCENT,
     val autoCloseWindow: Boolean = ModulePreferences.DEFAULT_AUTO_CLOSE_WINDOW,
     /** 桌面卡片与负一屏转小窗；false 时保持全屏。 */
     val zoomLauncherCard: Boolean = ModulePreferences.DEFAULT_ZOOM_LAUNCHER_CARD,
@@ -149,8 +149,8 @@ internal data class ModuleSettingsSnapshot(
                 ModulePreferences.coerceRadialHitRangeDp(radialHitRangeDp),
             )
             .putInt(
-                ModulePreferences.KEY_BACKGROUND_EFFECT,
-                ModulePreferences.coerceBackgroundEffect(backgroundEffect),
+                ModulePreferences.KEY_SHADE_PERCENT,
+                ModulePreferences.coerceShadePercent(shadePercent),
             )
             .putInt(
                 ModulePreferences.KEY_RADIAL_ICON_SIZE_DP,
@@ -246,10 +246,10 @@ internal data class ModuleSettingsSnapshot(
                 rightCornerEnabled = if (bothCornersDisabled) true else rightEnabled,
                 cornerTriggerRangeDp = cornerTriggerRangeDp,
                 radialHitRangeDp = radialHitRangeDp,
-                backgroundEffect = ModulePreferences.coerceBackgroundEffect(
+                shadePercent = ModulePreferences.coerceShadePercent(
                     preferences.getInt(
-                        ModulePreferences.KEY_BACKGROUND_EFFECT,
-                        ModulePreferences.DEFAULT_BACKGROUND_EFFECT,
+                        ModulePreferences.KEY_SHADE_PERCENT,
+                        ModulePreferences.DEFAULT_SHADE_PERCENT,
                     ),
                 ),
                 radialIconSizeDp =

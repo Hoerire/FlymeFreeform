@@ -160,9 +160,6 @@ internal class ColorOsFreeformCoordinator(
     /** 只负责接触摸的小窗口；主窗口 FLAG_NOT_TOUCHABLE，点选靠它。 */
     private var touchRegion: CornerTouchRegionView? = null
     private var overlay: CornerRadialOverlayView? = null
-
-    /** 常驻的浮层 View：收起后不销毁窗口，只缩小隐藏，让背景模糊保持就绪。 */
-    private var warmOverlay: CornerRadialOverlayView? = null
     private var morePanelActive = false
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
     private var activeEnvironmentApproved = false
@@ -290,7 +287,7 @@ internal class ColorOsFreeformCoordinator(
             settings.pinsSaved != lastSettings.pinsSaved ||
                 settings.pinnedTargets != lastSettings.pinnedTargets
         lastSettings = settings
-        overlay?.setBackdropAlpha(settings.backgroundEffect.coerceAtMost(0).let { -it / 100f })
+        overlay?.setBackdropAlpha(settings.shadePercent / 100f)
         // monitor 只看"模块是否启用 + 角落是否开启"，不再看环境：
         // 环境判定本来就分两层（isInCornerZone 与 handlePointerEvent 都会拒），
         // 若这里还按环境决定是否注销，改设置时一旦环境判定暂时为 false，
@@ -787,45 +784,11 @@ internal class ColorOsFreeformCoordinator(
         val keepOpen = lastSettings.radialKeepOpen
         val params = createOverlayParams()
         var view: CornerRadialOverlayView? = null
-        // 常驻窗口：blur 一直挂着，呼出时复用同一个 View，
-        // 省掉窗口创建与模糊合成的那几帧等待。
-        val parked = warmOverlay
-        if (parked != null) {
-            warmOverlay = null
-            val reused =
-                runCatching {
-                    parked.setBackdropAlpha(
-                        lastSettings.backgroundEffect.coerceAtMost(0).let { -it / 100f },
-                    )
-                    parked.begin(
-                        side = side,
-                        catalog = catalogSnapshot,
-                        x = x,
-                        y = y,
-                        hitRangeDp = hitRangeDp,
-                        iconSizeDp = lastSettings.radialIconSizeDp,
-                        keepOpen = keepOpen,
-                    )
-                    windowManager.updateViewLayout(parked, params)
-                    true
-                }.getOrDefault(false)
-            if (reused) {
-                overlay = parked
-                trace("SYSTEM_OVERLAY_REUSED")
-                attachTouchRegion()
-                return
-            }
-            logger(Log.WARN, "SYSTEM_OVERLAY_REUSE_FAILED", null)
-            runCatching { windowManager.removeViewImmediate(parked) }
-        }
         try {
             view = CornerRadialOverlayView(context, this, ::debug)
-            // 负值换算成黑色遮罩浓度；正值走窗口模糊，遮罩为 0。
-            // 每次呼出都按当前设置初始化：设置变化时浮层通常不存在，
+            // 每次呼出都按当前设置初始化遮罩浓度：设置变化时浮层通常不存在，
             // 只靠 applySettings 里的注入会漏掉"改完再呼出"这条路径。
-            view.setBackdropAlpha(
-                lastSettings.backgroundEffect.coerceAtMost(0).let { -it / 100f },
-            )
+            view.setBackdropAlpha(lastSettings.shadePercent / 100f)
             view.begin(
                 side = side,
                 catalog = catalogSnapshot,
@@ -1202,7 +1165,6 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun createOverlayParams(
         type: Int = overlayWindowType,
-        backgroundEffect: Int = lastSettings.backgroundEffect,
     ): WindowManager.LayoutParams {
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -1221,27 +1183,9 @@ internal class ColorOsFreeformCoordinator(
             setFitInsetsTypes(0)
             windowAnimations = 0
             title = "FlymeFreeformCornerOverlay"
-            // 背景模糊：必须先声明为「受信任浮层」，否则 ColorOS 会静默忽略
-            // FLAG_BLUR_BEHIND（窗口类型不是限制，缺的是这个标记）。
-            // setTrustedOverlay 在部分版本是隐藏 API，用反射并在失败时静默降级。
-            // 半径与 FLAG 必须成对设置：只开 FLAG 而半径为 0，系统会做一次无效模糊，
-            // 表现为"没有模糊效果但多一次合成"——也就是闪烁。
-            val radiusDp = backgroundEffect.coerceAtLeast(0)
-            val radiusPx =
-                if (radiusDp > 0) {
-                    (radiusDp * context.resources.displayMetrics.density).toInt()
-                } else {
-                    0
-                }
-            if (radiusPx > 0) {
-                runCatching {
-                    WindowManager.LayoutParams::class.java
-                        .getMethod("setTrustedOverlay")
-                        .invoke(this)
-                }
-                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                blurBehindRadius = radiusPx
-            }
+            // 背景压暗由 Compose 那一层绘制（遮罩透明度可调），不使用窗口模糊：
+            // ColorOS 上 FLAG_BLUR_BEHIND 的合成时序不稳定，窗口加入前不会开始计算，
+            // 表现为"第一帧清晰、之后才模糊"，并伴随多余的合成闪烁。
         }
     }
 
@@ -1309,22 +1253,6 @@ internal class ColorOsFreeformCoordinator(
         overlay = null
         if (sidebar.isPending) sidebar.cancel()
         morePanelActive = false
-        // 收起时不销毁窗口：缩小到 1×1 并几乎全透明，背景模糊保持挂着。
-        // 这样下次呼出直接复用，模糊不再需要等窗口合成。
-        val parked =
-            runCatching {
-                val hidden = createOverlayParams()
-                hidden.width = 1
-                hidden.height = 1
-                hidden.alpha = 0.01f
-                windowManager.updateViewLayout(view, hidden)
-                true
-            }.getOrDefault(false)
-        if (parked) {
-            warmOverlay = view
-            trace("SYSTEM_OVERLAY_PARKED")
-            return
-        }
         trace("SYSTEM_OVERLAY_REMOVE")
         val cleanupFailure = view.disposeOverlay()
         try {

@@ -75,9 +75,9 @@ internal class FrameworkConnectionRepository(private val context: Context) {
             )
         }
 
-    fun setBackgroundEffect(effect: Int) =
+    fun setShadePercent(percent: Int) =
         updateSettings {
-            it.copy(backgroundEffect = ModulePreferences.coerceBackgroundEffect(effect))
+            it.copy(shadePercent = ModulePreferences.coerceShadePercent(percent))
         }
 
     fun setOutsideTapCloseMode(mode: OutsideTapCloseMode) =
