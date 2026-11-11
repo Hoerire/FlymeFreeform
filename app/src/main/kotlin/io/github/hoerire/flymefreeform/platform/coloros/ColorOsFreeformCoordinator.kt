@@ -1162,6 +1162,7 @@ internal class ColorOsFreeformCoordinator(
     private fun createOverlayParams(
         type: Int = overlayWindowType,
         context: Context? = null,
+        blurRadiusDp: Int = lastSettings.blurRadiusDp,
     ): WindowManager.LayoutParams {
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -1181,12 +1182,13 @@ internal class ColorOsFreeformCoordinator(
             windowAnimations = 0
             title = "FlymeFreeformCornerOverlay"
             // 呼出扇形时把身后内容做背景模糊，效果与系统下拉/多任务一致，
-            // 比给整屏盖一层黑色遮罩更接近 Flyme 的观感。
+            // 比给整屏盖一层黑色遮罩更接近 Flyme 的观感。半径取自设置，0 表示不模糊。
             if (android.os.Build.VERSION.SDK_INT >= 31) {
                 val density = context?.resources?.displayMetrics?.density ?: 0f
-                if (density > 0f) {
+                val radiusDp = blurRadiusDp
+                if (density > 0f && radiusDp > 0) {
                     flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                    blurBehindRadius = (BLUR_RADIUS_DP * density).toInt()
+                    blurBehindRadius = (radiusDp * density).toInt()
                 }
             }
         }
@@ -1482,8 +1484,7 @@ internal class ColorOsFreeformCoordinator(
         /** 读不到系统导航栏高度时的兜底值（dp）。 */
         const val BOTTOM_GESTURE_INSET_DP = 40f
 
-        /** 呼出扇形时的背景模糊半径（dp）；与系统下拉通知那种观感接近。 */
-        const val BLUR_RADIUS_DP = 28f
+
         /** WindowManager.LayoutParams.TOUCHABLE_INSETS_REGION 是 @hide 常量。 */
         const val TOUCHABLE_INSETS_REGION = 3
         const val OVERLAY_PREWARM_LIFETIME_MS = 400L

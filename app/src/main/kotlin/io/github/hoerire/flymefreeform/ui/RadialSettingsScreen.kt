@@ -42,6 +42,7 @@ internal fun RadialSettingsScreen(
     onCornerTriggerRangeChange: (Int) -> Unit,
     onRadialHitRangeChange: (Int) -> Unit,
     onRadialIconSizeChange: (Int) -> Unit,
+    onBlurRadiusChange: (Int) -> Unit,
 
     onRadialKeepOpenChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
@@ -146,6 +147,19 @@ internal fun RadialSettingsScreen(
                     coerceDp = ModulePreferences::coerceRadialIconSizeDp,
                     onPreviewChange = { iconSizePreviewDp = it },
                     onCommit = onRadialIconSizeChange,
+                )
+                RemoteDpSliderPreference(
+                    icon = Icons.Rounded.BlurOn,
+                    confirmedValue = state.settings.blurRadiusDp,
+                    isUpdating = state.isUpdating,
+                    enabled = enabled,
+                    title = stringResource(R.string.radial_blur_title),
+                    summary = stringResource(R.string.radial_blur_summary),
+                    minDp = ModulePreferences.MIN_BLUR_RADIUS_DP,
+                    maxDp = ModulePreferences.MAX_BLUR_RADIUS_DP,
+                    coerceDp = ModulePreferences::coerceBlurRadiusDp,
+                    onPreviewChange = {},
+                    onCommit = onBlurRadiusChange,
                 )
                 // 这两项只暂停扇形菜单的呼出，其余能力不受影响，因此归在扇形这一页。
                 SwitchPreference(

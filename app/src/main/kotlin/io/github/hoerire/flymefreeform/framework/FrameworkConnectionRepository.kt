@@ -75,6 +75,9 @@ internal class FrameworkConnectionRepository(private val context: Context) {
             )
         }
 
+    fun setBlurRadiusDp(radiusDp: Int) =
+        updateSettings { it.copy(blurRadiusDp = ModulePreferences.coerceBlurRadiusDp(radiusDp)) }
+
     fun setOutsideTapCloseMode(mode: OutsideTapCloseMode) =
         updateSettings { it.copy(outsideTapCloseMode = mode) }
 
