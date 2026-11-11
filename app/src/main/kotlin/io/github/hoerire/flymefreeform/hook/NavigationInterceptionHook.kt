@@ -39,6 +39,18 @@ internal class NavigationInterceptionHook(
 ) {
     private var firstHitReported = false
 
+    /** 最近一次系统调用 updateInvalidRegion 的原始参数，用于设置变更后重放。 */
+    @Volatile private var lastCall: LastCall? = null
+
+    /** 重放期间置位：避免重放再一次进入自己的 hook。 */
+    @Volatile private var replaying = false
+
+    private data class LastCall(
+        val method: Method,
+        val target: Any?,
+        val args: List<Any?>,
+    )
+
     fun install(classLoader: ClassLoader) {
         var installed = 0
         for (className in CANDIDATE_CLASSES) {
@@ -71,6 +83,50 @@ internal class NavigationInterceptionHook(
         if (installed == 0) {
             // 与 v744 同样的降级语义：找不到目标就退回原来的 pilfer 路径。
             ModuleLog.info("NAV_REGION_TARGET_UNAVAILABLE_PILFER_REMAINS")
+            return
+        }
+        // 系统只在自己需要的时候才调 updateInvalidRegion；用户改「触发范围」不会触发它，
+        // 挖角就会停在旧值。这里监听配置变化，用新范围重放一次。
+        configuration.observe { settings ->
+            if (settings.cornerTriggerRangeDp != lastAppliedRangeDp) {
+                lastAppliedRangeDp = settings.cornerTriggerRangeDp
+                ModuleLog.info("NAV_REGION_RANGE_CHANGED_" + lastAppliedRangeDp)
+                replay()
+            }
+        }
+    }
+
+    @Volatile private var lastAppliedRangeDp = -1
+
+    /**
+     * 用当前设置重新算一遍挖角，并把结果交回系统。
+     *
+     * 调用的是系统自己的 updateInvalidRegion，参数用我们改过的列表——等价于
+     * "让系统按新的范围再更新一次手势区域"。重放期间置 [replaying]，
+     * 避免再次进入 hook 形成递归。
+     */
+    private fun replay() {
+        val call = lastCall
+        if (call == null) {
+            ModuleLog.info("NAV_REGION_REPLAY_SKIPPED_NO_CALL")
+            return
+        }
+        val patched =
+            runCatching { carve(call.args) }
+                .onFailure { ModuleLog.warn("NAV_REGION_REPLAY_CARVE_FAILED", it) }
+                .getOrNull()
+        if (patched == null) {
+            ModuleLog.info("NAV_REGION_REPLAY_NO_CHANGE")
+            return
+        }
+        replaying = true
+        try {
+            call.method.invoke(call.target, *patched)
+            ModuleLog.info("NAV_REGION_REPLAYED_" + lastAppliedRangeDp)
+        } catch (throwable: Throwable) {
+            ModuleLog.warn("NAV_REGION_REPLAY_FAILED", throwable)
+        } finally {
+            replaying = false
         }
     }
 
@@ -80,10 +136,13 @@ internal class NavigationInterceptionHook(
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .setId("flymefreeform.nav_region_" + method.name)
             .intercept { chain ->
+                if (replaying) return@intercept chain.proceed()
                 if (!firstHitReported) {
                     firstHitReported = true
                     ModuleLog.info("NAV_REGION_FIRST_HIT_" + method.name)
                 }
+                // 记住原始参数：系统不会因为用户改设置而重新调用，重放时要用。
+                lastCall = LastCall(method, chain.thisObject, chain.args)
                 // libxposed 的 Chain.args 是只读 List：往里赋值会静默失败。
                 // 改参数只能走 proceed(Object[]) 这个重载。
                 val patched =
