@@ -561,20 +561,19 @@ internal class ColorOsFreeformCoordinator(
                 val index = event.findPointerIndex(event.getPointerId(0)).coerceAtLeast(0)
                 val x = event.getX(index)
                 val y = event.getY(index)
-                // 抢流时机提前到"刚越过 touchSlop"：
-                // 等引擎判 Activate 需要 inward≥49px、upward≥14px，这段距离里应用已经收到
-                // 十几个 MOVE，足够它把这次滑动当成横向滚动先滚一下——抢走后再回弹，
-                // 用户看到的就是"页面左右抖一下"。
-                // 这里在位移刚过 slop 时按方向分流：偏内 → 角区手势，立刻抢；
-                // 偏上 → 系统上滑，放弃并清掉候选，不陪葬。
+                // 抢流时机压到"第一个 MOVE"：
+                // 页面横向滚动是按手指位移累加的，只要应用多收到一帧 MOVE 就会滚一段，
+                // 抢走后再回弹就是用户看到的横移。等 touchSlop（8dp≈28px）才抢，
+                // 这 28px 已经足够桌面翻小半页。所以这里只用一个极小的位移阈值挡手抖，
+                // 方向判定照旧：偏上（回桌面/迷你窗）让给系统，其余立刻抢。
                 if (pilferEngine.phase == GesturePhase.Armed) {
                     val downX = pilferDownX
                     val downY = pilferDownY
                     val isLeftSide = downX <= config.displayWidth / 2f
                     val inward = if (isLeftSide) x - downX else downX - x
                     val upward = downY - y
-                    val distance = kotlin.math.sqrt(inward * inward + upward * upward)
-                    if (distance < touchSlop) return false
+                    val moved = kotlin.math.sqrt(inward * inward + upward * upward)
+                    if (moved < PILFER_MIN_MOVE_PX) return false
                     if (upward > inward * VERTICAL_ABORT_RATIO) {
                         pilferEngine.cancel()
                         pilferConfig = null
@@ -1479,6 +1478,15 @@ internal class ColorOsFreeformCoordinator(
          * 垂直上滑要留给系统回桌面，抢了会让上滑失效。
          */
         const val VERTICAL_ABORT_RATIO = 2.5f
+
+        /**
+         * 抢流的最小位移（像素）。
+         *
+         * 只用来挡手指按住时的轻微抖动；不能按 touchSlop（8dp≈28px）来算——
+         * 页面横向滚动按位移累加，多收到一帧 MOVE 就会先滚一段再被抢回来，
+         * 那一段就是用户看到的左右横移。
+         */
+        const val PILFER_MIN_MOVE_PX = 6f
         /** 读不到系统导航栏高度时的兜底值（dp）。 */
         const val BOTTOM_GESTURE_INSET_DP = 40f
 
