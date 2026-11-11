@@ -95,8 +95,6 @@ internal class NavigationInterceptionHook(
                 replay()
             }
         }
-        // 横竖屏切换、进出游戏模式时也要重算：暂停期间应当把挖掉的角落还回去。
-        environment.observe { replay() }
     }
 
     @Volatile private var lastAppliedRangeDp = -1
@@ -186,9 +184,6 @@ internal class NavigationInterceptionHook(
     private fun carve(args: List<Any?>): Array<Any?>? {
         val settings = configuration.snapshot
         if (!settings.enabled) return null
-        // 横屏暂停、游戏模式暂停时不做挖角：此时扇形根本不会呼出，
-        // 继续挖掉角落只会白白牺牲系统的边缘返回与上滑。
-        if (!environment.isModuleAllowed()) return null
         if (!settings.leftCornerEnabled && !settings.rightCornerEnabled) return null
         val index = args.indexOfFirst { it is Array<*> || it is Collection<*> }
         if (index < 0) return null
