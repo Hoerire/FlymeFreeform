@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicLong
  * 扇形里的固定项顺序 = 用户在设置页拖出来的顺序，不做任何重排。
  *
  * 早先为了让工具/快捷方式不占应用名额，这里做过一次「工具垫底」的稳定排序；
- * 代价是工具的顺序被永久钉死——设置页能拖，扇形不跟随（用户实测：小布识屏、截屏
+ * 代价是工具的顺序被永久钉死——设置页能拖，扇形不跟随（表现：小布识屏、截屏
  * 一直压在最后）。顺序应当只有一处来源，就是 pinnedTargets 本身。
  */
 private fun radialPinOrder(targets: List<PinnedTarget>): List<PinnedTarget> = targets

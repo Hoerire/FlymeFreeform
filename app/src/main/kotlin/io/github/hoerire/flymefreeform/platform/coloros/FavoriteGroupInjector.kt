@@ -562,13 +562,6 @@ internal object FavoriteGroupInjector {
         null
     }
 
-    private fun pkgOf(item: Any?): String? = try {
-        val bean = item?.javaClass?.getMethod("getEntryBean")?.invoke(item) ?: return null
-        bean.javaClass.getMethod("getPkg").invoke(bean) as? String
-    } catch (_: Throwable) {
-        null
-    }
-
     /**
      * 造一个和 [template] 同 viewType 的分组标题。
      * 系统的 getItemViewType 是按 TitleLabelData.getViewType() 选的布局，
@@ -591,29 +584,6 @@ internal object FavoriteGroupInjector {
     } catch (t: Throwable) {
         d(t) { "make title fail" }
         null
-    }
-
-    /** 取系统侧边栏的「最近打开的应用」：ViewDataHandlerImpl -> PanelMainView -> UserPanelView。 */
-    private fun systemRecentData(loader: ClassLoader): List<Any> = try {
-        val handler = Class.forName(
-            "com.oplus.smartsidebar.panelview.edgepanel.data.viewdatahandlers.ViewDataHandlerImpl",
-            false,
-            loader,
-        )
-        val instance = handler.getField("INSTANCE").get(null)
-        val mainView = handler.getMethod("getMPanelMainView").invoke(instance)
-        val userPanel = mainView?.javaClass?.getMethod("getMPanel")?.invoke(mainView)
-        @Suppress("UNCHECKED_CAST")
-        val list = userPanel?.javaClass?.getMethod("getRecentData")?.invoke(userPanel) as? List<Any>
-        if (list == null) {
-            d { "recent data null" }
-            emptyList()
-        } else {
-            list.filterNotNull()
-        }
-    } catch (t: Throwable) {
-        d(t) { "recent data fail" }
-        emptyList()
     }
 
     /** 改写分组标题文本：把 TitleLabelData 里的 String 字段改成目标文案。 */

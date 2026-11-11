@@ -24,7 +24,7 @@ internal object ColorOsSidebarTarget {
      * 原因：ColorOS 侧边栏可能同时存在系统预装版（/product/app/SmartSideBar）与
      * 更新版（/data/app/...）两条 Package 记录，getServiceInfo 与 resolveContentProvider
      * 会各自命中不同实例，uid 必然对不上，于是整条链路被判成"不可用"，
-     * 表现为重启后侧边栏目录失效（用户实测）。
+     * 表现为重启后侧边栏目录失效。
      *
      * 同包名的 Provider 只能由该包声明，去掉 uid 比较不会放宽到"别的应用能冒充"。
      */

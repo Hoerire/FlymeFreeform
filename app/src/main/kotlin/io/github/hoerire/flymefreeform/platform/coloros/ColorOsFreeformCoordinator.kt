@@ -204,7 +204,7 @@ internal class ColorOsFreeformCoordinator(
      * 预热浮层：把 Compose 的一次性成本（类加载、Skia、字体、首次组合与布局）挪到开机后的空闲时段。
      *
      * 首次呼出时现创建的话，首帧要 400ms 上下才出来（日志实测 SHOWN → 第一条 HIT_ENTER 空了 457ms），
-     * 用户看到的就是一张冻住的图：不能选、不能滑，只能等抬手后点空白关掉。
+     * 表现为一张冻住的图：不能选、不能滑，只能等抬手后点空白关掉。
      * 这里拿一个 1×1、几乎全透明、不可触摸的窗口把整条链路走一遍，400ms 后移除。
      * 只是优化，任何一步失败都吞掉，不影响真手势。
      */
@@ -290,7 +290,7 @@ internal class ColorOsFreeformCoordinator(
         // monitor 只看"模块是否启用 + 角落是否开启"，不再看环境：
         // 环境判定本来就分两层（isInCornerZone 与 handlePointerEvent 都会拒），
         // 若这里还按环境决定是否注销，改设置时一旦环境判定暂时为 false，
-        // monitor 就被拆掉且再也没人重建——用户实测"改完触发范围，扇形拉不出来"。
+        // monitor 就被拆掉且再也没人重建，表现是"改完触发范围后扇形完全拉不出来"。
         if (settings.enabled && (settings.leftCornerEnabled || settings.rightCornerEnabled)) {
             val resuming = !pointerRegistered
             if ((resuming || selectionChanged) && settings.pinnedTargets.any { it is PinnedTarget.Sidebar }) entryCatalog.refresh()
@@ -955,8 +955,8 @@ internal class ColorOsFreeformCoordinator(
                     debug("SYSTEM_MORE_PANEL_BEFORE_OPEN_" + ready)
                     if (ready) {
                         view.retainBackdropForPanel()
-                        // 遮罩只承担画面；触摸必须穿透到下层系统面板。保持挂起模式下
-                        // 浮层为可触摸窗口；若不在此恢复穿透，面板与工具的首次点击会被浮层截获。
+                        // 面板是系统独立窗口，必须把屏幕让给它：摘掉我们自己的触摸层，
+                        // 否则面板与工具的首次点击会被 [CornerTouchRegionView] 截获。
                         applyBackdropPassThrough(view)
                         true
                     } else {
@@ -996,13 +996,13 @@ internal class ColorOsFreeformCoordinator(
     }
 
     /**
-     * 面板打开期间让出屏幕：去掉暗度、摘掉触摸层。
+     * 面板打开期间让出屏幕。
      *
-     * 两件事都必须做，否则面板会被我们自己的东西盖住：
-     * - dimAmount 归零：否则窗口的 FLAG_DIM_BEHIND 会把下层的系统面板压暗，
-     *   看起来就是"一层黑色半透明遮罩盖在更多菜单上"；
-     * - 摘掉 [CornerTouchRegionView]：那块窗口覆盖屏幕下半部分且可触摸，
-     *   留着会把面板上的点击全部吃掉（用户实测：更多菜单点不动）。
+     * 「更多」面板是系统的独立窗口，我们这层必须彻底退到它后面：
+     * - 主窗口在面板模式下不画遮罩（见 [CornerRadialOverlayView] 的 backdropOnlyState），
+     *   否则会把面板整体压暗；
+     * - 摘掉 [CornerTouchRegionView]：它覆盖屏幕下半部分且可触摸，留着会吞掉
+     *   面板与工具的点击（实测：面板点不动）。
      */
     private fun applyBackdropPassThrough(view: CornerRadialOverlayView) {
         try {
@@ -1028,7 +1028,7 @@ internal class ColorOsFreeformCoordinator(
     /**
      * 底部手势区的高度（像素）。
      *
-     * 保持挂起的浮层要把这一条让给系统，否则从底部上滑会被窗口吃掉（用户实测）。
+     * 保持挂起的浮层要把这一条让给系统，否则从底部上滑会被窗口吃掉。
      * 优先读系统 navigation_bar_height（手势导航下就是那条手势区），读不到才用兜底值；
      * 再补一点余量，盖住系统实际判定的吸附边界。
      */
@@ -1052,10 +1052,10 @@ internal class ColorOsFreeformCoordinator(
      * 菜单之外的一次按下：关闭菜单。
      *
      * 主窗口不可触摸之后，点空白不再由窗口接住，只能靠 monitor 的副本"看到"。
-     * 三个区域要分清：
-     * - 菜单区域（下方一块）：由触摸窗口处理，这里不管；
-     * - 底部手势区：属于系统上滑，绝不能关菜单，否则上滑时会先闪一下；
-     * - 其余（上方）：就是"点空白"，关闭。
+     * 只有一个区域例外：
+     * - 菜单区域（下方一块）：由 [CornerTouchRegionView] 处理点选与空白关闭，这里不重复；
+     * - 其余全部关闭，**包括底部手势区**：从底部上滑是"离开当前界面"，
+     *   挂起的扇形必须一起收起，否则它会留在窗口栈里、回到桌面后重新显示出来。
      */
     private fun handleOutsideTouch(x: Float, y: Float) {
         if (overlay == null) return

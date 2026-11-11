@@ -124,11 +124,10 @@ internal class CornerGestureEngine {
             if (inward < config.inwardThreshold || upward < config.upwardThreshold) {
                 return GestureAction.PassThrough
             }
-            // 垂直上滑不是角区手势：那是系统的「回桌面 / 最近任务」。
-            // 以前只要求 inward ≥ 14dp、upward ≥ 4dp，手指从角落往上滑时
-            // 随便一点横向抖动就超过 49px，于是上滑回桌面会顺手把扇形拉起来
-            // （用户实测：回桌面后扇形自己又弹出来）。
-            // 角区手势是斜向的，inward 与 upward 量级相当；垂直上滑则 upward 远大于 inward。
+            // 垂直上滑不是角区手势，那是系统的「回桌面 / 最近任务」。
+            // 以前只要求 inward ≥ 14dp、upward ≥ 4dp 就激活，而手指从角落往上滑时
+            // 一点横向抖动就能超过 49px，于是上滑会顺手把扇形拉起来。
+            // 角区手势是斜向的（inward 与 upward 量级相当），系统上滑几乎是纯垂直。
             if (upward > inward * VERTICAL_UPWARD_RATIO) {
                 return GestureAction.PassThrough
             }
