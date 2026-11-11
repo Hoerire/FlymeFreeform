@@ -221,8 +221,16 @@ internal class ColorOsEntryCatalogBroker(
 
     private companion object {
         // 正常由"侧边栏就绪"事件驱动；这里只保留一次兜底，避免重复读取的开销。
-        const val MAX_RETRIES = 1
-        val RETRY_DELAYS_MS = longArrayOf(2_000L)
+        /**
+         * 失败重试上限。
+         *
+         * 重启 SystemUI 时侧边栏进程往往还没起来，绑定要等它冷启动。
+         * 之前只重试 1 次、间隔 2 秒，几乎必然错过窗口期，表现为"目录时有时无"。
+         * 现在按 12 秒一轮重试，给足冷启动时间；一旦拿到条目就把计数归零，
+         * 恢复正常后不会再有任何重试。
+         */
+        const val MAX_RETRIES = 10
+        val RETRY_DELAYS_MS = longArrayOf(12_000L)
     }
 
     fun invalidate() {
