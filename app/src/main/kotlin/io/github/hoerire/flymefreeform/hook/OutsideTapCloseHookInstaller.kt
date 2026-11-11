@@ -909,14 +909,18 @@ internal class OutsideTapCloseHookInstaller(
         ): Any? {
             // 只有「底部关闭」这一档才处理底部横条；它与单击/双击三选一。
             if (mode != OutsideTapCloseMode.BottomTap) return null
-            val task = getTopZoomTask.invokeUnwrapped(controller) ?: return null
-            if (!isOrdinaryZoom(controller, task)) return null
-            if (!isOnBottomHandle(controller, task, event.rawX, event.rawY)) return null
-            handleTapTask = task
-            handleTapDownX = event.rawX
-            handleTapDownY = event.rawY
-            handleTapDownTime = event.eventTime
-            return task
+            // 这条路径运行在每次触摸按下时，反射调用失败一律当作"没命中"，
+            // 不能让异常从输入回调里冒出去。
+            return runCatching {
+                val task = getTopZoomTask.invokeUnwrapped(controller) ?: return null
+                if (!isOrdinaryZoom(controller, task)) return null
+                if (!isOnBottomHandle(controller, task, event.rawX, event.rawY)) return null
+                handleTapTask = task
+                handleTapDownX = event.rawX
+                handleTapDownY = event.rawY
+                handleTapDownTime = event.eventTime
+                task
+            }.getOrNull()
         }
 
         /** 抬手判定：短点击且没移动就关闭；返回 true 表示这次手势已消费。 */
@@ -932,7 +936,10 @@ internal class OutsideTapCloseHookInstaller(
             val tooLong = event.eventTime - handleTapDownTime > ViewConfiguration.getLongPressTimeout()
             if (!moved && !tooLong) {
                 io.github.hoerire.flymefreeform.log.ModuleLog.info("BOTTOM_HANDLE_CLOSE")
-                closeTask(controller, task)
+                // 必须回主线程关窗：这里运行在输入回调线程，直接调 WMS 关窗会和
+                // 窗口自身的退出流程抢锁，严重时触发 system_server watchdog 重启
+                // （实测：开启底部关闭后点横条，整机界面重启）。
+                mainHandler.post { runCatching { closeTask(controller, task) } }
             }
             return true
         }
