@@ -14,8 +14,6 @@ internal object ModulePreferences {
     const val KEY_CORNER_TRIGGER_RANGE_DP = "corner_trigger_range_dp"
     const val KEY_RADIAL_HIT_RANGE_DP = "radial_hit_range_dp"
 
-    /** 扇形呼出时的背景模糊半径（dp）。 */
-    const val KEY_BLUR_RADIUS_DP = "blur_radius_dp"
 
     /** 扇形图标的基准直径（dp）；第三方主题图标与「更多」圆盘都按它对齐。 */
     const val KEY_RADIAL_ICON_SIZE_DP = "radial_icon_size_dp"
@@ -90,10 +88,6 @@ internal object ModulePreferences {
     const val DEFAULT_PAUSE_IN_LANDSCAPE = true
     const val DEFAULT_PAUSE_IN_GAME_MODE = true
     const val DEFAULT_VERBOSE_LOG = false
-    const val DEFAULT_BLUR_RADIUS_DP = 28
-    const val MIN_BLUR_RADIUS_DP = 0
-    const val MAX_BLUR_RADIUS_DP = 60
-
     const val DEFAULT_ZOOM_MAX_WINDOW_COUNT = 1
     const val MIN_ZOOM_MAX_WINDOW_COUNT = 1
     const val MAX_ZOOM_MAX_WINDOW_COUNT = 5
@@ -124,9 +118,6 @@ internal object ModulePreferences {
     fun coerceZoomMaxWindowCount(value: Int): Int =
         value.coerceIn(MIN_ZOOM_MAX_WINDOW_COUNT, MAX_ZOOM_MAX_WINDOW_COUNT)
 
-    /** 扇形呼出时的背景模糊半径；0 表示不模糊。 */
-    fun coerceBlurRadiusDp(value: Int): Int =
-        value.coerceIn(MIN_BLUR_RADIUS_DP, MAX_BLUR_RADIUS_DP)
 
     /** 黑名单包名：换行分隔，逐条校验，最多 200 条。 */
     fun decodePackages(raw: String?): List<String> =

@@ -781,7 +781,7 @@ internal class ColorOsFreeformCoordinator(
         // 保持挂起只影响「抬手后是否收起」，与窗口是否可触摸无关：
         // 触摸统一由 attachTouchRegion() 那块小窗口接住。
         val keepOpen = lastSettings.radialKeepOpen
-        val params = createOverlayParams(context = context)
+        val params = createOverlayParams()
         var view: CornerRadialOverlayView? = null
         try {
             view = CornerRadialOverlayView(context, this, ::debug)
@@ -983,7 +983,7 @@ internal class ColorOsFreeformCoordinator(
     }
 
     private fun showBuiltInMorePanel(view: CornerRadialOverlayView) {
-        val params = createOverlayParams(context = context)
+        val params = createOverlayParams()
         try {
             windowManager.updateViewLayout(view, params)
             view.showBuiltInMorePanel()
@@ -1161,8 +1161,6 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun createOverlayParams(
         type: Int = overlayWindowType,
-        context: Context? = null,
-        blurRadiusDp: Int = lastSettings.blurRadiusDp,
     ): WindowManager.LayoutParams {
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -1181,16 +1179,10 @@ internal class ColorOsFreeformCoordinator(
             setFitInsetsTypes(0)
             windowAnimations = 0
             title = "FlymeFreeformCornerOverlay"
-            // 呼出扇形时把身后内容做背景模糊，效果与系统下拉/多任务一致，
-            // 比给整屏盖一层黑色遮罩更接近 Flyme 的观感。半径取自设置，0 表示不模糊。
-            if (android.os.Build.VERSION.SDK_INT >= 31) {
-                val density = context?.resources?.displayMetrics?.density ?: 0f
-                val radiusDp = blurRadiusDp
-                if (density > 0f && radiusDp > 0) {
-                    flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                    blurBehindRadius = (radiusDp * density).toInt()
-                }
-            }
+            // 背景模糊（FLAG_BLUR_BEHIND）在本模块的窗口类型上不可用：
+            // TYPE_INPUT_METHOD_DIALOG 只会在 addView 那一次被系统尝试应用，
+            // 之后 updateViewLayout 不再生效，且每次尝试都会引发一次全屏合成（表现为闪烁）。
+            // 因此这里不做模糊，压暗仍由 Compose 那一层负责。
         }
     }
 

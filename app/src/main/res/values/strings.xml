@@ -64,8 +64,6 @@
     <string name="zoom_excluded_empty_summary">加入后，这些应用或服务不会以任何形式的自由浮窗打开</string>
     <string name="verbose_log_title">详细日志</string>
     <string name="verbose_log_summary">开启后记录详细的诊断日志，在 LSPosed 里导出给开发者，立即生效</string>
-    <string name="radial_blur_title">背景模糊</string>
-    <string name="radial_blur_summary">扇形呼出时对身后内容的模糊程度，0 为不模糊</string>
     <string name="outside_tap_close_title">关闭小窗</string>
     <string name="outside_tap_close_summary">关闭小窗的触发方式</string>
     <string name="outside_tap_mode_disabled">不执行</string>
