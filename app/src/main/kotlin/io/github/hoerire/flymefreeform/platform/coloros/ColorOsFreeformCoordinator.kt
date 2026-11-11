@@ -782,8 +782,7 @@ internal class ColorOsFreeformCoordinator(
         // 保持挂起只影响「抬手后是否收起」，与窗口是否可触摸无关：
         // 触摸统一由 attachTouchRegion() 那块小窗口接住。
         val keepOpen = lastSettings.radialKeepOpen
-        val density = context.resources.displayMetrics.density
-        val params = createOverlayParams(density = density)
+        val params = createOverlayParams()
         var view: CornerRadialOverlayView? = null
         try {
             view = CornerRadialOverlayView(context, this, ::debug)
@@ -810,11 +809,7 @@ internal class ColorOsFreeformCoordinator(
                 trace("SYSTEM_OVERLAY_TYPE_" + OVERLAY_WINDOW_TYPE)
             } catch (exception: RuntimeException) {
                 // 输入法层的窗口类型被系统拒绝时，退回普通悬浮窗，至少保证扇形可用。
-                val fallback =
-                    createOverlayParams(
-                        type = FALLBACK_OVERLAY_TYPE,
-                        density = context.resources.displayMetrics.density,
-                    )
+                val fallback = createOverlayParams(type = FALLBACK_OVERLAY_TYPE)
                 windowManager.addView(view, fallback)
                 overlayWindowType = FALLBACK_OVERLAY_TYPE
                 logger(Log.WARN, "SYSTEM_OVERLAY_TYPE_FALLBACK_" + FALLBACK_OVERLAY_TYPE, exception)
@@ -995,7 +990,7 @@ internal class ColorOsFreeformCoordinator(
     }
 
     private fun showBuiltInMorePanel(view: CornerRadialOverlayView) {
-        val params = createOverlayParams(density = context.resources.displayMetrics.density)
+        val params = createOverlayParams()
         try {
             windowManager.updateViewLayout(view, params)
             view.showBuiltInMorePanel()
@@ -1173,7 +1168,6 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun createOverlayParams(
         type: Int = overlayWindowType,
-        density: Float = 0f,
         backgroundEffect: Int = lastSettings.backgroundEffect,
     ): WindowManager.LayoutParams {
         return WindowManager.LayoutParams(
@@ -1196,17 +1190,23 @@ internal class ColorOsFreeformCoordinator(
             // 背景模糊：必须先声明为「受信任浮层」，否则 ColorOS 会静默忽略
             // FLAG_BLUR_BEHIND（窗口类型不是限制，缺的是这个标记）。
             // setTrustedOverlay 在部分版本是隐藏 API，用反射并在失败时静默降级。
+            // 半径与 FLAG 必须成对设置：只开 FLAG 而半径为 0，系统会做一次无效模糊，
+            // 表现为"没有模糊效果但多一次合成"——也就是闪烁。
             val radiusDp = backgroundEffect.coerceAtLeast(0)
-            if (radiusDp > 0) {
+            val radiusPx =
+                if (radiusDp > 0) {
+                    (radiusDp * context.resources.displayMetrics.density).toInt()
+                } else {
+                    0
+                }
+            if (radiusPx > 0) {
                 runCatching {
                     WindowManager.LayoutParams::class.java
                         .getMethod("setTrustedOverlay")
                         .invoke(this)
                 }
                 flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                if (density > 0f) {
-                    blurBehindRadius = (radiusDp * density).toInt()
-                }
+                blurBehindRadius = radiusPx
             }
         }
     }
