@@ -522,6 +522,8 @@ internal class ColorOsFreeformCoordinator(
     // 抢流不可逆，所以必须等引擎确认这是角落斜推（Activate）再抢，不能让普通点击陪葬。
     private val pilferEngine = CornerGestureEngine()
     private var pilferConfig: CornerGestureConfig? = null
+    private var pilferDownX = 0f
+    private var pilferDownY = 0f
 
     private fun shouldStartPilfer(event: MotionEvent): Boolean =
         when (event.actionMasked) {
@@ -544,6 +546,8 @@ internal class ColorOsFreeformCoordinator(
                             rightEnabled = settings.rightCornerEnabled,
                         )
                     pilferConfig = config
+                    pilferDownX = event.x
+                    pilferDownY = event.y
                     pilferEngine.down(event.getPointerId(0), event.x, event.y, config)
                     false
                 }
@@ -551,11 +555,34 @@ internal class ColorOsFreeformCoordinator(
             MotionEvent.ACTION_MOVE -> {
                 val config = pilferConfig ?: return false
                 val index = event.findPointerIndex(event.getPointerId(0)).coerceAtLeast(0)
+                val x = event.getX(index)
+                val y = event.getY(index)
+                // 抢流时机提前到"刚越过 touchSlop"：
+                // 等引擎判 Activate 需要 inward≥49px、upward≥14px，这段距离里应用已经收到
+                // 十几个 MOVE，足够它把这次滑动当成横向滚动先滚一下——抢走后再回弹，
+                // 用户看到的就是"页面左右抖一下"。
+                // 这里在位移刚过 slop 时按方向分流：偏内 → 角区手势，立刻抢；
+                // 偏上 → 系统上滑，放弃并清掉候选，不陪葬。
+                if (pilferEngine.phase == GesturePhase.Armed) {
+                    val downX = pilferDownX
+                    val downY = pilferDownY
+                    val isLeftSide = downX <= config.displayWidth / 2f
+                    val inward = if (isLeftSide) x - downX else downX - x
+                    val upward = downY - y
+                    val distance = kotlin.math.sqrt(inward * inward + upward * upward)
+                    if (distance < touchSlop) return false
+                    if (upward > inward * VERTICAL_ABORT_RATIO) {
+                        pilferEngine.cancel()
+                        pilferConfig = null
+                        return false
+                    }
+                    return true
+                }
                 pilferEngine.move(
                     event.getPointerId(index),
                     event.pointerCount,
-                    event.getX(index),
-                    event.getY(index),
+                    x,
+                    y,
                     config,
                 ) is GestureAction.Activate
             }
@@ -1436,6 +1463,12 @@ internal class ColorOsFreeformCoordinator(
         const val CANCEL_WATCH_MS = 150L
         /** 两次指针事件间隔超过这个值，就认为上一次会话已经结束，避免状态卡死。 */
         const val SESSION_GAP_MS = 800L
+
+        /**
+         * 判定"这是系统上滑不是角区手势"的比值：upward 超过 inward 这么多倍就放弃抢流。
+         * 垂直上滑要留给系统回桌面，抢了会让上滑失效。
+         */
+        const val VERTICAL_ABORT_RATIO = 2.5f
         /** 读不到系统导航栏高度时的兜底值（dp）。 */
         const val BOTTOM_GESTURE_INSET_DP = 40f
         /** WindowManager.LayoutParams.TOUCHABLE_INSETS_REGION 是 @hide 常量。 */
