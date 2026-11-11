@@ -356,6 +356,9 @@ internal class ColorOsFreeformCoordinator(
                             handler.post { handleOutsideTouch(x, y) }
                             cornerStream = false
                         } else {
+                            // 区域归属只在 DOWN 判定一次。之前每个事件都重算，
+                            // 手指从角落滑出该区域后 cornerStream 变 false，后续 MOVE
+                            // 全被放行给应用，页面先横向滚动一下才被抢走——就是抖动。
                             cornerStream = isInCornerZone(event)
                         }
                     }
