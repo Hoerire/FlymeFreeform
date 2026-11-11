@@ -366,15 +366,11 @@ internal class ColorOsFreeformCoordinator(
                         false
                     } else {
                         enqueuePointerEvent(event, generation)
-                        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                            // 角落按下就立刻抢流：只要应用先收到一帧 MOVE，它就会把
-                            // 这次拖动当成横向滚动滚一段，抢回来再回弹就是"横移"。
-                            // 与其等位移阈值，不如从 DOWN 起就不让应用参与。
-                            shouldStartPilfer(event)
-                            true
-                        } else {
-                            shouldStartPilfer(event)
-                        }
+                        // 绝不能在 DOWN 就抢流：pilfer 拿走的是整条流，点击的 UP 也一并被
+                        // 拿走，角落区就彻底点不上了。挖角本来只挡系统手势，点击必须留给应用。
+                        // 所以维持"极小位移阈值"：应用能收到完整 DOWN/UP（点击正常），
+                        // 一旦开始拖动就在 6px 处抢走，页面来不及滚出可见位移。
+                        shouldStartPilfer(event)
                     }
                 },
                 logger = logger,
