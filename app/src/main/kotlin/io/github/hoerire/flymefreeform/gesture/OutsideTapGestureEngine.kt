@@ -88,6 +88,11 @@ internal class OutsideTapGestureEngine {
                 true
             }
             OutsideTapCloseMode.DoubleTap -> finishDoubleTap(active.task, x, y, eventTime, doubleTapTimeout, doubleTapSlop)
+            // 底部关闭只认小窗底部横条，窗外点击一律不关。
+            OutsideTapCloseMode.BottomTap -> {
+                previousTap = null
+                false
+            }
         }
     }
 

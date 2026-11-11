@@ -73,6 +73,7 @@ internal fun ZoomOptionsScreen(
             DropdownItem(text = stringResource(R.string.outside_tap_mode_disabled)),
             DropdownItem(text = stringResource(R.string.outside_tap_mode_single)),
             DropdownItem(text = stringResource(R.string.outside_tap_mode_double)),
+            DropdownItem(text = stringResource(R.string.outside_tap_mode_bottom)),
         )
     SettingsPage(
         title = stringResource(R.string.zoom_limit_removed_title),
