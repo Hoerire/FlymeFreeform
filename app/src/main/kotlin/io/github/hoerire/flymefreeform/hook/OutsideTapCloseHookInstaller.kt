@@ -75,6 +75,8 @@ internal class OutsideTapCloseHookInstaller(
                             !environment.isForegroundExcluded()
                     },
                 )
+            // 触摸回调里需要读当前配置：由外层注入，避免反射类持有 configuration。
+            ColorOsOutsideTapAccess.currentSettings = { configuration.snapshot }
             module
                 .hook(updateTouchableRegion)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -87,16 +89,6 @@ internal class OutsideTapCloseHookInstaller(
                         return@intercept chain.proceed()
                     }
                     access.rememberRegion(caption, originalRegion)
-                    // 顺便登记底部横条：它的触摸 hook 需要知道"这个 view 属于哪个 task"。
-                    runCatching {
-                        val task = access.taskOf(caption) ?: return@runCatching
-                        val owner = access.controllerOfCaption(caption)
-                        if (owner != null &&
-                            configuration.snapshot.outsideTapCloseMode == OutsideTapCloseMode.BottomTap
-                        ) {
-                            access.rememberBottomHandle(caption, task, owner)
-                        }
-                    }
                     val protectedRegion =
                         try {
                             access.buildProtectedRegion(caption, originalRegion, configuration.snapshot)
@@ -116,29 +108,25 @@ internal class OutsideTapCloseHookInstaller(
                     access.markProtected(caption, protectedRegion.task)
                     result
                 }
-            // 底部关闭：直接 hook 横条 View 的触摸。
+            // 底部关闭：hook FlexibleCaptionView.dispatchTouchEvent。
             //
-            // 不再用"坐标落在小窗底部"去猜——那套在窗口缩放、IME、横屏下都会偏，
-            // 而且需要额外反射，反而更容易出问题。这里拿到 FlexibleCaptionView
-            // 自己的 mBottomHandleView，只对这一个 view 的点击做判定。
+            // 不能挂 android.view.View#onTouchEvent —— 那是所有控件共用的方法，
+            // 等于给整机每个 View 的触摸分发都插一层，实测会触发 system_server 重启。
+            // 参照 com.oupao.wiz 的做法（它 hook 的同样是 caption 自己的
+            // dispatchTouchEvent，日志里写的是 "BarTap: dispatchTouchEvent"）：
+            // 只挂小窗标题层自己的分发入口，影响面仅限于小窗。
             runCatching {
-                val viewClass = classLoader.loadClass("android.view.View")
-                val onTouchEvent =
-                    viewClass.getDeclaredMethod("onTouchEvent", android.view.MotionEvent::class.java)
+                val dispatchTouchEvent =
+                    captionClass.requiredMethod("dispatchTouchEvent", MotionEvent::class.java)
                 module
-                    .hook(onTouchEvent)
+                    .hook(dispatchTouchEvent)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .setId("flymefreeform.system.bottom_handle_tap")
                     .intercept { chain ->
-                        val view = chain.thisObject as? View
+                        val caption = chain.thisObject
                         val event = chain.getArg(0) as? MotionEvent
-                        if (view != null && event != null) {
-                            val controller = access.controllerOf(view)
-                            if (controller != null) {
-                                runCatching {
-                                    access.handleBottomHandleTouch(view, controller, event)
-                                }
-                            }
+                        if (caption != null && event != null) {
+                            runCatching { access.onCaptionTouch(caption, event) }
                         }
                         chain.proceed()
                     }
@@ -631,6 +619,9 @@ internal class OutsideTapCloseHookInstaller(
 
         fun controllerOfCaption(caption: Any): Any? = captionControllerField.get(caption)
 
+        /** 当前配置快照（由外层注入，避免在反射类里持有引用）。 */
+        var currentSettings: () -> io.github.hoerire.flymefreeform.config.ModuleSettingsSnapshot? = { null }
+
         /** 从横条 view 反查它所属的小窗控制器。 */
         fun controllerOf(view: View): Any? = synchronized(bottomHandleViews) {
             bottomHandleViews[view]?.controller
@@ -934,72 +925,68 @@ internal class OutsideTapCloseHookInstaller(
             return py >= bounds.bottom - handleHeight && py <= bounds.bottom
         }
 
-        /**
-         * 小窗底部横条（FlexibleCaptionView.mBottomHandleView）。
-         *
-         * 这个功能不做任何防穿透：横条本来就在窗口内部，点击照常交给窗口，
-         * 我们只把它的点击事件拦出来直接关窗。
-         */
-        private class HandleBinding(val task: Any, val controller: Any)
+        /** 底部条带高度（dp）：从窗口底边往上这一段算小白条。 */
+        private val stripHeightPx = 32
 
-        private val bottomHandleViews = java.util.WeakHashMap<Any, HandleBinding>()
-
-        private fun bottomHandleField(captionClass: Class<*>, name: String): Field? =
-            runCatching { captionClass.getDeclaredField(name).apply { isAccessible = true } }.getOrNull()
-
-        /** 记录 caption 的底部横条与所属 task/controller，供触摸 hook 使用。 */
-        fun rememberBottomHandle(caption: Any, task: Any, controller: Any): View? {
-            val view = bottomHandleField(caption.javaClass, "mBottomHandleView")
-                ?.get(caption) as? View ?: return null
-            synchronized(bottomHandleViews) { bottomHandleViews[view] = HandleBinding(task, controller) }
-            return view
-        }
-
-        fun taskForBottomHandle(view: Any): Any? = synchronized(bottomHandleViews) {
-            bottomHandleViews[view]?.task
-        }
-
-        fun forgetBottomHandle(view: Any) {
-            synchronized(bottomHandleViews) { bottomHandleViews.remove(view) }
-        }
+        /** 条带上下容差（dp），对应 oupao 的 6dp / 3dp。 */
+        private val stripSlackPx = 6
 
         /**
-         * 横条点击判定：DOWN 记录、UP 比对位移与时长，短点击才关窗。
+         * 底部关闭：处理 FlexibleCaptionView 的触摸分发。
          *
-         * 关窗必须 post 到主线程：输入回调线程直接调 WMS 会和窗口退出流程抢锁，
-         * watchdog 超时就是整机界面重启（实测过）。
+         * 判定沿用 oupao.wiz 的 inStrip：点落在窗口底部、水平两侧各让出一部分，
+         * 避免小窗下沿左右角被误判。只有"短点击"才关窗，左右快滑（贴边）、
+         * 拖动、上滑迷你窗都会因为位移超过 touchSlop 而不触发。
          */
-        fun handleBottomHandleTouch(
-            view: View,
-            controller: Any,
-            event: MotionEvent,
-        ): Boolean {
-            val task = taskForBottomHandle(view) ?: return false
+        fun onCaptionTouch(caption: Any, event: MotionEvent) {
+            val task = captionTaskField.get(caption) ?: return
+            val controller = captionControllerField.get(caption) ?: return
+            val settings = currentSettings() ?: return
+            if (settings.outsideTapCloseMode != OutsideTapCloseMode.BottomTap) return
+            if (!isOrdinaryZoom(controller, task)) return
+            val bounds = visibleTaskBounds(controller, task) ?: return
+            if (bounds.isEmpty) return
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     handleTapTask = task
-                    handleTapDownX = event.x
-                    handleTapDownY = event.y
+                    handleTapDownX = event.rawX
+                    handleTapDownY = event.rawY
                     handleTapDownTime = event.eventTime
                 }
                 MotionEvent.ACTION_UP -> {
-                    val active = handleTapTask ?: return false
+                    val active = handleTapTask
                     handleTapTask = null
-                    if (active !== task) return false
+                    if (active !== task) return
+                    if (!inStrip(event.rawX, event.rawY, bounds, controller)) return
+                    if (!inStrip(handleTapDownX, handleTapDownY, bounds, controller)) return
                     val configuration = viewConfiguration(controller)
                     val slop = configuration.scaledTouchSlop.toFloat()
-                    val dx = event.x - handleTapDownX
-                    val dy = event.y - handleTapDownY
+                    val dx = event.rawX - handleTapDownX
+                    val dy = event.rawY - handleTapDownY
                     val moved = dx * dx + dy * dy > slop * slop
                     val tooLong = event.eventTime - handleTapDownTime > ViewConfiguration.getLongPressTimeout()
                     if (!moved && !tooLong) {
                         io.github.hoerire.flymefreeform.log.ModuleLog.info("BOTTOM_HANDLE_CLOSE")
+                        // 回主线程关窗：输入线程直接调 WMS 会和退出流程抢锁。
                         mainHandler.post { runCatching { closeTask(controller, task) } }
                     }
                 }
                 MotionEvent.ACTION_CANCEL -> handleTapTask = null
             }
-            return false
+        }
+
+        /** 点是否落在小窗底部的小白条带内（与 oupao.wiz 的 inStrip 同一算法）。 */
+        private fun inStrip(x: Float, y: Float, bounds: Rect, controller: Any): Boolean {
+            if (bounds.width() <= 0 || bounds.height() <= 0) return false
+            val density = (contextField.get(controller) as? Context)
+                ?.resources?.displayMetrics?.density ?: 1f
+            val height = (stripHeightPx * density).toInt()
+            val slack = (stripSlackPx * density).toInt()
+            val sideMargin = bounds.width() * 15 / 100
+            if (x < bounds.left + sideMargin - slack || x > bounds.right - sideMargin + slack) {
+                return false
+            }
+            return y >= bounds.bottom - height && y <= bounds.bottom + slack
         }
 
         private fun isInsideVisibleIme(displayContent: Any, x: Int, y: Int): Boolean {
