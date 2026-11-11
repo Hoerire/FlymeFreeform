@@ -720,8 +720,13 @@ internal class OutsideTapCloseHookInstaller(
          * 只有窗口仍然存在时才补一次关闭。
          */
         fun closeIfStillValid(listener: Any, task: Any) {
-            if (!environmentAllowed()) return
             val controller = controllerField.get(listener) ?: return
+            closeTask(controller, task)
+        }
+
+        /** 执行关闭；调用方保证 controller/task 来源正确。 */
+        fun closeTask(controller: Any, task: Any) {
+            if (!environmentAllowed()) return
             if (getTopZoomTask.invokeUnwrapped(controller) !== task || !isOrdinaryZoom(controller, task)) {
                 return
             }
