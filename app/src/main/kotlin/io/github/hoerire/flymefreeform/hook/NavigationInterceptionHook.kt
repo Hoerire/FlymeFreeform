@@ -130,8 +130,10 @@ internal class NavigationInterceptionHook(
         if (corners.isEmpty()) return
         var carved = rects
         for (corner in corners) carved = subtract(carved, corner)
-        // 没有真的变少，说明这块区域本来就不覆盖角落：不改写，避免无谓扰动。
-        if (carved.size == rects.size) return null
+        // 判"有没有真的改动"要比内容，不能比数量：
+        // 一条竖长条减去底部角落之后还是一条，只是变短了，数量不变。
+        // 之前用 size 比较，会把这种成功的挖角当成"没变化"直接丢掉。
+        if (sameRects(carved, rects)) return null
         val restored = writeRectangles(original, carved) ?: return null
         val patched = args.toTypedArray()
         patched[index] = restored
@@ -213,6 +215,19 @@ internal class NavigationInterceptionHook(
         if (settings.leftCornerEnabled) corners.add(RectF(0f, top, widthPx, bottom))
         if (settings.rightCornerEnabled) corners.add(RectF(width - widthPx, top, width, bottom))
         return corners
+    }
+
+    /** 两组矩形是否逐项相同（含尺寸）。 */
+    private fun sameRects(first: List<RectF>, second: List<RectF>): Boolean {
+        if (first.size != second.size) return false
+        for (index in first.indices) {
+            val a = first[index]
+            val b = second[index]
+            if (a.left != b.left || a.top != b.top || a.right != b.right || a.bottom != b.bottom) {
+                return false
+            }
+        }
+        return true
     }
 
     /** 从一组矩形里减去一块，返回剩下的部分（最多裂成四块）。 */
