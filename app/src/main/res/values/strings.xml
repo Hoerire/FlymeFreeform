@@ -79,7 +79,6 @@
     <string name="zoom_group_launch_title">应用启动</string>
     <string name="zoom_group_window_title">窗口行为</string>
     <string name="zoom_group_gesture_title">手势与关闭</string>
-    <string name="zoom_group_locked_hint">「轻量打开」关闭时整组不生效</string>
     <string name="zoom_options_summary">小窗数量、启动场景与窗口操作</string>
     <string name="zoom_max_windows_title">小窗数量</string>
     <string name="zoom_max_windows_summary">同时存在的自由浮窗个数</string>

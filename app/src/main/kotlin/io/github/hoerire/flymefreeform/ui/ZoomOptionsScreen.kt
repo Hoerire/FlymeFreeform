@@ -1,10 +1,7 @@
 package io.github.hoerire.flymefreeform.ui
 
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.MoreVert
@@ -19,7 +16,6 @@ import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -78,8 +74,6 @@ internal fun ZoomOptionsScreen(
             DropdownItem(text = stringResource(R.string.outside_tap_mode_single)),
             DropdownItem(text = stringResource(R.string.outside_tap_mode_double)),
         )
-    val locked = stringResource(R.string.zoom_group_locked_hint)
-
     SettingsPage(
         title = stringResource(R.string.zoom_limit_removed_title),
         onBack = onBack,
@@ -101,10 +95,7 @@ internal fun ZoomOptionsScreen(
         }
 
         item(key = "launch_title") {
-            SectionTitle(
-                text = stringResource(R.string.zoom_group_launch_title),
-                note = if (master) null else locked,
-            )
+            SectionTitle(text = stringResource(R.string.zoom_group_launch_title))
         }
         item(key = "launch") {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -161,10 +152,7 @@ internal fun ZoomOptionsScreen(
         }
 
         item(key = "window_title") {
-            SectionTitle(
-                text = stringResource(R.string.zoom_group_window_title),
-                note = if (master) null else locked,
-            )
+            SectionTitle(text = stringResource(R.string.zoom_group_window_title))
         }
         item(key = "window") {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -209,10 +197,7 @@ internal fun ZoomOptionsScreen(
         }
 
         item(key = "gesture_title") {
-            SectionTitle(
-                text = stringResource(R.string.zoom_group_gesture_title),
-                note = null,
-            )
+            SectionTitle(text = stringResource(R.string.zoom_group_gesture_title))
         }
         item(key = "gesture") {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -247,26 +232,14 @@ internal fun ZoomOptionsScreen(
  * 右侧的 note 用更弱的颜色，避免和标题抢注意力。
  */
 @Composable
-private fun SectionTitle(text: String, note: String?) {
-    Row(
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MiuixTheme.textStyles.body2,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = text,
-            style = MiuixTheme.textStyles.body2,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        )
-        if (note != null) {
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = "· " + note,
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.disabledOnSecondaryVariant,
-            )
-        }
-    }
+    )
 }
