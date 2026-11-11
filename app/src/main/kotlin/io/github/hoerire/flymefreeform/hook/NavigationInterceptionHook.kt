@@ -84,9 +84,13 @@ internal class NavigationInterceptionHook(
                     firstHitReported = true
                     ModuleLog.info("NAV_REGION_FIRST_HIT_" + method.name)
                 }
-                runCatching { carve(chain.args) }
-                    .onFailure { ModuleLog.warn("NAV_REGION_CARVE_FAILED", it) }
-                chain.proceed()
+                // libxposed 的 Chain.args 是只读 List：往里赋值会静默失败。
+                // 改参数只能走 proceed(Object[]) 这个重载。
+                val patched =
+                    runCatching { carve(chain.args) }
+                        .onFailure { ModuleLog.warn("NAV_REGION_CARVE_FAILED", it) }
+                        .getOrNull()
+                if (patched != null) chain.proceed(patched) else chain.proceed()
             }
     }
 
@@ -108,8 +112,12 @@ internal class NavigationInterceptionHook(
             Collection::class.java.isAssignableFrom(type) ||
             Iterable::class.java.isAssignableFrom(type)
 
-    /** 在参数里找承载矩形的那一项，挖角后写回；找不到就原样放行。 */
-    private fun carve(args: List<Any?>) {
+    /**
+     * 在参数里找承载矩形的那一项，挖角后返回**新的参数数组**；没有变化时返回 null。
+     *
+     * 返回数组而不是改 args：Chain.args 只读，修改只能通过 proceed(newArgs) 生效。
+     */
+    private fun carve(args: List<Any?>): Array<Any?>? {
         val settings = configuration.snapshot
         if (!settings.enabled) return
         if (!settings.leftCornerEnabled && !settings.rightCornerEnabled) return
@@ -122,13 +130,13 @@ internal class NavigationInterceptionHook(
         if (corners.isEmpty()) return
         var carved = rects
         for (corner in corners) carved = subtract(carved, corner)
-        // 没有真的变少，说明这块区域本来就不覆盖角落：不写回，避免无谓扰动。
-        if (carved.size == rects.size) return
-        val restored = writeRectangles(original, carved) ?: return
-        // chain.args 是只读视图时放弃写回，交给系统原样处理。
-        val mutable = args as? MutableList<Any?> ?: return
-        mutable[index] = restored
+        // 没有真的变少，说明这块区域本来就不覆盖角落：不改写，避免无谓扰动。
+        if (carved.size == rects.size) return null
+        val restored = writeRectangles(original, carved) ?: return null
+        val patched = args.toTypedArray()
+        patched[index] = restored
         ModuleLog.info("NAV_REGION_CARVED_" + rects.size + "_TO_" + carved.size)
+        return patched
     }
 
     private fun readRectangles(value: Any?): List<RectF>? =
