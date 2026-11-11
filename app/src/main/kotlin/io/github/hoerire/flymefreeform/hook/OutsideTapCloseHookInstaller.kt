@@ -381,7 +381,7 @@ internal class OutsideTapCloseHookInstaller(
         /** 关闭去重时间戳：同一窗口短时间内只关一次。 */
         private var lastCloseAt = 0L
 
-        // 底部关闭的按下状态（captions 的 dispatchTouchEvent 里记录）
+        /** 底部关闭的按下状态，在 caption 的 dispatchTouchEvent 里记录。 */
         private var handleTapTask: Any? = null
         private var handleDownX = 0f
         private var handleDownY = 0f
@@ -730,10 +730,9 @@ internal class OutsideTapCloseHookInstaller(
         /**
          * 「底部关闭」：处理 FlexibleCaptionView 的触摸分发。
          *
-         * hook 点与 com.oupao.wiz 完全一致（它 hook 的也是 caption 自己的
-         * dispatchTouchEvent，日志里写 "BarTap: dispatchTouchEvent"）。
-         * 绝不能挂 android.view.View#onTouchEvent —— 那是所有控件共用的方法，
-         * 给整机每个 View 插一层会直接拖垮 system_server（前面就是这么崩的）。
+         * hook 点与 com.oupao.wiz 一致（它挂的也是 caption 自己的 dispatchTouchEvent）。
+         * 不能改挂 android.view.View#onTouchEvent：那是所有控件共用的方法，
+         * 等于给整机每个 View 的触摸分发插一层，会拖垮 system_server。
          */
         fun onCaptionTouch(caption: Any, event: MotionEvent) {
             val settings = settingsProvider() ?: return
@@ -812,8 +811,7 @@ internal class OutsideTapCloseHookInstaller(
          * 4. exitFlexibleTaskWindowInnerLocked(strategy)；
          * 5/6. 失败时退回 View 层：mCloseView.performClick()，再失败合成点击。
          *
-         * 缺少 2、3 两步入会直接调 WMS，窗口状态与系统不一致，反复关闭会拖垮
-         * system_server（前几轮就是这么崩的）。
+         * 缺 2、3 两步直接调 WMS，窗口状态会和系统不一致，反复关闭会拖垮 system_server。
          */
         fun closeTask(controller: Any, task: Any, caption: Any?) {
             if (!environmentAllowed()) return
