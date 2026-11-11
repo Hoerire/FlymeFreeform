@@ -765,9 +765,12 @@ internal class OutsideTapCloseHookInstaller(
                     if (!inStrip(event.rawX, event.rawY, bounds, controller)) return
                     val density = (contextField.get(controller) as? Context)
                         ?.resources?.displayMetrics?.density ?: 1f
-                    val slop = (TAP_MAX_DRIFT_DP * density)
                     val dx = event.rawX - handleDownX
                     val dy = event.rawY - handleDownY
+                    // 向上移动即上滑手势（变迷你窗）：轻扫的特点就是位移小、速度快，
+                    // 单靠位移阈值拦不住，必须单独看方向，否则上滑会被当成点击关窗。
+                    if (handleDownY - event.rawY > TAP_UPWARD_GUARD_DP * density) return
+                    val slop = (TAP_MAX_DRIFT_DP * density)
                     if (dx * dx + dy * dy > slop * slop) return
                     io.github.hoerire.flymefreeform.log.ModuleLog.info("BOTTOM_CLOSE_TAP")
                     mainHandler.post { runCatching { closeTask(controller, task, caption) } }
@@ -1082,6 +1085,14 @@ internal class OutsideTapCloseHookInstaller(
         /** 点击判定：抬手超过这个时长算长按，位移超过这个距离算滑动。 */
         const val TAP_MAX_DURATION_MS = 400L
         const val TAP_MAX_DRIFT_DP = 8f
+
+        /**
+         * 向上移动超过这个距离就判为上滑（变迷你窗）。
+         *
+         * 上滑是速度触发，位移往往很小，用 TAP_MAX_DRIFT_DP 拦不住；
+         * 只要方向朝上就先放行，避免把迷你窗手势当成点击。
+         */
+        const val TAP_UPWARD_GUARD_DP = 4f
         const val SCALE_TOLERANCE = 0.02f
         const val FAILURE_LOG_INTERVAL_MS = 10_000L
     }
