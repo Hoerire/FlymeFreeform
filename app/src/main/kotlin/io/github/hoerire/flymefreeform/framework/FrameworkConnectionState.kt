@@ -53,6 +53,7 @@ internal data class FrameworkConnectionState(
             linkedSetOf(
                 "system",
                 "com.android.systemui",
+                "com.android.launcher",
                 "com.coloros.smartsidebar",
             )
     }
