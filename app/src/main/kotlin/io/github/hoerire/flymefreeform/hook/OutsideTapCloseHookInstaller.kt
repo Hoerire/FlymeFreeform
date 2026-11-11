@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Rect
 import android.graphics.Region
-import android.graphics.RegionIterator
 import android.os.SystemClock
 import android.util.Log
 import android.view.InputDevice
@@ -25,8 +24,6 @@ import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.util.IdentityHashMap
 import java.util.WeakHashMap
-import kotlin.math.ceil
-import kotlin.math.floor
 
 /** 扩展 ColorOS 自有全局指针监听，只处理已验证的普通小窗窗外短点击。 */
 @SuppressLint("PrivateApi")
@@ -353,6 +350,9 @@ internal class OutsideTapCloseHookInstaller(
     ) {
         private val controllerField = listenerClass.requiredField("this$0")
 
+        /** 双击关闭由输入线程触发，关闭动作必须回到主线程执行。 */
+        private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
         private val contextField = controllerClass.requiredField("mContext")
         private val flexibleTasksField = controllerClass.requiredField("mFlexibleTasks")
         private val captionTaskField = captionClass.requiredField("mTask")
@@ -444,74 +444,24 @@ internal class OutsideTapCloseHookInstaller(
             val mode =
                 if (settings.enabled && environmentAllowed()) settings.outsideTapCloseMode
                 else OutsideTapCloseMode.Disabled
-            if (mode == OutsideTapCloseMode.Disabled) return clearProtection(caption, "MODE_OFF")
+            if (mode == OutsideTapCloseMode.Disabled) {
+                OutsideTapGate.clear()
+                return clearProtection(caption, "MODE_OFF")
+            }
             if (!isOrdinaryZoom(controller, task)) return clearProtection(caption, "NOT_ZOOM")
-            if (hasMenuShowing.invokeUnwrapped(controller) == true) {
-                return clearProtection(caption, "MENU_SHOWING")
-            }
-            val displayContent = getDisplayContent.invokeUnwrapped(task)
-                ?: return clearProtection(caption, "NO_DISPLAY")
-            if (isIgnoreExpandRegion.invokeUnwrapped(controller, displayContent) == true) {
-                return clearProtection(caption, "IGNORE_REGION")
-            }
-            val captionView = caption as? View ?: return clearProtection(caption, "NOT_VIEW")
-            val localWidth = captionView.width
-            val localHeight = captionView.height
-            val visibleBounds = visibleTaskBounds(controller, task)
-                ?: return clearProtection(caption, "NO_BOUNDS")
-            val displayBounds = getDisplayBounds.invokeUnwrapped(displayContent) as? Rect
-                ?: return clearProtection(caption, "NO_DISPLAY_BOUNDS")
-            if (localWidth <= 0 || localHeight <= 0) {
-                return clearProtection(caption, "CAPTION_ZERO")
-            }
-            if (visibleBounds.isEmpty || displayBounds.isEmpty) {
-                return clearProtection(caption, "BOUNDS_EMPTY")
-            }
-            val scaleX = visibleBounds.width().toFloat() / localWidth
-            val scaleY = visibleBounds.height().toFloat() / localHeight
-            if (!scaleX.isFinite() || !scaleY.isFinite() || scaleX <= 0f || scaleY <= 0f) {
-                return clearProtection(caption, "SCALE_INVALID")
-            }
-            if (kotlin.math.abs(scaleX - scaleY) > SCALE_TOLERANCE) {
-                diag { "REGION_SCALE_MISMATCH_" + scaleX + "_" + scaleY }
-                return clearProtection(caption, "SCALE_MISMATCH")
-            }
-
-            val outsideOnScreen = Region(displayBounds)
-            outsideOnScreen.op(visibleBounds, Region.Op.DIFFERENCE)
-            allFlexibleTaskBounds(controller).forEach { bounds ->
-                outsideOnScreen.op(bounds, Region.Op.DIFFERENCE)
-            }
-            val context = contextField.get(controller) as? Context ?: return clearProtection(caption)
-            val statusBarBottom = displayBounds.top + statusBarHeight(context)
-            if (statusBarBottom > displayBounds.top) {
-                outsideOnScreen.op(
-                    Rect(displayBounds.left, displayBounds.top, displayBounds.right, statusBarBottom),
-                    Region.Op.DIFFERENCE,
-                )
-            }
-            val excludedRegion =
-                updateTapExcludeRegion.invokeUnwrapped(controller, displayContent, null) as? Region
-            if (excludedRegion != null && !excludedRegion.isEmpty) {
-                outsideOnScreen.op(excludedRegion, Region.Op.DIFFERENCE)
-            }
-            visibleImeRegion(displayContent)?.let { imeRegion ->
-                outsideOnScreen.op(imeRegion, Region.Op.DIFFERENCE)
-            }
-            if (outsideOnScreen.isEmpty) return clearProtection(caption, "OUTSIDE_EMPTY")
-
-            val localOutside =
-                screenToCaptionRegion(
-                    screenRegion = outsideOnScreen,
-                    visibleBounds = visibleBounds,
-                    scaleX = scaleX,
-                    scaleY = scaleY,
-                )
-            if (localOutside.isEmpty) return clearProtection(caption, "LOCAL_OUTSIDE_EMPTY")
-            val protectedRegion = Region(originalRegion)
-            protectedRegion.op(localOutside, Region.Op.UNION)
-            diag { "REGION_OK" }
-            return ProtectedTouchableRegion(task, protectedRegion)
+            // 两种模式都不再扩展触摸区：用户要的正是"小窗开着也能操作下层应用"。
+            // 不穿透改由输入过滤器负责——它扣住窗外的那一下，判定清楚再决定
+            // 补发（不是单击）还是丢弃并关窗。这里只把"窗口在哪、怎么关"同步给闸门。
+            val guardBounds = visibleTaskBounds(controller, task)
+            OutsideTapGate.update(
+                nextMode = mode,
+                windowBounds = guardBounds,
+                onClose = {
+                    mainHandler.post { closeTask(controller, task) }
+                },
+            )
+            diag { "OUTSIDE_TAP_GUARD_" + mode.name + "_bounds_" + (guardBounds != null) }
+            return clearProtection(caption, "INPUT_GUARD_ACTIVE")
         }
 
         /**
@@ -577,50 +527,11 @@ internal class OutsideTapCloseHookInstaller(
         private fun isProtected(task: Any): Boolean =
             synchronized(protectedTasks) { protectedTasks.containsKey(task) }
 
-        private fun allFlexibleTaskBounds(controller: Any): List<Rect> {
-            val tasks = flexibleTasksField.get(controller) ?: return emptyList()
-            val taskSnapshot =
-                synchronized(tasks) {
-                    (tasks as? Iterable<*>)?.filterNotNull()?.toList().orEmpty()
-                }
-            return taskSnapshot.mapNotNull { flexibleTask ->
-                visibleTaskBounds(controller, flexibleTask)?.takeUnless { it.isEmpty }
-            }
-        }
-
         private fun visibleTaskBounds(controller: Any, task: Any): Rect? {
             // 输入法会单独平移、裁短标题层，Task 原始边界仍可能保持弹出前的尺寸。
             val imeBounds = (inputMethodTaskBounds.get(task) as? Rect)?.let(::Rect)
             if (imeBounds != null && !imeBounds.isEmpty) return imeBounds
             return (getVisibleBounds.invokeUnwrapped(controller, task) as? Rect)?.let(::Rect)
-        }
-
-        private fun visibleImeRegion(displayContent: Any): Region? {
-            val imeWindow = inputMethodWindow.get(displayContent) ?: return null
-            if (isWindowVisible.invokeUnwrapped(imeWindow) != true) return null
-            return Region().also { getTouchableRegion.invokeUnwrapped(imeWindow, it) }
-        }
-
-        private fun screenToCaptionRegion(
-            screenRegion: Region,
-            visibleBounds: Rect,
-            scaleX: Float,
-            scaleY: Float,
-        ): Region {
-            val result = Region()
-            val iterator = RegionIterator(screenRegion)
-            val screenRect = Rect()
-            while (iterator.next(screenRect)) {
-                val localRect =
-                    Rect(
-                        floor((screenRect.left - visibleBounds.left) / scaleX).toInt(),
-                        floor((screenRect.top - visibleBounds.top) / scaleY).toInt(),
-                        ceil((screenRect.right - visibleBounds.left) / scaleX).toInt(),
-                        ceil((screenRect.bottom - visibleBounds.top) / scaleY).toInt(),
-                    )
-                if (!localRect.isEmpty) result.op(localRect, Region.Op.UNION)
-            }
-            return result
         }
 
         fun beforeOriginal(
@@ -691,6 +602,12 @@ internal class OutsideTapCloseHookInstaller(
         fun closeIfStillValid(listener: Any, task: Any) {
             if (!environmentAllowed()) return
             val controller = controllerField.get(listener) ?: return
+            closeTask(controller, task)
+        }
+
+        /** 执行关闭；调用方保证 controller/task 来源正确。 */
+        fun closeTask(controller: Any, task: Any) {
+            if (!environmentAllowed()) return
             if (getTopZoomTask.invokeUnwrapped(controller) !== task || !isOrdinaryZoom(controller, task)) {
                 return
             }

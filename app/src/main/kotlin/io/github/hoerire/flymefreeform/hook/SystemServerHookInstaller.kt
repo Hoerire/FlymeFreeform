@@ -113,7 +113,10 @@ internal class SystemServerHookInstaller(
             val setter = ims.javaClass.methods.firstOrNull {
                 it.name == "setInputFilter" && it.parameterTypes.size == 1
             } ?: error("no setInputFilter")
-            val filter = ZoneInputFilter(module)
+            val filter = ZoneInputFilter(
+                module,
+                android.view.ViewConfiguration.getDoubleTapTimeout().toLong(),
+            )
             val iface = setter.parameterTypes[0]
             val proxy = java.lang.reflect.Proxy.newProxyInstance(
                 iface.classLoader,
