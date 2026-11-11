@@ -198,7 +198,8 @@ internal class CornerRadialOverlayView(
         iconSizeDp: Int = ModulePreferences.DEFAULT_RADIAL_ICON_SIZE_DP,
         keepOpen: Boolean = false,
     ) {
-        check(!isAttachedToWindow) { "Overlay must be initialized before it is attached" }
+        // 允许在已附着状态下重新开始：常驻窗口复用同一个 View，呼出时只重置状态。
+        // 初次创建时它尚未附着，两种情况都要能走通。
         this.keepOpen = keepOpen
         this.side = side
         // 保持挂起不改变命中判定：滑动选格与点选统一使用「命中范围」的设定值。

@@ -160,6 +160,9 @@ internal class ColorOsFreeformCoordinator(
     /** 只负责接触摸的小窗口；主窗口 FLAG_NOT_TOUCHABLE，点选靠它。 */
     private var touchRegion: CornerTouchRegionView? = null
     private var overlay: CornerRadialOverlayView? = null
+
+    /** 常驻的浮层 View：收起后不销毁窗口，只缩小隐藏，让背景模糊保持就绪。 */
+    private var warmOverlay: CornerRadialOverlayView? = null
     private var morePanelActive = false
     private var lastSettings = ModuleSettingsSnapshot(enabled = false)
     private var activeEnvironmentApproved = false
@@ -784,6 +787,37 @@ internal class ColorOsFreeformCoordinator(
         val keepOpen = lastSettings.radialKeepOpen
         val params = createOverlayParams()
         var view: CornerRadialOverlayView? = null
+        // 常驻窗口：blur 一直挂着，呼出时复用同一个 View，
+        // 省掉窗口创建与模糊合成的那几帧等待。
+        val parked = warmOverlay
+        if (parked != null) {
+            warmOverlay = null
+            val reused =
+                runCatching {
+                    parked.setBackdropAlpha(
+                        lastSettings.backgroundEffect.coerceAtMost(0).let { -it / 100f },
+                    )
+                    parked.begin(
+                        side = side,
+                        catalog = catalogSnapshot,
+                        x = x,
+                        y = y,
+                        hitRangeDp = hitRangeDp,
+                        iconSizeDp = lastSettings.radialIconSizeDp,
+                        keepOpen = keepOpen,
+                    )
+                    windowManager.updateViewLayout(parked, params)
+                    true
+                }.getOrDefault(false)
+            if (reused) {
+                overlay = parked
+                trace("SYSTEM_OVERLAY_REUSED")
+                attachTouchRegion()
+                return
+            }
+            logger(Log.WARN, "SYSTEM_OVERLAY_REUSE_FAILED", null)
+            runCatching { windowManager.removeViewImmediate(parked) }
+        }
         try {
             view = CornerRadialOverlayView(context, this, ::debug)
             // 负值换算成黑色遮罩浓度；正值走窗口模糊，遮罩为 0。
@@ -1272,10 +1306,26 @@ internal class ColorOsFreeformCoordinator(
         // 触摸窗口必须和主窗口同生共死：主窗口已经不可触摸，留下触摸窗口就等于
         // 一块看不见的板子盖在菜单区域上。
         detachTouchRegion()
-        trace("SYSTEM_OVERLAY_REMOVE")
         overlay = null
         if (sidebar.isPending) sidebar.cancel()
         morePanelActive = false
+        // 收起时不销毁窗口：缩小到 1×1 并几乎全透明，背景模糊保持挂着。
+        // 这样下次呼出直接复用，模糊不再需要等窗口合成。
+        val parked =
+            runCatching {
+                val hidden = createOverlayParams()
+                hidden.width = 1
+                hidden.height = 1
+                hidden.alpha = 0.01f
+                windowManager.updateViewLayout(view, hidden)
+                true
+            }.getOrDefault(false)
+        if (parked) {
+            warmOverlay = view
+            trace("SYSTEM_OVERLAY_PARKED")
+            return
+        }
+        trace("SYSTEM_OVERLAY_REMOVE")
         val cleanupFailure = view.disposeOverlay()
         try {
             windowManager.removeViewImmediate(view)
