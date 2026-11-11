@@ -851,15 +851,13 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
-    /** 详细日志：只有设置里打开「详细日志」才输出。 */
-    /**
-     * 手势生命周期的关键事件：无条件进模块日志。
-     *
-     * 这些是排障时唯一有用的几行（按下 / 被环境拒绝 / 激活 / 浮层起落 / 监听注册），
-     * 用户根本不知道要去设置里开"详细日志"，所以不挂 VerboseLog。每根手指只有 1~3 行。
-     */
+    /** 手势生命周期事件：受「详细日志」控制。 */
     private fun trace(code: String) {
-        logger(Log.INFO, code, null)
+        // 同样受「详细日志」控制：关掉之后连这些状态点也不输出，
+        // 否则一次手势仍会刷出十几行（DOWN/REJECTED/ACTIVATE/SHOWN/COMMIT…）。
+        if (io.github.hoerire.flymefreeform.log.VerboseLog.enabled) {
+            logger(Log.DEBUG, code, null)
+        }
     }
 
     /** 高频/细节日志，仍受设置里的详细日志开关控制（MOVE、启动细节、通知等）。 */

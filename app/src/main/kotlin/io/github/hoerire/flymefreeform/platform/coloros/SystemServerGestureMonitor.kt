@@ -136,25 +136,19 @@ internal class SystemServerGestureMonitor(
      * 引擎已经 Activate 的那一帧才抢，抬手/取消时复位。
      */
     private fun dispatch(event: MotionEvent, pilferMethod: Method): Boolean {
-        // 诊断：只记数量，不改行为。用来判断 pilfer 之后 monitor 到底还收不收得到 MOVE。
+        // 诊断计数器：只累加，不输出。真正要看时再开「详细日志」。
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                downCount++
-                logger(Log.INFO, "MONITOR_DOWN_" + downCount, null)
-            }
-            MotionEvent.ACTION_MOVE -> {
-                moveCount++
-                if (moveCount % MOVE_TRACE_INTERVAL == 1L) {
-                    logger(Log.INFO, "MONITOR_MOVE_ALIVE_" + moveCount, null)
-                }
-            }
+            MotionEvent.ACTION_DOWN -> downCount++
+            MotionEvent.ACTION_MOVE -> moveCount++
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                logger(
-                    Log.INFO,
-                    "MONITOR_SESSION_END_" + (if (pilferActive) "PILFERED" else "PASSIVE") +
-                        "_down=" + downCount + "_move=" + moveCount,
-                    null,
-                )
+                if (io.github.hoerire.flymefreeform.log.VerboseLog.enabled) {
+                    logger(
+                        Log.DEBUG,
+                        "MONITOR_SESSION_END_" + (if (pilferActive) "PILFERED" else "PASSIVE") +
+                            "_down=" + downCount + "_move=" + moveCount,
+                        null,
+                    )
+                }
             }
         }
         val wantsPilfer = onEvent(event)
@@ -164,7 +158,9 @@ internal class SystemServerGestureMonitor(
                 pilferMethod.invoke(instance)
                 pilferActive = true
                 pilferCount++
-                logger(Log.INFO, "MONITOR_PILFER_OK_count=" + pilferCount, null)
+                if (io.github.hoerire.flymefreeform.log.VerboseLog.enabled) {
+                    logger(Log.DEBUG, "MONITOR_PILFER_OK_count=" + pilferCount, null)
+                }
             } catch (error: ReflectiveOperationException) {
                 logger(Log.WARN, MONITOR_TAG, error)
                 return false
