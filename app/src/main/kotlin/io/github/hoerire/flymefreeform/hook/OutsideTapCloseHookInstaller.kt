@@ -369,6 +369,18 @@ internal class OutsideTapCloseHookInstaller(
         private val inputMethodTaskBounds =
             ColorOsTaskImeBoundsAccess(taskClass, taskExtClass, Rect::class.java)
         private val updateCaptionTouchRegion = captionClass.requiredMethod("updateTouchRegion", 0)
+
+        /**
+         * 小窗底部横条的高度（dp），取自 FlexibleCaptionView 自己的常量。
+         *
+         * 用它而不是写死一个值：横条高度随系统版本/控件实现变化，读常量才能对上
+         * 用户实际看到的那一条。读不到时退回 28dp。
+         */
+        private val bottomHandleHeightDp: Int =
+            runCatching {
+                captionClass.getDeclaredField("BOTTOM_FRAME_HIGHT_DP").apply { isAccessible = true }
+                    .getInt(null)
+            }.getOrDefault(28)
         private val getFlexibleCaptionView =
             controllerClass.requiredMethod(
                 name = "getFlexibleCaptionView",
@@ -870,7 +882,7 @@ internal class OutsideTapCloseHookInstaller(
             if (bounds.isEmpty) return false
             val density = (contextField.get(controller) as? Context)
                 ?.resources?.displayMetrics?.density ?: 1f
-            val handleHeight = (HANDLE_HEIGHT_DP * density).toInt().coerceAtLeast(1)
+            val handleHeight = (bottomHandleHeightDp * density).toInt().coerceAtLeast(1)
             val px = x.toInt()
             val py = y.toInt()
             if (px < bounds.left || px > bounds.right) return false
@@ -954,9 +966,6 @@ internal class OutsideTapCloseHookInstaller(
         const val WINDOW_STATE_CLASS = "com.android.server.wm.WindowState"
         const val FLEXIBLE_CAPTION_VIEW_CLASS = "com.android.server.wm.FlexibleCaptionView"
         const val ORDINARY_ZOOM_STATE = 1
-
-        /** 小窗底部横条的高度（dp）：点在这个范围内算"点横条"，单击直接关窗。 */
-        const val HANDLE_HEIGHT_DP = 28f
         const val SCALE_TOLERANCE = 0.02f
         const val FAILURE_LOG_INTERVAL_MS = 10_000L
     }
