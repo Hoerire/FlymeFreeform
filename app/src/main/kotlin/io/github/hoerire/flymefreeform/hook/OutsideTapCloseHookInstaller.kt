@@ -142,6 +142,8 @@ internal class OutsideTapCloseHookInstaller(
                         val controller = chain.thisObject
                         val task = chain.getArg(0)
                         if (controller != null && task != null) {
+                            // 记下最新创建的窗口：系统退场裁决时要能分辨"退出的是谁"。
+                            io.github.hoerire.flymefreeform.logic.RecentZoomTask.mark(task)
                             listOf(500L, 1000L, 1600L, 2600L).forEach { delay ->
                                 skinHandler.postDelayed(
                                     {
@@ -272,6 +274,16 @@ internal class OutsideTapCloseHookInstaller(
                     configuration.forceReload()
                 }
                 if (isFloatExit && configuration.snapshot.autoCloseWindowEffective) {
+                    // 应用内变小窗时，ColorOS 17 也会走一次退场裁决，而退出对象就是
+                    // 刚创建的那个窗口本身。这种情形放行——关掉它等于"一打开就消失"，
+                    // 和"自动收窗"想处理的"旧窗口被顶掉"是两回事。
+                    val exitingTask = strategy?.let { exiting ->
+                        fieldInHierarchy(exiting.javaClass, "mTask")?.get(exiting)
+                    }
+                    if (io.github.hoerire.flymefreeform.logic.RecentZoomTask.isRecent(exitingTask)) {
+                        module.log(Log.DEBUG, TAG, "ZOOM_CLOSE_POLICY_KEEP_RECENT", null)
+                        return@intercept chain.proceed()
+                    }
                     val frames = Throwable().stackTrace
                     // 系统的「谁该退出」判定有两条入口：超出数量上限（updateTaskMaxNum* /
                     // handleFlexibleExChange）与统一裁决（determineFlexibleTaskToExit /
