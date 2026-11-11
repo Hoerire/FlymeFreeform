@@ -81,6 +81,13 @@ internal class OutsideTapGestureEngine {
             previousTap = null
             return false
         }
+        // 向上移动即上滑手势（从底部上滑变迷你窗）。这类手势是速度触发、位移很小，
+        // 单靠 touchSlop 拦不住，必须单独看方向，否则会被当成"点窗外"关掉窗口。
+        // 阈值取 touchSlop 的一半：不依赖 density，也一定小于点击容差。
+        if (active.downY - y > touchSlop * UPWARD_GUARD_RATIO) {
+            previousTap = null
+            return false
+        }
         return when (mode) {
             OutsideTapCloseMode.Disabled -> false
             OutsideTapCloseMode.SingleTap -> {
@@ -94,6 +101,11 @@ internal class OutsideTapGestureEngine {
                 false
             }
         }
+    }
+
+    private companion object {
+        /** 上滑方向保护系数：向上超过 touchSlop 的这个比例就判为上滑。 */
+        const val UPWARD_GUARD_RATIO = 0.5f
     }
 
     fun interrupt() {
