@@ -53,9 +53,6 @@ internal class SystemServerHookInstaller(
                     val result = chain.proceed()
                     val controller = chain.thisObject
                     if (controller != null && bound.compareAndSet(false, true)) {
-                        // 用 controller 实例的加载器：services.jar 的类只在这个加载器可见
-                        // （LocalServices 自身的 classLoader 反而取不到 InputManagerService）。
-                        installInputFilter(controller.javaClass.classLoader)
                         ColorOsFreeformCoordinator(
                             controller = controller,
                             classLoader = classLoader,
@@ -77,78 +74,6 @@ internal class SystemServerHookInstaller(
     }
 
 
-    /**
-     * 安装全局输入过滤器（第一阶段：只透传）。
-     *
-     * InputFilter 通过 LocalServices 拿到 system_server 内的 InputManagerService 实例再反射设置；
-     * 拿不到就只记日志，不影响系统。
-     */
-    @SuppressLint("BlockedPrivateApi", "PrivateApi")
-    private fun installInputFilter(classLoader: ClassLoader) {
-        installInputFilterAttempt(classLoader, ATTEMPT_LIMIT)
-    }
-
-    /**
-     * 尝试注册输入过滤器；InputManagerService 由 system_server 稍后注册，
-     * 因此找不到时按固定间隔重试，直到成功或用尽次数。
-     */
-    @SuppressLint("BlockedPrivateApi", "PrivateApi")
-    private fun installInputFilterAttempt(classLoader: ClassLoader, remaining: Int) {
-        val resolved = runCatching {
-            // 不加载 IMS 的 Class（ClassNotFound：该加载器看不到 services.jar 的类），
-            // 改为遍历 LocalServices 里所有 Map 型静态字段，按类名找实例。
-            val localServices = Class.forName("com.android.server.LocalServices", false, classLoader)
-            val ims = localServices.declaredFields
-                .filter { Map::class.java.isAssignableFrom(it.type) }
-                .mapNotNull { field ->
-                    runCatching {
-                        field.isAccessible = true
-                        (field.get(null) as? Map<*, *>)?.values?.firstOrNull {
-                            it?.javaClass?.simpleName == "InputManagerService"
-                        }
-                    }.getOrNull()
-                }
-                .firstOrNull()
-                ?: error("InputManagerService not registered yet")
-            val setter = ims.javaClass.methods.firstOrNull {
-                it.name == "setInputFilter" && it.parameterTypes.size == 1
-            } ?: error("no setInputFilter")
-            val filter = ZoneInputFilter(module)
-            val iface = setter.parameterTypes[0]
-            val proxy = java.lang.reflect.Proxy.newProxyInstance(
-                iface.classLoader,
-                arrayOf(iface),
-            ) { _, method, args ->
-                when (method.name) {
-                    "filterInputEvent" -> {
-                        filter.filterFromProxy(args)
-                        null
-                    }
-                    "asBinder" -> filter
-                    else -> null
-                }
-            }
-            setter.invoke(ims, proxy)
-            true
-        }
-        resolved.onSuccess { module.log(Log.INFO, TAG, "INPUT_FILTER_REGISTERED", null) }
-        resolved.onFailure { error ->
-            if (remaining <= 1) {
-                module.log(Log.WARN, TAG, "INPUT_FILTER_REGISTER_FAILED", error)
-            } else {
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
-                    { installInputFilterAttempt(classLoader, remaining - 1) },
-                    FILTER_RETRY_MS,
-                )
-            }
-        }
-    }
-    /**
-     * 跟踪前台应用，供排除列表判定。
-     *
-     * 排除列表的语义是「该应用在前台时不施加任何修改」，需要知道当前前台是哪个包。
-     * 恢复回调每次活动切换都会触发，这里只做一次字段读取与赋值。
-     */
     private fun installForegroundObserver(classLoader: ClassLoader) {
         try {
             val recordClass = classLoader.loadClass("com.android.server.wm.ActivityRecord")
@@ -199,8 +124,6 @@ internal class SystemServerHookInstaller(
     private companion object {
         const val TAG = "FlymeFreeform"
         const val ACTIVITY_TASK_MANAGER_CLASS = "com.android.server.wm.ActivityTaskManagerService"
-        const val ATTEMPT_LIMIT = 20
-        const val FILTER_RETRY_MS = 3000L
         const val FLEXIBLE_TASK_CONTROLLER_CLASS = "com.android.server.wm.FlexibleTaskController"
     }
 }
