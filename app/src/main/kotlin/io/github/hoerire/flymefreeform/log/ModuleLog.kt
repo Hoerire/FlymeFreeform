@@ -15,6 +15,9 @@ internal object ModuleLog {
     @Volatile
     private var sink: ((priority: Int, code: String, throwable: Throwable?) -> Unit)? = null
 
+    /** 已经输出过的 code 前缀，用于进程内去重。 */
+    private val emitted = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     fun attach(next: (priority: Int, code: String, throwable: Throwable?) -> Unit) {
         sink = next
     }
@@ -45,7 +48,23 @@ internal object ModuleLog {
      */
     fun info(code: String, throwable: Throwable? = null) {
         if (!VerboseLog.enabled) return
+        // 同一个 code 在进程内只输出一次：正常路径重复触发没有信息量，
+        // 真正要看的是"出现过没有"，以及出现异常时的 WARN（那条不去重）。
+        if (!emitted.add(stableKey(code))) return
         emit(Log.INFO, code, throwable)
+    }
+
+    /** 去掉 code 里的变量部分（数字、包名、类名后缀），让同一类事件算作同一个。 */
+    private fun stableKey(code: String): String {
+        var end = code.length
+        for (index in code.indices) {
+            val ch = code[index]
+            if (ch.isDigit()) {
+                end = index
+                break
+            }
+        }
+        return code.substring(0, end)
     }
 
     fun warn(code: String, throwable: Throwable? = null) = emit(Log.WARN, code, throwable)
