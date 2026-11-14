@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 被拖出的内容卡片 -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M5.5,9.6h6.4a2.6,2.6 0 0 1 2.6,2.6v7.8a2.6,2.6 0 0 1 -2.6,2.6H5.5A2.6,2.6 0 0 1 2.9,20v-7.8A2.6,2.6 0 0 1 5.5,9.6z" />
+    <!-- 拖出方向：右上箭头 -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M15.2,2.4h6.4v6.4h-2.2V6.2l-4.9,4.9 -1.6,-1.6 4.9,-4.9h-2.6V2.4z" />
+</vector>

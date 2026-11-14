@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  通知横幅：一块屏幕，状态栏之下压着一条横幅。
+  与「通知中心」的铃铛、「控制中心」的调节杆区分开，直接画出横幅出现的位置。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- 屏幕外框 -->
+    <path
+        android:pathData="M6,3 L18,3 A2,2 0 0 1 20,5 L20,19 A2,2 0 0 1 18,21 L6,21 A2,2 0 0 1 4,19 L4,5 A2,2 0 0 1 6,3 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#000000"
+        android:strokeWidth="1.6" />
+
+    <!-- 状态栏分隔线 -->
+    <path
+        android:pathData="M4,7.4 L20,7.4"
+        android:strokeColor="#000000"
+        android:strokeWidth="1.4" />
+
+    <!-- 状态栏下方弹出的横幅 -->
+    <path
+        android:pathData="M7,9.6 L17,9.6 A1.2,1.2 0 0 1 18.2,10.8 L18.2,13.2 A1.2,1.2 0 0 1 17,14.4 L7,14.4 A1.2,1.2 0 0 1 5.8,13.2 L5.8,10.8 A1.2,1.2 0 0 1 7,9.6 Z"
+        android:fillColor="#000000" />
+</vector>
