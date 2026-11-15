@@ -1,7 +1,6 @@
 package io.github.hoerire.flymefreeform.ui
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -15,24 +14,21 @@ import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import io.github.hoerire.flymefreeform.R
 import io.github.hoerire.flymefreeform.config.ModulePreferences
 import io.github.hoerire.flymefreeform.config.OutsideTapCloseMode
 import io.github.hoerire.flymefreeform.framework.FrameworkConnectionState
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.DropdownItem
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
-import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.hoerire.flymefreeform.ui.component.ArrowPreference
+import io.github.hoerire.flymefreeform.ui.component.ListChoicePreference
+import io.github.hoerire.flymefreeform.ui.component.SectionTitle
+import io.github.hoerire.flymefreeform.ui.component.SettingsGroup
+import io.github.hoerire.flymefreeform.ui.component.SwitchPreference
 
 /**
  * 小窗交互。
  *
  * 排版遵循系统设置页的既有节奏：**分组标题在卡片外侧**，卡片内部只放原生偏好项。
- * 不往 Card 里塞自定义标题行——那会破坏 miuix 卡片的内边距与分隔线节奏。
+ * 不往分组里塞自定义标题行——那会破坏卡片的内边距与分隔线节奏。
  *
  * 信息结构：
  * - 「轻量打开」是启动场景的二级入口，summary 显示已开启的场景数量；
@@ -49,7 +45,6 @@ private fun enabledSceneCount(state: FrameworkConnectionState): Int {
         settings.zoomLaunchInterApp,
         settings.zoomLaunchInterAppResult,
         settings.zoomLaunchShareRelay,
-        settings.zoomLaunchSystem,
         settings.zoomLaunchClipboard,
     ).count { it }
 }
@@ -73,11 +68,12 @@ internal fun ZoomOptionsScreen(
     val outsideTapModes = OutsideTapCloseMode.entries
     val outsideTapItems =
         listOf(
-            DropdownItem(text = stringResource(R.string.outside_tap_mode_disabled)),
-            DropdownItem(text = stringResource(R.string.outside_tap_mode_single)),
-            DropdownItem(text = stringResource(R.string.outside_tap_mode_double)),
-            DropdownItem(text = stringResource(R.string.outside_tap_mode_bottom)),
+            stringResource(R.string.outside_tap_mode_disabled),
+            stringResource(R.string.outside_tap_mode_single),
+            stringResource(R.string.outside_tap_mode_double),
+            stringResource(R.string.outside_tap_mode_bottom),
         )
+
     SettingsPage(
         title = stringResource(R.string.zoom_limit_removed_title),
         onBack = onBack,
@@ -86,7 +82,7 @@ internal fun ZoomOptionsScreen(
             SectionTitle(text = stringResource(R.string.zoom_group_window_title))
         }
         item(key = "window") {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                 ArrowPreference(
                     title = stringResource(R.string.zoom_interaction_title),
                     summary =
@@ -146,7 +142,7 @@ internal fun ZoomOptionsScreen(
             SectionTitle(text = stringResource(R.string.zoom_group_gesture_title))
         }
         item(key = "gesture") {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                 SwitchPreference(
                     checked = state.settings.handleSwipeUpToMiniEnabled,
                     onCheckedChange = onHandleSwipeUpToMiniEnabledChange,
@@ -171,37 +167,22 @@ internal fun ZoomOptionsScreen(
                     enabled = sub,
                     startAction = { PreferenceIcon(Icons.Rounded.ElectricalServices, sub) },
                 )
-                OverlaySpinnerPreference(
-                    items = outsideTapItems,
-                    selectedIndex = outsideTapModes.indexOf(state.settings.outsideTapCloseMode),
+                ListChoicePreference(
                     title = stringResource(R.string.outside_tap_close_title),
-                    summary = stringResource(R.string.outside_tap_close_summary),
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.TouchApp, enabled) },
-                    onSelectedIndexChange = { index ->
+                    icon = { PreferenceIcon(Icons.Rounded.TouchApp, enabled) },
+                    selected =
+                        outsideTapModes
+                            .indexOf(state.settings.outsideTapCloseMode)
+                            .coerceIn(0, outsideTapItems.lastIndex),
+                    values = outsideTapItems.indices.toList(),
+                    valueText = { outsideTapItems[it] },
+                    onSelected = { index ->
                         outsideTapModes.getOrNull(index)?.let(onOutsideTapCloseModeChange)
                     },
+                    enabled = enabled,
                 )
+
             }
         }
     }
-}
-
-/**
- * 分组标题：位于卡片外侧，副标题说明这一组当前是否可用。
- *
- * 字号取 body2、颜色取次级色，与系统设置页的 section header 一致；
- * 右侧的 note 用更弱的颜色，避免和标题抢注意力。
- */
-@Composable
-internal fun SectionTitle(text: String) {
-    Text(
-        text = text,
-        style = MiuixTheme.textStyles.body2,
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 2.dp),
-    )
 }

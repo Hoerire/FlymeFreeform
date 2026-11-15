@@ -58,6 +58,8 @@ internal class ColorOsSidebarEntryConnection(
     private var lastUid = -1
     private var lastUserContext: Context? = null
     private var preparing = false
+    /** 准备阶段的开始时刻：唤醒侧边栏 provider 可能因冷启动卡住，必须能超时复位。 */
+    private var preparingStartedAt = 0L
     private var pendingAfterBind: (() -> Unit)? = null
 
     private class WarmLink(
@@ -167,12 +169,20 @@ internal class ColorOsSidebarEntryConnection(
     }
 
     private fun prepareAndBind(request: Request) {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (preparing && now - preparingStartedAt > PREPARE_DEADLINE_MS) {
+            // 上一次准备卡在 provider 唤醒上：不复位的话之后每个请求都只会延后 30ms，
+            // 表现为"目录一直读不到"。这里强制放开，让本次请求重新走一遍。
+            log(Log.WARN, "SIDEBAR_ENTRY_PREPARE_STUCK_" + (now - preparingStartedAt), null)
+            preparing = false
+        }
         if (preparing) {
             // 上一次准备还在路上：等它结束后重试一次。
             handler.postDelayed({ if (current === request && link == null) prepareAndBind(request) }, 30L)
             return
         }
         preparing = true
+        preparingStartedAt = android.os.SystemClock.uptimeMillis()
         work(request) {
           try {
             val userId = ActivityManager::class.java.getMethod("getCurrentUser").invoke(null) as Int
@@ -209,6 +219,9 @@ internal class ColorOsSidebarEntryConnection(
                 preparing = false
                 return@work
             }
+            // 先以系统身份要求侧边栏启动自己的服务：进程完全不在运行时，
+            // 单纯 bindService 的回调可能要等到进程被调度，容易超过请求超时。
+            wakeSidebarProcess(userContext)
             // 只在首次建立连接时唤醒侧边栏的 provider。
             val provider = userContext.contentResolver
                 .acquireUnstableContentProviderClient(ColorOsSidebarTarget.PROVIDER_AUTHORITY)
@@ -228,7 +241,14 @@ internal class ColorOsSidebarEntryConnection(
                 if (!binding) {
                     val intent = Intent(SidebarEntryProtocol.BIND_ACTION).setComponent(COMPONENT)
                     binding = try {
-                        userContext.bindService(intent, Context.BIND_AUTO_CREATE, { action -> handler.post(action) }, serviceConnection)
+                        userContext.bindService(
+                            intent,
+                            // IMPORTANT 让这次绑定按前台优先级处理：侧边栏进程冷启动时
+                            // 普通绑定会被进程调度排在后面，表现为一直等不到 onServiceConnected。
+                            Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT,
+                            { action -> handler.post(action) },
+                            serviceConnection,
+                        )
                     } catch (exception: RuntimeException) {
                         report(exception)
                         false
@@ -245,6 +265,25 @@ internal class ColorOsSidebarEntryConnection(
           } finally {
             preparing = false
           }
+        }
+    }
+
+    /**
+     * 主动拉起侧边栏进程。
+     *
+     * system_server 不受后台启动限制，这里用它的身份要求侧边栏启动承载连接的服务；
+     * 服务不是启动型时这次调用会被忽略，不影响随后的 bindService。
+     */
+    private fun wakeSidebarProcess(userContext: Context) {
+        val started =
+            try {
+                userContext.startService(Intent(SidebarEntryProtocol.BIND_ACTION).setComponent(COMPONENT))
+                true
+            } catch (exception: RuntimeException) {
+                false
+            }
+        if (io.github.hoerire.flymefreeform.log.VerboseLog.enabled) {
+            log(Log.DEBUG, "SIDEBAR_ENTRY_WAKE_" + started, null)
         }
     }
 
@@ -385,6 +424,9 @@ internal class ColorOsSidebarEntryConnection(
     }
 
     private companion object {
+        /** 准备阶段的硬上限：超时即判定卡死并复位，避免整条目录链路被一次冷启动拖死。 */
+        const val PREPARE_DEADLINE_MS = 15_000L
+
         val COMPONENT = ComponentName(ColorOsSidebarTarget.PACKAGE_NAME, ColorOsSidebarTarget.SERVICE_CLASS)
     }
 }

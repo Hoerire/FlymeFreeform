@@ -11,6 +11,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class SystemServerHookInstaller(
     private val module: XposedModule,
     private val configuration: ProcessConfiguration,
+    private val frameworkName: String,
+    private val frameworkVersion: String,
+    private val apiVersion: Int,
 ) {
     private val bound = AtomicBoolean(false)
     private val interAppTracker = io.github.hoerire.flymefreeform.hook.launch.InterAppLaunchTracker()
@@ -72,6 +75,7 @@ internal class SystemServerHookInstaller(
                                 module.log(priority, TAG, code, throwable)
                             },
                         ).start()
+                        installSettingsBridge(controller)
                     }
                     result
                 }
@@ -83,6 +87,38 @@ internal class SystemServerHookInstaller(
         }
     }
 
+
+    /**
+     * 设置通道必须等 system_server 里出现真实的 Context 才能注册接收器；
+     * `FlexibleTaskController` 持有的 mContext 是系统进程里最稳的一处来源。
+     */
+    private fun installSettingsBridge(controller: Any) {
+        ModuleLog.info("SETTINGS_BRIDGE_INSTALL_BEGIN")
+        try {
+            val context =
+                OemReflection.readField(controller, "mContext") as? android.content.Context
+            if (context == null) {
+                ModuleLog.warn("SETTINGS_BRIDGE_NO_CONTEXT", null)
+                return
+            }
+            SystemServerSettingsBridge(
+                context = context,
+                configuration = configuration,
+                frameworkName = frameworkName,
+                frameworkVersion = frameworkVersion,
+                apiVersion = apiVersion,
+                logger = { priority, code, throwable ->
+                    module.log(priority, TAG, code, throwable)
+                },
+            ).start()
+        } catch (throwable: Throwable) {
+            // 通道装不上会直接表现为设置页永远“等待连接”，必须留下原因。
+            ModuleLog.warn(
+                "SETTINGS_BRIDGE_INSTALL_FAILED_" + throwable.javaClass.simpleName,
+                throwable as? RuntimeException,
+            )
+        }
+    }
 
     private fun installForegroundObserver(classLoader: ClassLoader) {
         try {
@@ -119,6 +155,7 @@ internal class SystemServerHookInstaller(
 
 
     private companion object {
+
         const val TAG = "FlymeFreeform"
         const val ACTIVITY_TASK_MANAGER_CLASS = "com.android.server.wm.ActivityTaskManagerService"
         const val FLEXIBLE_TASK_CONTROLLER_CLASS = OemClasses.FLEXIBLE_TASK_CONTROLLER

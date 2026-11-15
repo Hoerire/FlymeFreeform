@@ -230,7 +230,7 @@ internal class ColorOsEntryCatalogBroker(
          * 恢复正常后不会再有任何重试。
          */
         const val MAX_RETRIES = 10
-        val RETRY_DELAYS_MS = longArrayOf(12_000L)
+        val RETRY_DELAYS_MS = longArrayOf(2_000L, 4_000L, 8_000L, 12_000L)
     }
 
     fun invalidate() {

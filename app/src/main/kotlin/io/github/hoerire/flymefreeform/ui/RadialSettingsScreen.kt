@@ -1,5 +1,7 @@
 package io.github.hoerire.flymefreeform.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
@@ -20,11 +22,11 @@ import androidx.compose.ui.res.stringResource
 import io.github.hoerire.flymefreeform.R
 import io.github.hoerire.flymefreeform.config.ModulePreferences
 import io.github.hoerire.flymefreeform.framework.FrameworkConnectionState
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.DropdownItem
-import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
-import top.yukonga.miuix.kmp.preference.SwitchPreference
+import io.github.hoerire.flymefreeform.ui.component.ArrowPreference
+import io.github.hoerire.flymefreeform.ui.component.ListChoicePreference
+import io.github.hoerire.flymefreeform.ui.component.SectionTitle
+import io.github.hoerire.flymefreeform.ui.component.SettingsGroup
+import io.github.hoerire.flymefreeform.ui.component.SwitchPreference
 
 /**
  * 扇形相关的二级页面。
@@ -70,10 +72,14 @@ internal fun RadialSettingsScreen(
         }
     val sideItems =
         listOf(
-            DropdownItem(text = stringResource(R.string.corner_trigger_side_both)),
-            DropdownItem(text = stringResource(R.string.corner_trigger_side_left)),
-            DropdownItem(text = stringResource(R.string.corner_trigger_side_right)),
+            stringResource(R.string.corner_trigger_side_both),
+            stringResource(R.string.corner_trigger_side_left),
+            stringResource(R.string.corner_trigger_side_right),
         )
+
+    // 预览层必须叠在页面之上：作为同级的普通子项参与布局时，
+    // 拖动滑条让预览出现/消失会把整页顶一下，表现为「突然往下跑」。
+    Box(modifier = Modifier.fillMaxSize()) {
     SettingsPage(
         title = stringResource(R.string.radial_settings_title),
         onBack = onBack,
@@ -82,7 +88,7 @@ internal fun RadialSettingsScreen(
             SectionTitle(text = stringResource(R.string.radial_group_app_title))
         }
         item(key = "radialGroupApp") {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                 SwitchPreference(
                     checked = state.settings.radialKeepOpen,
                     onCheckedChange = onRadialKeepOpenChange,
@@ -104,21 +110,21 @@ internal fun RadialSettingsScreen(
             SectionTitle(text = stringResource(R.string.radial_group_trigger_title))
         }
         item(key = "radialGroupTrigger") {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                OverlaySpinnerPreference(
-                    items = sideItems,
-                    selectedIndex = sideIndex,
+            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
+                ListChoicePreference(
                     title = stringResource(R.string.corner_trigger_side_title),
-                    summary = stringResource(R.string.corner_trigger_side_summary),
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.SwipeRight, enabled) },
-                    onSelectedIndexChange = { index ->
+                    icon = { PreferenceIcon(Icons.Rounded.SwipeRight, enabled) },
+                    selected = sideIndex,
+                    values = sideItems.indices.toList(),
+                    valueText = { sideItems[it] },
+                    onSelected = { index ->
                         when (index) {
                             0 -> onCornerSidesChange(true, true)
                             1 -> onCornerSidesChange(true, false)
                             2 -> onCornerSidesChange(false, true)
                         }
                     },
+                    enabled = enabled,
                 )
                 RemoteDpSliderPreference(
                     icon = Icons.Rounded.Straighten,
@@ -139,7 +145,7 @@ internal fun RadialSettingsScreen(
             SectionTitle(text = stringResource(R.string.radial_group_look_title))
         }
         item(key = "radialGroupLook") {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                 RemoteDpSliderPreference(
                     icon = Icons.Rounded.CenterFocusStrong,
                     confirmedValue = state.settings.radialHitRangeDp,
@@ -187,7 +193,7 @@ internal fun RadialSettingsScreen(
             SectionTitle(text = stringResource(R.string.radial_group_pause_title))
         }
         item(key = "radialGroupPause") {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                 SwitchPreference(
                     checked = state.settings.pauseInLandscape,
                     onCheckedChange = onPauseInLandscapeChange,
@@ -239,5 +245,6 @@ internal fun RadialSettingsScreen(
             leftEnabled = left,
             rightEnabled = right,
         )
+    }
     }
 }

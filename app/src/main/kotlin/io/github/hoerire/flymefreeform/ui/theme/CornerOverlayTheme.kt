@@ -4,14 +4,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import top.yukonga.miuix.kmp.theme.ColorSchemeMode
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.ThemeController
-import top.yukonga.miuix.kmp.theme.darkColorScheme
-import top.yukonga.miuix.kmp.theme.lightColorScheme
 
 /** 扇形条目的绘制配色；“更多”数值取自同模式下 ColorOS 17 工具栏溢出按钮的实机测量。 */
 @Immutable
@@ -51,30 +45,38 @@ private val DarkRadialItemColors =
         moreShadowOffsetFraction = 0.06f,
     )
 
+/** 内建「更多」面板的底色与标签颜色。 */
+@Immutable
+internal data class MorePanelColors(
+    val surface: Color,
+    val onSurface: Color,
+)
+
+private val LightMorePanelColors =
+    MorePanelColors(
+        surface = Color(0xFFF8F8FA),
+        onSurface = Color(0xFF232326),
+    )
+
+private val DarkMorePanelColors =
+    MorePanelColors(
+        surface = Color(0xFF242427),
+        onSurface = Color(0xFFF2F2F4),
+    )
+
 internal val LocalRadialItemColors = staticCompositionLocalOf { LightRadialItemColors }
+
+internal val LocalMorePanelColors = staticCompositionLocalOf { LightMorePanelColors }
 
 @Composable
 internal fun CornerOverlayTheme(content: @Composable () -> Unit) {
-    // 深浅色只在这里解析一次，Miuix 配色与扇形配色共用同一结果。
+    // 深浅色只在这里解析一次，扇形条目配色与「更多」面板配色共用同一结果。
     val dark = isSystemInDarkTheme()
-    val controller =
-        remember(dark) {
-            ThemeController(
-                colorSchemeMode = ColorSchemeMode.System,
-                lightColors =
-                    lightColorScheme(
-                        surface = Color(0xFFF8F8FA),
-                        onSurface = Color(0xFF232326),
-                    ),
-                darkColors =
-                    darkColorScheme(
-                        surface = Color(0xFF242427),
-                        onSurface = Color(0xFFF2F2F4),
-                    ),
-                isDark = dark,
-            )
-        }
-    CompositionLocalProvider(LocalRadialItemColors provides if (dark) DarkRadialItemColors else LightRadialItemColors) {
-        MiuixTheme(controller = controller, content = content)
-    }
+    val radialItemColors = if (dark) DarkRadialItemColors else LightRadialItemColors
+    val morePanelColors = if (dark) DarkMorePanelColors else LightMorePanelColors
+    CompositionLocalProvider(
+        LocalRadialItemColors provides radialItemColors,
+        LocalMorePanelColors provides morePanelColors,
+        content = content,
+    )
 }

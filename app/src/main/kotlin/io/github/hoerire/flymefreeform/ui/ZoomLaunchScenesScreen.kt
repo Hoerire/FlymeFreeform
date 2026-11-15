@@ -16,8 +16,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import io.github.hoerire.flymefreeform.R
 import io.github.hoerire.flymefreeform.framework.FrameworkConnectionState
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.preference.SwitchPreference
+import io.github.hoerire.flymefreeform.ui.component.SectionTitle
+import io.github.hoerire.flymefreeform.ui.component.SettingsGroup
+import io.github.hoerire.flymefreeform.ui.component.SwitchPreference
 
 /**
  * 轻量打开 · 场景。
@@ -35,7 +36,6 @@ internal fun ZoomLaunchScenesScreen(
     onZoomLaunchInterAppChange: (Boolean) -> Unit,
     onZoomLaunchInterAppResultChange: (Boolean) -> Unit,
     onZoomLaunchShareRelayChange: (Boolean) -> Unit,
-    onZoomLaunchSystemChange: (Boolean) -> Unit,
     onZoomLaunchClipboardChange: (Boolean) -> Unit,
 ) {
     val enabled = state.settingsEditable && state.settings.enabled
@@ -49,7 +49,7 @@ internal fun ZoomLaunchScenesScreen(
             SectionTitle(text = stringResource(R.string.zoom_launch_scenes_hint))
         }
         item(key = "launch") {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                 SwitchPreference(
                     checked = state.settings.zoomLaunchNotice,
                     onCheckedChange = onZoomLaunchNoticeChange,
@@ -91,13 +91,6 @@ internal fun ZoomLaunchScenesScreen(
                     title = stringResource(R.string.zoom_launch_share_relay_title),
                     enabled = sub,
                     startAction = { PreferenceIcon(Icons.Rounded.Share, sub) },
-                )
-                SwitchPreference(
-                    checked = state.settings.zoomLaunchSystem,
-                    onCheckedChange = onZoomLaunchSystemChange,
-                    title = stringResource(R.string.zoom_launch_system_title),
-                    enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.Memory, sub) },
                 )
                 SwitchPreference(
                     checked = state.settings.zoomLaunchClipboard,

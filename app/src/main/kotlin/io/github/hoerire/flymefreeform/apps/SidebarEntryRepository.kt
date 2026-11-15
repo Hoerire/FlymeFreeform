@@ -24,7 +24,9 @@ internal data class SidebarCatalogState(
 internal class SidebarEntryRepository(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private val reply = Messenger(Handler(handler.looper, ::receive))
-    private val mutableState = MutableStateFlow(SidebarCatalogState())
+    private val cache = SidebarCatalogCache(context)
+    // 先铺上次成功读到的目录：侧边栏进程没起来时界面也不会空着。
+    private val mutableState = MutableStateFlow(SidebarCatalogState(entries = cache.load()))
     val state = mutableState.asStateFlow()
     private var id: String? = null
     private var transfer: CatalogTransfer<SelectableEntry, io.github.hoerire.flymefreeform.config.PinnedTarget>? = null
@@ -83,6 +85,8 @@ internal class SidebarEntryRepository(private val context: Context) {
                     if (entries == null) fail() else {
                         cancel()
                         mutableState.value = SidebarCatalogState(entries, SidebarCatalogStatus.Ready)
+                        // 读到完整目录才落盘：半截数据不能覆盖上次的完整结果。
+                        runCatching { cache.save(entries) }
                     }
                 }
                 SidebarEntryProtocol.FAILED -> fail()

@@ -45,6 +45,21 @@ internal class ColorOsSidebarEntryEndpoint(
     }
     private val settingsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ModulePreferences.ACTION_SETTINGS_PUSHED) {
+                // 框架配置存储不可写，设置以模块应用推送的整份快照为准。
+                if (sentFromUid != moduleUid()) return
+                val map =
+                    io.github.hoerire.flymefreeform.config.SettingsBridge.readMap(intent.extras)
+                        ?: return
+                val next =
+                    try {
+                        io.github.hoerire.flymefreeform.config.SettingsBridge.decode(map)
+                    } catch (_: RuntimeException) {
+                        return
+                    }
+                configuration.override(next)
+                return
+            }
             if (intent?.action != ModulePreferences.ACTION_PINNED_TARGETS_CHANGED ||
                 sentFromUid != moduleUid()
             ) return
@@ -76,9 +91,23 @@ internal class ColorOsSidebarEntryEndpoint(
         }, Context.RECEIVER_NOT_EXPORTED)
         service.registerReceiver(
             settingsReceiver,
-            IntentFilter(ModulePreferences.ACTION_PINNED_TARGETS_CHANGED),
+            IntentFilter().apply {
+                addAction(ModulePreferences.ACTION_PINNED_TARGETS_CHANGED)
+                addAction(ModulePreferences.ACTION_SETTINGS_PUSHED)
+            },
             Context.RECEIVER_EXPORTED,
         )
+        // 主动索取一次当前设置：侧边栏进程晚于系统进程启动，内存里可能还是旧值。
+        runCatching {
+            service.sendBroadcast(
+                Intent(ModulePreferences.ACTION_SETTINGS_REQUEST)
+                    .setPackage("android")
+                    .putExtra(
+                        ModulePreferences.EXTRA_REQUESTER_PACKAGE,
+                        "com.coloros.smartsidebar",
+                    ),
+            )
+        }
     }
 
     fun onUnbound(id: String?) { current?.takeIf { it.id == id }?.let(::finish) }

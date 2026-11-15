@@ -46,9 +46,6 @@ internal data class ModuleSettingsSnapshot(
     /** 分享跳转：分享给另一个应用时改小窗（走模块自己的 zoom 启动）。 */
     val zoomLaunchShareRelay: Boolean = false,
 
-    /** 系统代发：system_server 发起的应用启动。 */
-    val zoomLaunchSystem: Boolean = false,
-
     /** 复制链接：复制链接弹窗与系统分发服务代发的启动。 */
     val zoomLaunchClipboard: Boolean = false,
     /**
@@ -97,7 +94,6 @@ internal data class ModuleSettingsSnapshot(
     val zoomLaunchInterAppResultEffective: Boolean
         get() = zoomInteractionActive && zoomLaunchInterAppResult
     val zoomLaunchShareRelayEffective: Boolean get() = zoomInteractionActive && zoomLaunchShareRelay
-    val zoomLaunchSystemEffective: Boolean get() = zoomInteractionActive && zoomLaunchSystem
     val zoomLaunchClipboardEffective: Boolean
         get() = zoomInteractionActive && zoomLaunchClipboard
     val autoCloseWindowEffective: Boolean get() = zoomInteractionActive && autoCloseWindow
@@ -147,7 +143,6 @@ internal data class ModuleSettingsSnapshot(
                 ModulePreferences.KEY_ZOOM_LAUNCH_SHARE_RELAY,
                 zoomLaunchShareRelay,
             )
-            .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_SYSTEM, zoomLaunchSystem)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_CLIPBOARD, zoomLaunchClipboard)
             .putBoolean(ModulePreferences.KEY_AUTO_CLOSE_WINDOW, autoCloseWindow)
             .putBoolean(ModulePreferences.KEY_FLOAT_KEEP_ALIVE, floatKeepAlive)
@@ -155,11 +150,6 @@ internal data class ModuleSettingsSnapshot(
             .putBoolean(ModulePreferences.KEY_SHOW_SYSTEM_APPS, showSystemApps)
             // 旧分项键不再写入，升级后一并清除，避免残留值干扰排查。
             .remove(ModulePreferences.LEGACY_KEY_ZOOM_INTERACTION_ENABLED)
-            .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_NOTIFICATION)
-            .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_CONTROL_CENTER)
-            .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_INTER_APP)
-            .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCHER_SHORTCUT)
-            .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCHER_CARD)
             .putBoolean(ModulePreferences.KEY_RADIAL_KEEP_OPEN, radialKeepOpen)
             .putBoolean(ModulePreferences.KEY_FREE_DRAG, freeDragEnabled)
             .putInt(
@@ -268,7 +258,7 @@ internal data class ModuleSettingsSnapshot(
             // 老配置迁移（升级路径）：
             // 1. 总开关「轻量打开」为停用状态但仍有值且为关 —— 说明升级前用户把小窗能力整体关着，
             //    那么所有场景都按关处理；第一次保存设置时这个键会被清掉，之后不再干预。
-            // 2. 新拆出来的场景键（登录授权 / 系统代发 / 复制链接）没存过时继承旧「应用跳转」
+            // 2. 新拆出来的场景键（登录授权 / 复制链接）没存过时继承旧「应用跳转」
             //    的值，避免升级后用户原本能小窗的场景突然变全屏。
             // 3. 「应用分享」为新增能力，不继承旧值：其旧行为表现为全屏，直接打开会造成形态突变。
             val legacyMaster =
@@ -297,7 +287,6 @@ internal data class ModuleSettingsSnapshot(
                 zoomLaunchInterAppResult =
                     sceneInherit(ModulePreferences.KEY_ZOOM_LAUNCH_INTER_APP_RESULT),
                 zoomLaunchShareRelay = scene(ModulePreferences.KEY_ZOOM_LAUNCH_SHARE_RELAY),
-                zoomLaunchSystem = sceneInherit(ModulePreferences.KEY_ZOOM_LAUNCH_SYSTEM),
                 zoomLaunchClipboard = sceneInherit(ModulePreferences.KEY_ZOOM_LAUNCH_CLIPBOARD),
                 leftCornerEnabled = if (bothCornersDisabled) true else leftEnabled,
                 rightCornerEnabled = if (bothCornersDisabled) true else rightEnabled,

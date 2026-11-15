@@ -5,6 +5,31 @@ internal object ModulePreferences {
     const val GROUP = "module_runtime"
     const val ACTION_PINNED_TARGETS_CHANGED =
         "io.github.hoerire.flymefreeform.action.PINNED_TARGETS_CHANGED"
+
+    /**
+     * 启动标记：模块自己代发的启动（如更多面板里的快捷方式）不希望被改成小窗。
+     *
+     * 快捷方式指向应用内的具体页面，开成小窗会让流程变形；用显式标记而不是按组件猜，
+     * 才不会误伤真正该开小窗的应用启动。
+     */
+    const val EXTRA_SKIP_ZOOM = "io.github.hoerire.flymefreeform.extra.SKIP_ZOOM"
+
+    /** 模块应用 → system_server：推送整份设置快照（附带回执请求）。 */
+    const val ACTION_SETTINGS_PUSHED = "io.github.hoerire.flymefreeform.action.SETTINGS_PUSHED"
+
+    /** 模块应用 → system_server：只要当前快照，用于应用启动时对齐界面。 */
+    const val ACTION_SETTINGS_REQUEST = "io.github.hoerire.flymefreeform.action.SETTINGS_REQUEST"
+
+    /**
+     * 查询方可显式声明回执地址。
+     *
+     * SystemUI 与侧边栏不在模块应用的包下，靠广播身份取发起方需要额外开共享身份；
+     * 直接写明包名更稳，接收方按白名单校验后照此回执。
+     */
+    const val EXTRA_REQUESTER_PACKAGE = "requester_package"
+
+    /** system_server → 模块应用：权威快照（推送的回执与查询的答复共用）。 */
+    const val ACTION_SETTINGS_SNAPSHOT = "io.github.hoerire.flymefreeform.action.SETTINGS_SNAPSHOT"
     const val EXTRA_PINNED_TARGETS = "pinned_targets"
     const val EXTRA_PINS_SAVED = "pins_saved"
     const val EXTRA_MODULE_ENABLED = "module_enabled"
@@ -60,9 +85,6 @@ internal object ModulePreferences {
     /** 分享中转页：分享给另一个应用时以浮窗打开（模块另起 zoom 启动）。 */
     const val KEY_ZOOM_LAUNCH_SHARE_RELAY = "zoom_launch_share_relay_v1"
 
-    /** system_server 代发的启动（系统通知落点、模块管理工具入口）。 */
-    const val KEY_ZOOM_LAUNCH_SYSTEM = "zoom_launch_system_v1"
-
     /** 复制链接：复制链接弹窗与系统分发服务代发的 VIEW 启动。 */
     const val KEY_ZOOM_LAUNCH_CLIPBOARD = "zoom_launch_clipboard_v1"
 
@@ -96,14 +118,7 @@ internal object ModulePreferences {
      */
     const val DEVICE_LINK_PACKAGE = "com.oplus.linker"
 
-    /** 旧版三个分项开关的键，仅用于升级后迁移取值。 */
-    const val LEGACY_KEY_ZOOM_LAUNCH_NOTIFICATION = "zoom_launch_notification"
-    const val LEGACY_KEY_ZOOM_LAUNCH_CONTROL_CENTER = "zoom_launch_control_center"
-    const val LEGACY_KEY_ZOOM_LAUNCH_INTER_APP = "zoom_launch_inter_app"
 
-    /** 已移除的桌面入口开关（快捷项 / 卡片），仅用于升级后清掉残留值。 */
-    const val LEGACY_KEY_ZOOM_LAUNCHER_SHORTCUT = "zoom_launcher_shortcut_v1"
-    const val LEGACY_KEY_ZOOM_LAUNCHER_CARD = "zoom_launcher_card_v1"
     const val KEY_RADIAL_KEEP_OPEN = "radial_keep_open"
 
     /**
@@ -158,7 +173,11 @@ internal object ModulePreferences {
     const val MIN_CORNER_TRIGGER_RANGE_DP = 24
     const val MAX_CORNER_TRIGGER_RANGE_DP = 160
     const val MIN_RADIAL_HIT_RANGE_DP = 40
-    const val MAX_RADIAL_HIT_RANGE_DP = 140
+    /**
+     * 上限 220：图标圆心在半径 242 基准 dp 的圆弧上，命中半径到这个量级
+     * 才能一直覆盖到屏幕直角本身；再大也不会有新的覆盖区域。
+     */
+    const val MAX_RADIAL_HIT_RANGE_DP = 220
 
     fun coerceCornerTriggerRangeDp(value: Int): Int =
         value.coerceIn(MIN_CORNER_TRIGGER_RANGE_DP, MAX_CORNER_TRIGGER_RANGE_DP)

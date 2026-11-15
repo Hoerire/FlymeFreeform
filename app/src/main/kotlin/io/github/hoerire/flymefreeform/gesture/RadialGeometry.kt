@@ -66,6 +66,8 @@ internal object RadialGeometry {
             val center = layout.itemCenters[previous]
             if (hypot(x - center.x, y - center.y) <= keepRadius) return previous
         }
+        // 只认命中圈：手指必须落在以图标圆心为中心、半径 enterRadius 的圆内。
+        // 圈外（包括紧贴屏幕直角的那一段）不选任何格，避免"离图标还很远就被选中"。
         return layout.itemCenters
             .indices
             .minByOrNull { index ->

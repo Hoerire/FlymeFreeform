@@ -11,6 +11,7 @@ import io.github.hoerire.flymefreeform.config.ModuleSettingsSnapshot
 import io.github.hoerire.flymefreeform.config.OutsideTapCloseMode
 import io.github.hoerire.flymefreeform.config.PinnedTarget
 import io.github.hoerire.flymefreeform.config.PinnedTargetCodec
+import io.github.hoerire.flymefreeform.config.SettingsBridge
 import java.util.IdentityHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -27,6 +28,9 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     private val pendingServices = IdentityHashMap<XposedService, Unit>()
     private val unavailableServices = IdentityHashMap<XposedService, FrameworkConnectionState>()
     private var activeConnection: ActiveConnection? = null
+    /** 常驻设置通道；框架服务只在安装后投递一次，进程重启后不可用，因此以本通道为主。 */
+    private var bridge: SettingsBridgeClient? = null
+    private var bridgeRetries = 0
 
     private val mutableState = MutableStateFlow(FrameworkConnectionState())
     val state: StateFlow<FrameworkConnectionState> = mutableState.asStateFlow()
@@ -45,6 +49,15 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun start() {
         check(started.compareAndSet(false, true)) { "Xposed Service listener is already registered" }
         XposedServiceHelper.registerListener(serviceListener)
+        // 先走常驻通道：进程重启后框架不会再投递服务，这条路才是常态。
+        worker.execute { activateBridge() }
+    }
+
+    /** 回到前台时若仍未连上，再试一次通道：进程可能早于系统进程就绪。 */
+    fun retryIfNeeded() {
+        if (!started.get() || bridge != null) return
+        bridgeRetries = 0
+        worker.execute { activateBridge() }
     }
 
     fun setModuleEnabled(enabled: Boolean) =
@@ -142,9 +155,6 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setZoomLaunchShareRelay(enabled: Boolean) =
         updateSettings { it.copy(zoomLaunchShareRelay = enabled) }
 
-    fun setZoomLaunchSystem(enabled: Boolean) =
-        updateSettings { it.copy(zoomLaunchSystem = enabled) }
-
     fun setZoomLaunchClipboard(enabled: Boolean) =
         updateSettings { it.copy(zoomLaunchClipboard = enabled) }
 
@@ -216,8 +226,105 @@ internal class FrameworkConnectionRepository(private val context: Context) {
         }
     }
 
+    /** 建立常驻通道并取一次权威快照；不可用时保持未连接，等待框架服务（安装后仅一次）。 */
+    private fun activateBridge() {
+        if (bridge != null) return
+        val client = SettingsBridgeClient(context)
+        if (!client.start()) {
+            scheduleBridgeRetry()
+            return
+        }
+        val reply = client.request()
+        if (reply == null) {
+            client.close()
+            scheduleBridgeRetry()
+            return
+        }
+        connectBridge(client, reply)
+    }
+
+    /**
+     * 常驻重试：模块可能晚于应用就绪（开机早期、系统进程重启）。
+     * 按固定间隔补试，连上为止；用户不需要反复开关应用。
+     */
+    private fun scheduleBridgeRetry() {
+        if (bridge != null || bridgeRetries >= MAX_BRIDGE_RETRIES) return
+        bridgeRetries++
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+            { worker.execute { if (bridge == null) activateBridge() } },
+            BRIDGE_RETRY_INTERVAL_MS,
+        )
+    }
+
+    private fun connectBridge(client: SettingsBridgeClient, reply: SettingsBridgeClient.Reply) {
+        val settings =
+            try {
+                SettingsBridge.decode(reply.settings)
+            } catch (_: RuntimeException) {
+                client.close()
+                return
+            }
+        bridge = client
+        bridgeRetries = 0
+        mutableState.value =
+            FrameworkConnectionState(
+                status = FrameworkConnectionStatus.Connected,
+                frameworkName = reply.frameworkName,
+                frameworkVersion = reply.frameworkVersion,
+                apiVersion = reply.apiVersion,
+                settings = settings,
+                // 通道可用即代表模块已加载在系统进程内；其余作用域由框架自身管理。
+                grantedScopes = FrameworkConnectionState.REQUIRED_SCOPES,
+            )
+    }
+
+    /** 经常驻通道写入：先乐观上屏，再用回执校正，写失败才回退。 */
+    private fun updateViaBridge(
+        client: SettingsBridgeClient,
+        transform: (ModuleSettingsSnapshot) -> ModuleSettingsSnapshot,
+    ) {
+        val previous = mutableState.value
+        if (previous.status != FrameworkConnectionStatus.Connected) return
+        val next = transform(previous.settings)
+        if (next == previous.settings) return
+        // 开关按下即生效：等待落盘期间界面不再停留在旧值，否则会被读成“点了没反应”。
+        mutableState.value = previous.copy(settings = next, isUpdating = true, issue = null)
+        val reply = client.push(SettingsBridge.encode(next))
+        if (reply == null) {
+            bridge = null
+            client.close()
+            mutableState.value =
+                FrameworkConnectionState(
+                    status = FrameworkConnectionStatus.Waiting,
+                    frameworkName = previous.frameworkName,
+                    frameworkVersion = previous.frameworkVersion,
+                    apiVersion = previous.apiVersion,
+                    settings = previous.settings,
+                )
+            scheduleBridgeRetry()
+            return
+        }
+        val applied =
+            try {
+                SettingsBridge.decode(reply.settings)
+            } catch (_: RuntimeException) {
+                next
+            }
+        if (!reply.writeOk || applied != next) {
+            // 回执与提交值不一致：写入链路有问题，留一条可查的痕迹。
+            ConnectionProbe.record("SETTINGS_WRITE_MISMATCH_ok_" + reply.writeOk)
+        }
+        mutableState.value = previous.copy(settings = applied, isUpdating = false, issue = null)
+        notifySettingsChanged(applied)
+    }
+
     private fun updateSettings(transform: (ModuleSettingsSnapshot) -> ModuleSettingsSnapshot) {
         worker.execute {
+            val channel = bridge
+            if (channel != null) {
+                updateViaBridge(channel, transform)
+                return@execute
+            }
             val connection = activeConnection ?: return@execute
             val previous = mutableState.value
             if (!previous.canChangeSettings) return@execute
@@ -239,29 +346,38 @@ internal class FrameworkConnectionRepository(private val context: Context) {
         }
     }
 
+    /**
+     * 把整份设置推给各作用域进程。
+     *
+     * 框架配置存储在本进程不可写，设置只能由模块应用下发：system_server 落盘并生效，
+     * SystemUI 与侧边栏各自覆盖内存快照。载荷带发起者身份，接收方校验 UID。
+     */
     private fun notifySettingsChanged(settings: ModuleSettingsSnapshot) {
-        val intent = Intent(ModulePreferences.ACTION_PINNED_TARGETS_CHANGED).apply {
-            putExtra(
-                ModulePreferences.EXTRA_PINNED_TARGETS,
-                PinnedTargetCodec.encodeList(settings.pinnedTargets),
-            )
-            putExtra(ModulePreferences.EXTRA_PINS_SAVED, settings.pinsSaved)
-            putExtra(ModulePreferences.EXTRA_MODULE_ENABLED, settings.enabled)
-        }
-        // 必须共享身份：接收方用 getSentFromUid() 校验发起者，普通广播拿到的是 -1，
-        // 会被当作伪造请求丢弃（日志：未开启共享身份时固定项变更从未送达 system_server）。
-        // 三个作用域进程各自接收：system_server 与侧边栏校验发起者，SystemUI 只据此重读配置。
-        val options = android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle()
-        try {
-            context.sendBroadcast(intent.setPackage("android"), null, options)
-            context.sendBroadcast(intent.setPackage("com.coloros.smartsidebar"), null, options)
-            context.sendBroadcast(intent.setPackage("com.android.systemui"), null, options)
-        } catch (_: RuntimeException) {
-            // Remote preference commit remains authoritative if a target process is unavailable.
+        val options =
+            android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle()
+        val map = SettingsBridge.encode(settings)
+        map[ModulePreferences.EXTRA_PINNED_TARGETS] =
+            PinnedTargetCodec.encodeList(settings.pinnedTargets)
+        map[ModulePreferences.EXTRA_PINS_SAVED] = settings.pinsSaved
+        map[ModulePreferences.EXTRA_MODULE_ENABLED] = settings.enabled
+        val extras = android.os.Bundle()
+        SettingsBridge.putMap(extras, map)
+        listOf("android", "com.android.systemui", "com.coloros.smartsidebar").forEach { target ->
+            val intent =
+                Intent(ModulePreferences.ACTION_SETTINGS_PUSHED).apply {
+                    setPackage(target)
+                    putExtras(extras)
+                }
+            try {
+                context.sendBroadcast(intent, null, options)
+            } catch (_: RuntimeException) {
+                // 目标进程未运行时忽略：它启动后会主动索取当前设置。
+            }
         }
     }
 
     private fun handleServiceBind(service: XposedService) {
+        if (bridge != null) return
         if (diedBeforeBind.remove(service) != null) return
         if (liveServices.put(service, Unit) != null) return
         pendingServices[service] = Unit
@@ -269,6 +385,7 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     }
 
     private fun handleServiceDied(service: XposedService) {
+        if (bridge != null) return
         if (liveServices.remove(service) == null) {
             diedBeforeBind[service] = Unit
             return
@@ -482,6 +599,10 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     }
 
     private companion object {
+        const val BRIDGE_RETRY_INTERVAL_MS = 2_000L
+        /** 最多补试一分钟：再久说明模块没在运行，等下次进入页面再试。 */
+        const val MAX_BRIDGE_RETRIES = 30
+
         const val WORKER_THREAD_NAME = "FlymeFreeform-Service"
         const val MAX_METADATA_LENGTH = 80
     }

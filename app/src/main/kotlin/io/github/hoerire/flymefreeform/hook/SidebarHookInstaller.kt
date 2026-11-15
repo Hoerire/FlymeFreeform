@@ -18,7 +18,6 @@ import io.github.hoerire.flymefreeform.platform.coloros.ColorOsSidebarEntryEndpo
 import io.github.hoerire.flymefreeform.platform.coloros.ColorOsSidebarTarget
 import io.github.hoerire.flymefreeform.platform.coloros.SidebarEntryProtocol
 import io.github.hoerire.flymefreeform.platform.coloros.ColorOsSidebarVisualTarget
-import io.github.hoerire.flymefreeform.platform.coloros.PanelToolLaunchBridge
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.Executors
@@ -189,28 +188,6 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
             // 识屏：把原生 handle() 的启动改由 system_server 代发，缺这个工具条目的机型自动跳过。
             runCatching { installScreenIdentifyRedirect(loader) }
                 .onFailure { log(Log.WARN, "SCREEN_IDENTIFY_REDIRECT_FAILED", it) }
-            // 工具（付款码、扫一扫这类）的启动经系统 uid 代发，侧边栏进程只负责递参数，
-            // 小窗参数必须在这一步并入，理由见 PanelToolLaunchBridge 的说明。
-            // 厂商版本缺少该入口时只跳过本功能，面板接管不受影响。
-            runCatching {
-                val platform = loader.loadClass(APP_PLATFORM_UTILS_CLASS)
-                val startActivityAsUser =
-                    platform.getDeclaredMethod(
-                        "n",
-                        Intent::class.java,
-                        Bundle::class.java,
-                        android.os.UserHandle::class.java,
-                    )
-                handles +=
-                    module.hook(startActivityAsUser).setId("flymefreeform.panel.tool_zoom")
-                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
-                            runCatching {
-                                applyToolLaunchZoom(chain.getArg(0) as? Intent, chain.getArg(1) as? Bundle)
-                            }
-                            chain.proceed()
-                        }
-                log(Log.INFO, "PANEL_TOOL_ZOOM_INSTALLED", null)
-            }.onFailure { log(Log.WARN, "PANEL_TOOL_ZOOM_UNAVAILABLE", it) }
             resolveVisualTarget(loader, applicationInfo)
         } catch (exception: ReflectiveOperationException) {
             handles.forEach { it.unhook() }
@@ -266,25 +243,6 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
         executor.shutdown()
     }
 
-    /**
-     * 面板工具的启动改写：只处理已登记的点击目标，参数就地并入系统已建好的 Bundle。
-     *
-     * 未登记、目标不符或模块未启用时完全放行，面板内其它启动不受影响。
-     */
-    private fun applyToolLaunchZoom(intent: Intent?, options: Bundle?) {
-        if (intent == null || options == null) return
-        // 侧边栏条目本身由系统以小窗打开，这里只处理「更多」面板里的工具条目，
-        // 因此跟随小窗总闸即可，不再单独做一个开关。
-        if (!configuration.snapshot.zoomInteractionActive) return
-        val target = intent.component?.packageName ?: intent.getPackage() ?: return
-        if (!PanelToolLaunchBridge.apply(target, options)) return
-        io.github.hoerire.flymefreeform.log.ModuleLog.debug("FFLAUNCH") { "PANEL_TOOL_ZOOM_" + target }
-    }
-
     private fun log(priority: Int, code: String, throwable: Throwable?) = module.log(priority, "FlymeFreeform", code, throwable)
 
-    private companion object {
-        /** 侧边栏的参数转交入口：Intent 与小窗参数在这里合并后交给系统 uid 发起。 */
-        const val APP_PLATFORM_UTILS_CLASS = "com.oplus.smartsidebar.utils.AppPlatformUtils"
-    }
 }

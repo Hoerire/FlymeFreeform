@@ -79,7 +79,8 @@ internal class PortalTapHookInstaller(
 
             hook(OemReflection.requireMethod(service, "onBind", 1), "bind") { chain ->
                 session?.let { dismiss(it, cleanup) }
-                configuration.forceReload()
+                // 设置已由模块应用实时推送，这里不再同步重读配置：
+                // 该路径在拖动开始的主线程上，重读会直接拖慢面板弹出。
                 val instance = chain.thisObject
                 val source = (chain.getArg(0) as? Intent)?.getStringExtra("drag_pkg_detail")
                 val context = instance as? android.content.Context
@@ -91,7 +92,7 @@ internal class PortalTapHookInstaller(
                     }
                 ) {
                     session = Session(instance).also { current ->
-                        armTimeout(current, cleanup, 4000L)
+                        armTimeout(current, cleanup, ARM_BIND_MS)
                     }
                 }
                 chain.proceed()
@@ -190,10 +191,14 @@ internal class PortalTapHookInstaller(
                     val night = (panel.resources.configuration.uiMode and
                         android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
                         android.content.res.Configuration.UI_MODE_NIGHT_YES
-                    val surface = if (night) 0xFF2A2A2A.toInt() else 0xFFF7F7F7.toInt()
+                    // 配色与应用主题一致：浅色用卡片白，深色用深色卡片面；
+                    // 圆角取主题里的 26dp 档，否则这块面板仍留在旧视觉体系里。
+                    // 底色取应用页面骨架的分组背景，不透明：面板下面是别的应用的内容，
+                    // 取不到那层像素做真实背景，加透明度只会让文字发灰。
+                    val surface = if (night) SURFACE_DARK else SURFACE_LIGHT
                     panel.background = GradientDrawable().apply {
-                        setColor((surface and 0x00FFFFFF) or (0xF0 shl 24))
-                        cornerRadius = dp(panel, 22).toFloat()
+                        setColor(surface)
+                        cornerRadius = dp(panel, PANEL_CORNER_DP).toFloat()
                     }
                     row.animate().cancel()
                     row.translationY = 0f
@@ -232,7 +237,9 @@ internal class PortalTapHookInstaller(
                                 ?.updateViewLayout(settlement, layoutParams)
                         }
                     }
-                    armTimeout(current, cleanup, 20_000L)
+                    // 不设短超时：面板应一直挂起，直到点窗外或选中某个应用。
+                    // 只留一个足够长的兜底，避免极少数收不到触摸事件时永久残留。
+                    armTimeout(current, cleanup, IDLE_DISMISS_MS)
                 }
                 null
             }
@@ -391,8 +398,27 @@ internal class PortalTapHookInstaller(
     companion object {
         const val PACKAGE_NAME = "com.oplus.contentportal"
 
+        /** 从拖动开始到面板出现的等待上限；慢速拖动也不应被提前清理。 */
+        const val ARM_BIND_MS = 10_000L
+
+        /** 无人操作时的兜底清理时间：正常关闭靠点击窗外或选择应用。 */
+        const val IDLE_DISMISS_MS = 5_000L
+
         /** 网格列数。 */
         const val COLUMNS = 5
+
+        /**
+         * 面板底色 = 应用页面骨架的分组背景色。
+         *
+         * 标题「Flyme 小窗」就压在这一层上；面板沿用同一色值，视觉才和页面连成一体，
+         * 不需要再自己调透明度。
+         */
+        const val SURFACE_LIGHT = 0xFFF2F2F7.toInt()
+        const val SURFACE_DARK = 0xFF000000.toInt()
+
+
+        /** 与应用主题卡片同一档圆角（Glasmio shapes.medium = 26dp）。 */
+        const val PANEL_CORNER_DP = 26
 
         /** 设计尺寸：格子宽高、内边距、圆角与最大行数。 */
         const val CELL_WIDTH_DP = 80

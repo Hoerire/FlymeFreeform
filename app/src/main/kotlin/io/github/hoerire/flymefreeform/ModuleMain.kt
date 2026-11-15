@@ -51,9 +51,11 @@ class ModuleMain : XposedModule() {
                 ProcessConfiguration(
                     log = { priority, code, throwable -> log(priority, TAG, code, throwable) },
                 )
-            processConfiguration.start(
-                getRemotePreferences(io.github.hoerire.flymefreeform.config.ModulePreferences.GROUP),
-            )
+            val preferences =
+                getRemotePreferences(
+                    io.github.hoerire.flymefreeform.config.ModulePreferences.GROUP,
+                )
+            processConfiguration.start(preferences)
             configuration = processConfiguration
         } catch (exception: UnsupportedOperationException) {
             disableForConfigurationFailure("MODULE_CONFIG_UNSUPPORTED", exception)
@@ -73,7 +75,7 @@ class ModuleMain : XposedModule() {
                     "_en" + settings.enabled +
                     "_zcount" + settings.zoomMaxWindowCount +
                     "_zapp" + settings.zoomAllowAnyApp +
-                    // 小窗跳转四个场景 + 手势，逐个列出来：
+                    // 小窗跳转各场景 + 手势，逐个列出来：
                     // 哪个功能不生效时，先看这一行就知道是开关没开还是 hook 没装上。
                     "_scnN" + settings.zoomLaunchNotice +
                     "_scnH" + settings.zoomLaunchHeadsUp +
@@ -81,7 +83,6 @@ class ModuleMain : XposedModule() {
                     "_scnI" + settings.zoomLaunchInterApp +
                     "_scnIr" + settings.zoomLaunchInterAppResult +
                     "_scnSh" + settings.zoomLaunchShareRelay +
-                    "_scnSys" + settings.zoomLaunchSystem +
                     "_scnClip" + settings.zoomLaunchClipboard +
                     "_scnAc" + settings.autoCloseWindow +
                     "_scnSu" + settings.handleSwipeUpToMiniEnabled +
@@ -102,7 +103,13 @@ class ModuleMain : XposedModule() {
         val settings = configuration ?: return
         if (hooksInstalled) return
         hooksInstalled = true
-        SystemServerHookInstaller(this, settings).install(param.classLoader)
+        SystemServerHookInstaller(
+            module = this,
+            configuration = settings,
+            frameworkName = getFrameworkName(),
+            frameworkVersion = getFrameworkVersion(),
+            apiVersion = getApiVersion(),
+        ).install(param.classLoader)
     }
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {

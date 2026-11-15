@@ -9,6 +9,7 @@ import io.github.libxposed.api.XposedModule
 import io.github.hoerire.flymefreeform.hook.ProcessConfiguration
 import io.github.hoerire.flymefreeform.log.ModuleLog
 import io.github.hoerire.flymefreeform.log.VerboseLog
+import io.github.hoerire.flymefreeform.config.ModulePreferences
 import io.github.hoerire.flymefreeform.hook.OemReflection
 
 /**
@@ -127,6 +128,12 @@ internal class ActivityStarterZoomInjector(
                     ModuleLog.debug(TAG) { "ZOOM_SKIP_PREEMPT_NO_INTENT_" + stage }
                     return false
                 }
+        // 模块自己代发的启动（更多面板里的快捷方式）显式要求保持全屏：
+        // 按组件去猜会误伤真正该开小窗的应用启动，只有发起方自己知道这次是不是快捷方式。
+        if (intent.getBooleanExtra(ModulePreferences.EXTRA_SKIP_ZOOM, false)) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_MARKED_FULLSCREEN_" + stage }
+            return false
+        }
         val pendingIntent = request?.let { OemReflection.readField(it, "originatingPendingIntent") }
         val callingPackage =
             request?.let { OemReflection.readField(it, "callingPackage") as? String }.orEmpty()
@@ -493,9 +500,11 @@ internal class ActivityStarterZoomInjector(
      * 2. 排除列表与返回识别，两者直接放行；
      * 3. 通知点击（发起方为 SystemUI 且携带 PendingIntent）；
      * 4. 文件选择，不改写；
-     * 5. 应用间跳转（携带 resultTo 的跨包启动、双方均为第三方的跨包启动）；
-     * 6. system_server 以 MAIN 代发的启动（系统通知落点、模块管理工具的启动入口）；
-     * 7. SystemUI 自身发起的其余启动，按磁贴 / 通知栏区分。
+     * 5. 应用跳转（携带 resultTo 的跨包启动、双方均为第三方的跨包启动）；
+     * 6. SystemUI 自身发起的其余启动，按磁贴 / 通知栏区分。
+     *
+     * system_server 以 MAIN 启动的落点（系统通知、模块管理工具）不再单列场景：
+     * 这部分改由系统按全屏处理，模块不参与改写。
      *
      * 未命中任何分支的来源落到末尾的「无规则」出口，原样放行。
      *
@@ -718,20 +727,6 @@ internal class ActivityStarterZoomInjector(
         if (target in SKIP_TARGETS) {
             ModuleLog.debug(TAG) { "ZOOM_SKIP_SYSTEM_TARGET_" + target }
             return null
-        }
-        // system_server 以 MAIN 启动应用的两类来源：
-        // 1. 通知点击，落点通常是系统包，见 SYSTEM_NOTIFICATION_TARGETS；
-        // 2. 没有启动入口的模块管理工具（如 LSPosed 管理器）经 root 权限代发，
-        //    落点是用户安装的应用，没有来源标记也没有 PendingIntent。
-        // 两者都按应用跳转处理，以自由浮窗打开。
-        if (callingPackage == SYSTEM_SERVER_PACKAGE && intent.action == Intent.ACTION_MAIN) {
-            if (target in SYSTEM_NOTIFICATION_TARGETS || isThirdPartyApplication(target)) {
-                if (!configuration.snapshot.zoomLaunchSystemEffective) {
-                    ModuleLog.debug(TAG) { "ZOOM_SKIP_SYSTEM_LAUNCH_OFF_tg" + target }
-                    return null
-                }
-                return "system_launch"
-            }
         }
         // 通知栏与控制中心的启动均由 SystemUI 发起，需进一步区分：
         // 磁贴类启动携带 quicksettings 相关 action，交给注入器处理；
