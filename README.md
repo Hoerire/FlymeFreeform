@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/ROM-ColorOS-00A862" alt="面向 ColorOS" />
-  <img src="https://img.shields.io/badge/Android-16%2B-3DDC84?logo=android" alt="最低 Android 16" />
+  <img src="https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android" alt="最低 Android 15" />
   <img src="https://img.shields.io/badge/libxposed-API_102-4285F4" alt="libxposed API 102" />
   <img src="https://img.shields.io/badge/version-2.6.0-blue" alt="版本 2.6.0" />
 </p>
@@ -67,7 +67,7 @@
 
 ### 自由传送
 
-解除官方传送门白名单限制，优化使用逻辑（仅 ColorOS 17）。
+解除官方传送门白名单限制，优化使用逻辑（需传送门 17，即 ColorOS 17）。
 
 优化官方内容传送门：长按即可弹出分享菜单，松手点选。触发快慢可自由调整
 
@@ -83,7 +83,7 @@
 ## 安装
 
 1. 装好并启用 **LSPosed**（需支持 libxposed API 102）
-2. 安装本模块，勾选三项作用域：**系统框架**、**系统界面**、**智能侧边栏**
+2. 安装本模块，勾选四项作用域：**系统框架**、**系统界面**、**智能侧边栏**、**内容传送门**
 3. 重启上述进程或重启设备
 4. 打开「Flyme 小窗」，确认框架已连接，再按需调整
 
@@ -91,14 +91,14 @@
 
 | 项 | 要求 |
 |---|---|
-| 系统 | ColorOS 16 与 17（Android 16 及以上） |
+| 系统 | ColorOS 15 / 16 / 17（Android 15 及以上） |
 | 自由传送 | 仅 ColorOS 17 |
 | 框架 | LSPosed，libxposed API 102 及以上 |
 | 导航方式 | 手势导航（三键导航下底角区与返回键冲突，模块保持关闭） |
 
 ## 已知限制
 
-- 依赖厂商私有的自由浮窗与侧边栏接口，仅适用于 ColorOS 16 与 17
+- 依赖厂商私有的自由浮窗与侧边栏接口，仅适用于 ColorOS 15、16 与 17
 - 带文件的应用分享、隐式 VIEW 且需要回传结果的启动、游戏内的第三方登录不做改写
 - 自由传送取不到自绘界面与独立窗口里的网页
 
