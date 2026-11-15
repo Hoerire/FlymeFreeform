@@ -65,7 +65,7 @@
 
 判定条件：按下的位置要落在当前浮动窗口的可见区域内，且位移不超过 40px；正常拖动、缩放窗口不会误触发。
 
-### 自由分享
+### 自由传送
 
 解除官方传送门白名单限制，优化使用逻辑（仅 ColorOS 17）。
 
@@ -92,7 +92,7 @@
 | 项 | 要求 |
 |---|---|
 | 系统 | ColorOS 16 与 17（Android 16 及以上） |
-| 自由分享 | 仅 ColorOS 17 |
+| 自由传送 | 仅 ColorOS 17 |
 | 框架 | LSPosed，libxposed API 102 及以上 |
 | 导航方式 | 手势导航（三键导航下底角区与返回键冲突，模块保持关闭） |
 
@@ -100,7 +100,7 @@
 
 - 依赖厂商私有的自由浮窗与侧边栏接口，仅适用于 ColorOS 16 与 17
 - 带文件的应用分享、隐式 VIEW 且需要回传结果的启动、游戏内的第三方登录不做改写
-- 自由分享取不到自绘界面与独立窗口里的网页
+- 自由传送取不到自绘界面与独立窗口里的网页
 
 ## 致谢
 
@@ -108,3 +108,12 @@
 - [Flyme](https://www.flyme.com/)：交互设计参考
 - [libxposed API](https://github.com/libxposed/api)：现代 Xposed API
 - [vialoyed-ctrl](https://github.com/vialoyed-ctrl)：内容传送门的分享面板与实现思路
+- [Glasmio](https://github.com/NEORUAA/Glasmio)：界面组件库（Liquid Glass），设置页与弹层基于它实现
+
+界面层的第三方许可合规：Glasmio 0.1.3 以 Apache-2.0 发布，使用 Maven Central 的原始 AAR、未修改库源码，完整许可文本随 APK 附带在 `assets/licenses/glasmio-APACHE-2.0.txt`；其折射算法与连续圆角几何适配自 [AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass)、[Capsule](https://github.com/Kyant0/Capsule) 与 [Shapes](https://github.com/Kyant0/Shapes)（均为 Apache-2.0）。应用图标的目录扫描使用 [DexKit 2.3.0](https://github.com/LuckyPray/DexKit/tree/2.3.0)（Apache-2.0 / LGPL-3.0）。完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## 许可
+
+本项目以上游相同的 [GNU General Public License v3.0](LICENSE) 发布，完整协议文本见仓库根目录的 `LICENSE`，APK 内亦随附于 `assets/licenses/GPL-3.0.txt`。
+
+第三方组件各自遵循其自身许可（Glasmio、DexKit 等），声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
