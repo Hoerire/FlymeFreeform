@@ -4,6 +4,7 @@ import android.util.Log
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
+import io.github.hoerire.flymefreeform.hook.PortalTapHookInstaller
 import io.github.hoerire.flymefreeform.hook.ProcessConfiguration
 import io.github.hoerire.flymefreeform.hook.SidebarHookInstaller
 import io.github.hoerire.flymefreeform.platform.coloros.ColorOsSidebarTarget
@@ -50,9 +51,11 @@ class ModuleMain : XposedModule() {
                 ProcessConfiguration(
                     log = { priority, code, throwable -> log(priority, TAG, code, throwable) },
                 )
-            processConfiguration.start(
-                getRemotePreferences(io.github.hoerire.flymefreeform.config.ModulePreferences.GROUP),
-            )
+            val preferences =
+                getRemotePreferences(
+                    io.github.hoerire.flymefreeform.config.ModulePreferences.GROUP,
+                )
+            processConfiguration.start(preferences)
             configuration = processConfiguration
         } catch (exception: UnsupportedOperationException) {
             disableForConfigurationFailure("MODULE_CONFIG_UNSUPPORTED", exception)
@@ -72,7 +75,7 @@ class ModuleMain : XposedModule() {
                     "_en" + settings.enabled +
                     "_zcount" + settings.zoomMaxWindowCount +
                     "_zapp" + settings.zoomAllowAnyApp +
-                    // 小窗跳转四个场景 + 手势，逐个列出来：
+                    // 小窗跳转各场景 + 手势，逐个列出来：
                     // 哪个功能不生效时，先看这一行就知道是开关没开还是 hook 没装上。
                     "_scnN" + settings.zoomLaunchNotice +
                     "_scnH" + settings.zoomLaunchHeadsUp +
@@ -80,7 +83,6 @@ class ModuleMain : XposedModule() {
                     "_scnI" + settings.zoomLaunchInterApp +
                     "_scnIr" + settings.zoomLaunchInterAppResult +
                     "_scnSh" + settings.zoomLaunchShareRelay +
-                    "_scnSys" + settings.zoomLaunchSystem +
                     "_scnClip" + settings.zoomLaunchClipboard +
                     "_scnAc" + settings.autoCloseWindow +
                     "_scnSu" + settings.handleSwipeUpToMiniEnabled +
@@ -101,16 +103,28 @@ class ModuleMain : XposedModule() {
         val settings = configuration ?: return
         if (hooksInstalled) return
         hooksInstalled = true
-        SystemServerHookInstaller(this, settings).install(param.classLoader)
+        SystemServerHookInstaller(
+            module = this,
+            configuration = settings,
+            frameworkName = getFrameworkName(),
+            frameworkVersion = getFrameworkVersion(),
+            apiVersion = getApiVersion(),
+        ).install(param.classLoader)
     }
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         val settings = configuration ?: return
         if (hooksInstalled) return
         when {
-            processName == ColorOsSidebarTarget.PROCESS_NAME && param.packageName == ColorOsSidebarTarget.PACKAGE_NAME -> {
+            isSidebarProcess(processName) && param.packageName == ColorOsSidebarTarget.PACKAGE_NAME -> {
                 hooksInstalled = true
                 SidebarHookInstaller(this, settings).install(param.classLoader, param.applicationInfo)
+            }
+
+            processName == PortalTapHookInstaller.PACKAGE_NAME &&
+                param.packageName == PortalTapHookInstaller.PACKAGE_NAME -> {
+                hooksInstalled = true
+                PortalTapHookInstaller(this, settings).install(param.classLoader, param.applicationInfo?.sourceDir)
             }
 
             processName == PROCESS_SYSTEM_UI && param.packageName == PROCESS_SYSTEM_UI -> {
@@ -129,7 +143,22 @@ class ModuleMain : XposedModule() {
     private fun isExpectedProcess(param: XposedModuleInterface.ModuleLoadedParam): Boolean =
         param.isSystemServer ||
             param.processName == PROCESS_SYSTEM_UI ||
-            param.processName == ColorOsSidebarTarget.PROCESS_NAME
+            param.processName == PortalTapHookInstaller.PACKAGE_NAME ||
+            isSidebarProcess(param.processName)
+
+    /**
+     * 是否侧边栏应用的进程。
+     *
+     * 不写死 `:ui`：不同机型/版本把面板服务放在哪个子进程并不一致（主进程、`:ui`、
+     * 甚至别的后缀都出现过）。按包名前缀匹配，具体是不是那个服务由安装时能否找到
+     * `UIService` 决定 —— 找不到就当普通进程跳过，不会误挂。
+     */
+    private fun isSidebarProcess(name: String?): Boolean =
+        name != null &&
+            (
+                name == ColorOsSidebarTarget.PACKAGE_NAME ||
+                    name.startsWith(ColorOsSidebarTarget.PACKAGE_NAME + ":")
+            )
 
     private fun disableForConfigurationFailure(code: String, exception: RuntimeException) {
         configuration = null

@@ -62,19 +62,55 @@ internal class SystemUiHookInstaller(
         val receiver =
             object : android.content.BroadcastReceiver() {
                 override fun onReceive(receiverContext: Context?, intent: android.content.Intent?) {
-                    if (intent?.action != ModulePreferences.ACTION_PINNED_TARGETS_CHANGED) return
-                    configuration.forceReload()
-                    io.github.hoerire.flymefreeform.log.ModuleLog.info("SYSTEMUI_SETTINGS_RELOADED")
+                    when (intent?.action) {
+                        ModulePreferences.ACTION_PINNED_TARGETS_CHANGED -> {
+                            configuration.forceReload()
+                            io.github.hoerire.flymefreeform.log.ModuleLog.info(
+                                "SYSTEMUI_SETTINGS_RELOADED",
+                            )
+                        }
+                        ModulePreferences.ACTION_SETTINGS_PUSHED -> {
+                            // 框架配置存储不可写，设置以模块应用推送的整份快照为准。
+                            if (sentFromUid < 0) return
+                            val map = io.github.hoerire.flymefreeform.config.SettingsBridge
+                                .readMap(intent.extras) ?: return
+                            val next =
+                                try {
+                                    io.github.hoerire.flymefreeform.config.SettingsBridge
+                                        .decode(map)
+                                } catch (_: RuntimeException) {
+                                    return
+                                }
+                            configuration.override(next)
+                            io.github.hoerire.flymefreeform.log.ModuleLog.info(
+                                "SYSTEMUI_SETTINGS_PUSHED",
+                            )
+                        }
+                    }
                 }
             }
         runCatching {
             context.registerReceiver(
                 receiver,
-                android.content.IntentFilter(ModulePreferences.ACTION_PINNED_TARGETS_CHANGED),
+                android.content.IntentFilter().apply {
+                    addAction(ModulePreferences.ACTION_PINNED_TARGETS_CHANGED)
+                    addAction(ModulePreferences.ACTION_SETTINGS_PUSHED)
+                },
                 Context.RECEIVER_EXPORTED,
             )
         }.onSuccess {
             io.github.hoerire.flymefreeform.log.ModuleLog.info("SYSTEMUI_SETTINGS_OBSERVER_REGISTERED")
+            // 主动索取一次当前设置：系统进程已落盘，本进程内存里可能还是旧值。
+            runCatching {
+                context.sendBroadcast(
+                    android.content.Intent(ModulePreferences.ACTION_SETTINGS_REQUEST)
+                        .setPackage("android")
+                        .putExtra(
+                            ModulePreferences.EXTRA_REQUESTER_PACKAGE,
+                            "com.android.systemui",
+                        ),
+                )
+            }
         }.onFailure {
             module.log(Log.WARN, TAG, "SYSTEMUI_SETTINGS_OBSERVER_FAILED", it as? RuntimeException)
         }

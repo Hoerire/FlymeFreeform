@@ -1,28 +1,22 @@
 package io.github.hoerire.flymefreeform.ui
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Widgets
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
@@ -31,21 +25,12 @@ import io.github.hoerire.flymefreeform.R
 import io.github.hoerire.flymefreeform.apps.SelectableEntry
 import io.github.hoerire.flymefreeform.config.PinnedTarget
 import io.github.hoerire.flymefreeform.framework.FrameworkConnectionState
-import io.github.hoerire.flymefreeform.ui.component.TopBarBackdrop
-import io.github.hoerire.flymefreeform.ui.component.rememberTopBarBackdrop
-import io.github.hoerire.flymefreeform.ui.component.topBarContainerColor
-import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.hoerire.flymefreeform.ui.component.BasicComponent
+import io.github.hoerire.flymefreeform.ui.component.SettingsGroup
+import io.github.hoerire.flymefreeform.ui.component.SwitchPreference
+import io.github.neoruaa.glasmio.core.GlasmioTheme
+import io.github.neoruaa.glasmio.core.IosTypography
+import io.github.neoruaa.glasmio.ui.GlasmioTextField
 
 /**
  * 包名列表页：排除列表与「禁用浮窗」共用这一套骨架，只有文案与数据源不同。
@@ -71,64 +56,55 @@ private fun PackageListScreen(
     val byPackage = remember(apps) {
         apps.filter { it.target is PinnedTarget.App }.associateBy { it.packageName }
     }
-    ScreenScaffold(
+    SettingsPage(
         title = title,
         onBack = onBack,
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding =
-                PaddingValues(
-                    start = ScreenHorizontalMargin,
-                    top = innerPadding.calculateTopPadding() + ScreenTopSpacing,
-                    end = ScreenHorizontalMargin,
-                    bottom = innerPadding.calculateBottomPadding() + ScreenBottomSpacing,
-                ),
-        ) {
-            item(key = "add") {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    BasicComponent(
-                        title = addAction,
-                        summary = addSummary,
-                        enabled = enabled,
-                        onClick = onAddApps,
-                    )
-                }
+    ) {
+        item(key = "add") {
+            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
+                BasicComponent(
+                    title = addAction,
+                    summary = addSummary,
+                    enabled = enabled,
+                    onClick = onAddApps,
+                )
             }
-            item(key = "list") {
-                Card(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                    Column {
-                        if (blacklist.isEmpty()) {
-                            BasicComponent(
-                                title = emptyTitle,
-                                summary = emptySummary,
-                                enabled = false,
-                            )
-                        } else {
-                            blacklist.forEach { pkg ->
-                                val entry = byPackage[pkg]
-                                BasicComponent(
-                                    title = entry?.label ?: pkg,
-                                    summary = pkg,
-                                    startAction = { EntryIcon(entry) },
-                                    endActions = {
-                                        IconButton(
-                                            onClick = {
-                                                if (enabled) onChange(blacklist - pkg)
+        }
+        item(key = "list") {
+            SettingsGroup(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                if (blacklist.isEmpty()) {
+                    BasicComponent(
+                        title = emptyTitle,
+                        summary = emptySummary,
+                        enabled = false,
+                    )
+                } else {
+                    blacklist.forEach { pkg ->
+                        val entry = byPackage[pkg]
+                        BasicComponent(
+                            title = entry?.label ?: pkg,
+                            summary = pkg,
+                            startAction = { EntryIcon(entry) },
+                            endActions = {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .size(32.dp)
+                                            .clickable(enabled = enabled) {
+                                                onChange(blacklist - pkg)
                                             },
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.Remove,
-                                                contentDescription =
-                                                    stringResource(R.string.blacklist_remove_action),
-                                                modifier = Modifier.size(20.dp),
-                                                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                            )
-                                        }
-                                    },
-                                )
-                            }
-                        }
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Remove,
+                                        contentDescription =
+                                            stringResource(R.string.blacklist_remove_action),
+                                        modifier = Modifier.size(20.dp),
+                                        tint = GlasmioTheme.colors.secondaryContent,
+                                    )
+                                }
+                            },
+                        )
                     }
                 }
             }
@@ -193,6 +169,7 @@ internal fun ZoomExcludedScreen(
 private fun PackagePickerScreen(
     state: FrameworkConnectionState,
     apps: List<SelectableEntry>,
+    appsLoading: Boolean,
     onBack: () -> Unit,
     packages: List<String>,
     onChange: (List<String>) -> Unit,
@@ -215,79 +192,70 @@ private fun PackagePickerScreen(
                 }
             }
         }
-    ScreenScaffold(
+    SettingsPage(
         title = title,
         onBack = onBack,
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding =
-                PaddingValues(
-                    start = ScreenHorizontalMargin,
-                    top = innerPadding.calculateTopPadding() + ScreenTopSpacing,
-                    end = ScreenHorizontalMargin,
-                    bottom = innerPadding.calculateBottomPadding() + ScreenBottomSpacing,
-                ),
-        ) {
-            item(key = "search") {
-                TextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = stringResource(R.string.search_apps_placeholder),
-                    useLabelAsPlaceholder = true,
-                    singleLine = true,
+    ) {
+        item(key = "search") {
+            GlasmioTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = stringResource(R.string.search_apps_placeholder),
+            )
+        }
+        item(key = "system") {
+            SettingsGroup(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                SwitchPreference(
+                    checked = state.settings.showSystemApps,
+                    onCheckedChange = onShowSystemAppsChange,
+                    title = stringResource(R.string.show_system_apps_title),
+                    summary = stringResource(R.string.show_system_apps_summary),
+                    enabled = state.settingsEditable,
+                    startAction = { PreferenceIcon(Icons.Rounded.Widgets, enabled) },
                 )
             }
-            item(key = "system") {
-                Card(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                    SwitchPreference(
-                        checked = state.settings.showSystemApps,
-                        onCheckedChange = onShowSystemAppsChange,
-                        title = stringResource(R.string.show_system_apps_title),
-                        summary = stringResource(R.string.show_system_apps_summary),
-                        enabled = state.settingsEditable,
-                        startAction = { PreferenceIcon(Icons.Rounded.Widgets, enabled) },
+        }
+        item(key = "list") {
+            SettingsGroup(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                if (appsLoading) {
+                    // 扫描系统应用要重建数百个图标，先给出正在加载的行，避免列表看起来没反应。
+                    BasicComponent(
+                        title = stringResource(R.string.available_apps_loading),
+                        enabled = false,
                     )
-                }
-            }
-            item(key = "list") {
-                Card(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                    Column {
-                        if (candidates.isEmpty()) {
-                            BasicComponent(
-                                title = stringResource(R.string.no_matching_apps),
-                                enabled = false,
-                            )
-                        } else {
-                            candidates.forEach { entry ->
-                                val added = entry.packageName in blacklist
-                                BasicComponent(
-                                    title = entry.label,
-                                    summary = entry.packageName,
-                                    startAction = { EntryIcon(entry) },
-                                    endActions = {
-                                        if (added) {
-                                            Text(
-                                                text = addedLabel,
-                                                style = MiuixTheme.textStyles.body2,
-                                                color = MiuixTheme.colorScheme.primary,
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        if (!enabled) return@BasicComponent
-                                        onChange(
-                                            if (added) {
-                                                blacklist - entry.packageName
-                                            } else {
-                                                blacklist + entry.packageName
-                                            },
-                                        )
+                } else if (candidates.isEmpty()) {
+                    BasicComponent(
+                        title = stringResource(R.string.no_matching_apps),
+                        enabled = false,
+                    )
+                } else {
+                    candidates.forEach { entry ->
+                        val added = entry.packageName in blacklist
+                        BasicComponent(
+                            title = entry.label,
+                            summary = entry.packageName,
+                            startAction = { EntryIcon(entry) },
+                            endActions = {
+                                if (added) {
+                                    Text(
+                                        text = addedLabel,
+                                        style = IosTypography.subheadline,
+                                        color = GlasmioTheme.colors.accent,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                if (!enabled) return@BasicComponent
+                                onChange(
+                                    if (added) {
+                                        blacklist - entry.packageName
+                                    } else {
+                                        blacklist + entry.packageName
                                     },
                                 )
-                            }
-                        }
+                            },
+                        )
                     }
                 }
             }
@@ -300,6 +268,7 @@ private fun PackagePickerScreen(
 internal fun BlacklistPickerScreen(
     state: FrameworkConnectionState,
     apps: List<SelectableEntry>,
+    appsLoading: Boolean,
     onBack: () -> Unit,
     onBlacklistChange: (List<String>) -> Unit,
     onShowSystemAppsChange: (Boolean) -> Unit,
@@ -307,6 +276,7 @@ internal fun BlacklistPickerScreen(
     PackagePickerScreen(
         state = state,
         apps = apps,
+        appsLoading = appsLoading,
         onBack = onBack,
         packages = state.settings.blacklistPackages,
         onChange = onBlacklistChange,
@@ -321,6 +291,7 @@ internal fun BlacklistPickerScreen(
 internal fun ZoomExcludedPickerScreen(
     state: FrameworkConnectionState,
     apps: List<SelectableEntry>,
+    appsLoading: Boolean,
     onBack: () -> Unit,
     onZoomExcludedChange: (List<String>) -> Unit,
     onShowSystemAppsChange: (Boolean) -> Unit,
@@ -328,6 +299,7 @@ internal fun ZoomExcludedPickerScreen(
     PackagePickerScreen(
         state = state,
         apps = apps,
+        appsLoading = appsLoading,
         onBack = onBack,
         packages = state.settings.zoomExcludedPackages,
         onChange = onZoomExcludedChange,
@@ -335,58 +307,6 @@ internal fun ZoomExcludedPickerScreen(
         title = stringResource(R.string.zoom_excluded_add_action),
         addedLabel = stringResource(R.string.blacklist_added),
     )
-}
-
-@Composable
-internal fun ScreenScaffold(
-    title: String,
-    onBack: () -> Unit,
-    content: @Composable (PaddingValues) -> Unit,
-) {
-    val scrollBehavior = MiuixScrollBehavior()
-    val backdrop = rememberTopBarBackdrop()
-    val topBarColor = topBarContainerColor(backdrop)
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val isWide = maxWidth >= WideWindowMinWidth
-        val navigationIcon: @Composable () -> Unit = { BackButton(onBack) }
-        Scaffold(
-            contentWindowInsets =
-                WindowInsets.systemBars
-                    .union(WindowInsets.displayCutout)
-                    .union(WindowInsets.ime),
-            topBar = {
-                TopBarBackdrop(backdrop) {
-                    if (isWide) {
-                        SmallTopAppBar(
-                            title = title,
-                            color = topBarColor,
-                            navigationIcon = navigationIcon,
-                            scrollBehavior = scrollBehavior,
-                        )
-                    } else {
-                        TopAppBar(
-                            title = title,
-                            color = topBarColor,
-                            navigationIcon = navigationIcon,
-                            scrollBehavior = scrollBehavior,
-                        )
-                    }
-                }
-            },
-            content = content,
-        )
-    }
-}
-
-@Composable
-private fun BackButton(onBack: () -> Unit) {
-    IconButton(onClick = onBack) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-            contentDescription = stringResource(R.string.back_action),
-            modifier = Modifier.size(24.dp),
-        )
-    }
 }
 
 @Composable

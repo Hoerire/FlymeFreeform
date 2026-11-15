@@ -296,8 +296,8 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
     /**
      * 工具类入口：从 ToolEntryHelper.mTools 取 AbsTool 实例，调它的 handle()。
      *
-     * 调 handle() 之前登记目标包：工具的启动由系统 uid 代发（见 [PanelToolLaunchBridge]），
-     * 小窗参数只能在代发那一刻并入。登记后无论成功失败都要收敛，避免影响后续启动。
+     * 工具的启动由系统 uid 代发，模块只在面板收起后放行，不插手窗口形态：
+     * 付款码、扫一扫这类入口按全屏打开，避免支付流程被塞进小窗。
      */
     private fun launchTool(alias: String): Boolean = try {
         val helper = Class.forName(
@@ -313,13 +313,11 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
             panelLog("PANEL_TOOL_MISSING_" + alias)
             false
         } else {
-            PanelToolLaunchBridge.arm(toolTargetPackage(tool))
             tool.javaClass.getMethod("handle").invoke(tool)
             panelLog("PANEL_TOOL_HANDLED_" + alias)
             true
         }
     } catch (t: Throwable) {
-        PanelToolLaunchBridge.cancel()
         false
     }
 
@@ -359,6 +357,11 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
                 val intent = android.content.Intent()
                     .setClassName(pkg, activity)
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    // 快捷方式指向应用内的具体页面，保持全屏：开成小窗会让支付等流程变形。
+                    .putExtra(
+                        io.github.hoerire.flymefreeform.config.ModulePreferences.EXTRA_SKIP_ZOOM,
+                        true,
+                    )
                 context.startActivity(intent)
                 true
             }.getOrElse { false }
@@ -369,6 +372,10 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
             val done = runCatching {
                 val intent = android.content.Intent.parseUri(uri, 0)
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    .putExtra(
+                        io.github.hoerire.flymefreeform.config.ModulePreferences.EXTRA_SKIP_ZOOM,
+                        true,
+                    )
                 context.startActivity(intent)
                 true
             }.getOrElse { false }

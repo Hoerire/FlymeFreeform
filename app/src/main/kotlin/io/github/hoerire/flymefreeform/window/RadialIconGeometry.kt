@@ -22,7 +22,10 @@ internal object RadialIconGeometry {
 
     /**
      * [hitRadiusDp] 是设置页「命中范围」的物理 dp 值（40..140），为空时回落到
-     * [SELECTION_ENTER_FACTOR] 倍图标直径的历史行为（本机 350px）。
+     * [SELECTION_ENTER_FACTOR] 倍图标直径的历史行为。
+     *
+     * 命中半径换算用 [unit]（随窗口缩放后的每 dp 像素数）而不是原始 density：
+     * 圆环与图标都按 unit 排布，只有命中圈用 density 会让两者比例随屏幕尺寸漂移。
      */
     fun fit(
         width: Float,
@@ -55,7 +58,7 @@ internal object RadialIconGeometry {
         val radius = radiusDp * unit
         val enterRadius =
             if (hitRadiusDp != null && hitRadiusDp > 0f) {
-                hitRadiusDp * density
+                hitRadiusDp * unit
             } else {
                 diameter * SELECTION_ENTER_FACTOR
             }

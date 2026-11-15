@@ -5,26 +5,15 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Block
@@ -34,13 +23,14 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.SwipeRight
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,53 +38,38 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.hoerire.flymefreeform.BuildConfig
 import io.github.hoerire.flymefreeform.R
-import io.github.hoerire.flymefreeform.update.UpdateState
+import io.github.hoerire.flymefreeform.config.ModulePreferences
 import io.github.hoerire.flymefreeform.config.OutsideTapCloseMode
 import io.github.hoerire.flymefreeform.framework.FrameworkConnectionIssue
 import io.github.hoerire.flymefreeform.framework.FrameworkConnectionState
 import io.github.hoerire.flymefreeform.framework.FrameworkConnectionStatus
-import io.github.hoerire.flymefreeform.ui.component.TopBarBackdrop
-import io.github.hoerire.flymefreeform.ui.component.captureForTopBar
-import io.github.hoerire.flymefreeform.ui.component.rememberTopBarBackdrop
-import io.github.hoerire.flymefreeform.ui.component.topBarContainerColor
+import io.github.hoerire.flymefreeform.ui.component.ArrowPreference
+import io.github.hoerire.flymefreeform.ui.component.BasicComponent
+import io.github.hoerire.flymefreeform.ui.component.SettingsGroup
+import io.github.hoerire.flymefreeform.ui.component.SliderRow
+import io.github.hoerire.flymefreeform.ui.component.SwitchPreference
+import io.github.hoerire.flymefreeform.update.UpdateState
+import io.github.neoruaa.glasmio.core.GlasmioTheme
+import io.github.neoruaa.glasmio.core.IosTypography
+import io.github.neoruaa.glasmio.icons.SfIcon
+import io.github.neoruaa.glasmio.preference.GlasmioPreferenceEntry
+import io.github.neoruaa.glasmio.scaffold.GlasmioPinnedListPage
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.blur.BlendColorEntry
-import top.yukonga.miuix.kmp.blur.BlurDefaults
-import top.yukonga.miuix.kmp.blur.textureBlur
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.SliderPreference
-import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 @Composable
 internal fun ControlScreen(
@@ -110,6 +85,7 @@ internal fun ControlScreen(
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
     onFreeDragChange: (Boolean) -> Unit,
+    onDragLongPressChange: (Int) -> Unit,
     onRequestScopes: () -> Unit,
     onNavigateToPinnedApps: () -> Unit,
     onNavigateToRadialSettings: () -> Unit,
@@ -117,60 +93,18 @@ internal fun ControlScreen(
     onNavigateToZoomOptions: () -> Unit,
     onNavigateToAbout: () -> Unit,
 ) {
-    val scrollBehavior = MiuixScrollBehavior()
-    val backdrop = rememberTopBarBackdrop()
-    val topBarColor = topBarContainerColor(backdrop)
     val featuresEnabled = state.settingsEditable && state.settings.enabled
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val windowWidth = maxWidth
-        val isWideScreen = windowWidth >= WideWindowMinWidth
-        Scaffold(
-            contentWindowInsets =
-                WindowInsets.systemBars
-                    .union(WindowInsets.displayCutout)
-                    .union(WindowInsets.ime),
-            topBar = {
-                TopBarBackdrop(backdrop) {
-                    if (isWideScreen) {
-                        SmallTopAppBar(
-                            title = stringResource(R.string.app_name),
-                            color = topBarColor,
-                            scrollBehavior = scrollBehavior,
-                        )
-                    } else {
-                        TopAppBar(
-                            title = stringResource(R.string.app_name),
-                            color = topBarColor,
-                            scrollBehavior = scrollBehavior,
-                        )
-                    }
-                }
-            },
-        ) { innerPadding ->
-            val layoutDirection = LocalLayoutDirection.current
-            val safeStart = innerPadding.calculateStartPadding(layoutDirection)
-            val safeEnd = innerPadding.calculateEndPadding(layoutDirection)
-            val safeWidth = (windowWidth - safeStart - safeEnd).coerceAtLeast(0.dp)
-            val centeredSide = maxOf(ScreenHorizontalMargin, (safeWidth - ScreenContentMaxWidth) / 2)
-            Box(modifier = Modifier.fillMaxSize().captureForTopBar(backdrop)) {
-                LazyColumn(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .consumeWindowInsets(innerPadding)
-                            .scrollEndHaptic()
-                            .overScrollVertical()
-                            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        val sidePadding = maxOf(ScreenHorizontalMargin, (windowWidth - ScreenContentMaxWidth) / 2)
+        // 页面内容录进一条采样层，更新弹窗才能透出它；弹窗本体放在录制层之外。
+        PageBackdropScope(
+            content = {
+                GlasmioPinnedListPage(
+                    title = stringResource(R.string.app_name),
+                    horizontalContentPadding = sidePadding,
                     verticalArrangement = Arrangement.spacedBy(CardSpacing),
-                    contentPadding =
-                        PaddingValues(
-                            start = safeStart + centeredSide,
-                            top = innerPadding.calculateTopPadding() + ScreenTopSpacing,
-                            end = safeEnd + centeredSide,
-                            bottom = innerPadding.calculateBottomPadding() + ScreenBottomSpacing,
-                        ),
-                    overscrollEffect = null,
                 ) {
                     item(key = "runtime") {
                         RuntimeCard(
@@ -192,20 +126,21 @@ internal fun ControlScreen(
                             state = state,
                             featuresEnabled = featuresEnabled,
                             onFreeDragChange = onFreeDragChange,
+                            onDragLongPressChange = onDragLongPressChange,
                         )
                     }
                     item(key = "about") {
                         AboutCard(onNavigateToAbout = onNavigateToAbout)
                     }
                 }
-            }
-
-            UpdateOverlay(
-                update = update,
-                backdrop = backdrop,
-                onDismissUpdate = onDismissUpdate,
-            )
-        }
+            },
+            overlay = {
+                UpdateOverlay(
+                    update = update,
+                    onDismissUpdate = onDismissUpdate,
+                )
+            },
+        )
     }
 }
 
@@ -215,17 +150,42 @@ private fun FreeDragCard(
     state: FrameworkConnectionState,
     featuresEnabled: Boolean,
     onFreeDragChange: (Boolean) -> Unit,
+    onDragLongPressChange: (Int) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    // 只有设备上不存在内容传送门时才禁用：面板接管不依赖具体版本。
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val portalSupported =
+        androidx.compose.runtime.remember(context) {
+            io.github.hoerire.flymefreeform.platform.coloros.PortalSupport
+                .isSupported(context)
+        }
+    val freeDragUsable = featuresEnabled && portalSupported
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         SwitchPreference(
             checked = state.settings.freeDragEnabled,
             onCheckedChange = onFreeDragChange,
             title = stringResource(R.string.free_drag_title),
-            summary = stringResource(R.string.free_drag_summary),
-            enabled = featuresEnabled,
+            summary =
+                if (portalSupported) stringResource(R.string.free_drag_summary)
+                else stringResource(R.string.free_drag_unsupported),
+            enabled = freeDragUsable,
             startAction = {
-                PreferenceIcon(ImageVector.vectorResource(R.drawable.ic_free_drag), featuresEnabled)
+                PreferenceIcon(ImageVector.vectorResource(R.drawable.ic_free_share), freeDragUsable)
             },
+        )
+        RemoteDpSliderPreference(
+            icon = ImageVector.vectorResource(R.drawable.ic_trigger_delay),
+            confirmedValue = state.settings.dragLongPressMs,
+            isUpdating = state.isUpdating,
+            enabled = featuresEnabled && portalSupported && state.settings.freeDragEnabled,
+            title = stringResource(R.string.drag_long_press_title),
+            summary = stringResource(R.string.drag_long_press_summary),
+            minDp = ModulePreferences.MIN_DRAG_LONG_PRESS_MS,
+            maxDp = ModulePreferences.MAX_DRAG_LONG_PRESS_MS,
+            coerceDp = ModulePreferences::coerceDragLongPressMs,
+            onPreviewChange = {},
+            onCommit = onDragLongPressChange,
+            showDpUnit = false,
         )
     }
 }
@@ -238,7 +198,7 @@ private fun EntryCard(
     onNavigateToZoomOptions: () -> Unit,
     onNavigateToBlacklist: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         ArrowPreference(
             title = stringResource(R.string.radial_settings_title),
             summary = stringResource(R.string.radial_settings_summary),
@@ -283,7 +243,7 @@ private fun RuntimeCard(
         }
     val showScopeAction =
         state.status == FrameworkConnectionStatus.Connected && state.missingScopes.isNotEmpty()
-    Card(modifier = Modifier.fillMaxWidth()) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         SwitchPreference(
             checked = state.settings.enabled,
             onCheckedChange = onModuleEnabledChange,
@@ -297,11 +257,12 @@ private fun RuntimeCard(
         BasicComponent(
             title = stringResource(R.string.framework_service_title),
             summary = presentation.summary,
+            onClick = null,
             endActions = {
                 Text(
                     text = presentation.label,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    style = MiuixTheme.textStyles.body2,
+                    color = GlasmioTheme.colors.secondaryContent,
+                    style = IosTypography.subheadline,
                 )
             },
             startAction = { PreferenceIcon(Icons.Rounded.ElectricalServices) },
@@ -326,9 +287,6 @@ private fun RuntimeCard(
         }
     }
 }
-
-/** 滑条行图标相对整行垂直中心的补偿量：整行比单纯标题行高，居中会显得偏下。 */
-private val SliderIconOffsetY = (-6).dp
 
 @Composable
 internal fun RemoteDpSliderPreference(
@@ -363,17 +321,8 @@ internal fun RemoteDpSliderPreference(
             if (committed != confirmedValue) onCommit(committed)
         }
     val latestCommit by rememberUpdatedState(commit)
-    SliderPreference(
-        value = draftValue,
-        onValueChange = { value ->
-            // 只认真实按下时的回调。SliderPreference 会在布局与跟随动画里自己回放数值，
-            // 将上述帧误判为拖动会写入配置，导致数值持续漂移。
-            if (pressed) {
-                draftValue = value.coerceIn(minDp.toFloat(), maxDp.toFloat())
-                onPreviewChange(coerceDp(draftValue.roundToInt()))
-            }
-        },
-        // Initial 阶段只观察不消费；按下才允许改值，抬手才提交。
+    // Initial 阶段只观察不消费；按下才允许改值，抬手才提交。
+    Box(
         modifier =
             Modifier.pointerInput(Unit) {
                 awaitPointerEventScope {
@@ -389,26 +338,31 @@ internal fun RemoteDpSliderPreference(
                     }
                 }
             },
-        title = title,
-        summary = summary,
-        valueText =
-            if (showDpUnit) {
-                stringResource(R.string.dp_value, coerceDp(draftValue.roundToInt()))
-            } else {
-                coerceDp(draftValue.roundToInt()).toString()
+    ) {
+        SliderRow(
+            title = title,
+            summary = summary,
+            value = draftValue,
+            valueRange = minDp.toFloat()..maxDp.toFloat(),
+            onValueChange = { value ->
+                // 只认真实按下时的回调。滑条在数值同步时也会推送数值，
+                // 将那些帧误判为拖动会写入配置，导致数值持续漂移。
+                if (pressed) {
+                    draftValue = value.coerceIn(minDp.toFloat(), maxDp.toFloat())
+                    onPreviewChange(coerceDp(draftValue.roundToInt()))
+                }
             },
-        enabled = enabled,
-        // SliderPreference 把 start 区域垂直居中于「标题 + 滑条」整行，
-        // 图标因此落在标题下方；上移抵消，让它与标题同一水平线。
-        startAction = {
-            Box(modifier = Modifier.offset(y = SliderIconOffsetY)) {
-                PreferenceIcon(icon, enabled)
-            }
-        },
-        valueRange = minDp.toFloat()..maxDp.toFloat(),
-        steps = maxDp - minDp - 1,
-        onValueChangeFinished = null,
-    )
+            onValueChangeFinished = {},
+            valueText =
+                if (showDpUnit) {
+                    stringResource(R.string.dp_value, coerceDp(draftValue.roundToInt()))
+                } else {
+                    coerceDp(draftValue.roundToInt()).toString()
+                },
+            icon = { PreferenceIcon(icon, enabled) },
+            enabled = enabled,
+        )
+    }
 }
 
 @Composable
@@ -417,8 +371,8 @@ internal fun CornerRangePreview(
     leftEnabled: Boolean,
     rightEnabled: Boolean,
 ) {
-    val activeColor = MiuixTheme.colorScheme.primary
-    val inactiveColor = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    val activeColor = GlasmioTheme.colors.accent
+    val inactiveColor = GlasmioTheme.colors.secondaryContent
     Canvas(modifier = Modifier.fillMaxSize()) {
         val radius = rangeDp.dp.toPx()
         val arcSize = Size(radius * 2f, radius * 2f)
@@ -470,13 +424,15 @@ internal fun HitRangePreview(
     leftEnabled: Boolean,
     rightEnabled: Boolean,
 ) {
-    val activeColor = MiuixTheme.colorScheme.primary
-    val inactiveColor = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    val activeColor = GlasmioTheme.colors.accent
+    val inactiveColor = GlasmioTheme.colors.secondaryContent
     Canvas(modifier = Modifier.fillMaxSize()) {
         val basePixel = minOf(size.width, size.height) / RadialBaseShortEdgeDp
         val arcRadius = RadialBaseArcRadiusDp * basePixel
         val iconRadius = RadialBaseIconDiameterDp * basePixel / 2f
-        val hitRadius = hitRangeDp.dp.toPx()
+        // 必须用与扇形布局同一套单位：直接用 dp.toPx()（原始 density）会把命中圈
+        // 画大约 10%，看起来已经盖住角落，实际却要伸更远才响应。
+        val hitRadius = hitRangeDp * basePixel
         val strokeWidth = 2.dp.toPx()
         val dash = PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 5.dp.toPx()))
         val slots = itemCount.coerceIn(1, 7)
@@ -522,7 +478,7 @@ internal fun HitRangePreview(
 @Composable
 private fun AboutCard(onNavigateToAbout: () -> Unit) {
     val uriHandler = LocalUriHandler.current
-    Card(modifier = Modifier.fillMaxWidth()) {
+    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         BasicComponent(
             title = stringResource(R.string.about_feedback_title),
             summary = stringResource(R.string.about_feedback_summary),
@@ -535,20 +491,18 @@ private fun AboutCard(onNavigateToAbout: () -> Unit) {
             },
             startAction = { PreferenceIcon(Icons.Rounded.Forum) },
         )
-        ArrowPreference(
-            title = stringResource(R.string.about_app_title),
-            startAction = { PreferenceIcon(Icons.Rounded.Info) },
-            bottomAction = {
+        GlasmioPreferenceEntry(
+            title = { Text(stringResource(R.string.about_app_title), style = IosTypography.body) },
+            content = {
                 // 版本行：左为标签，右为完整版本号，右侧留出箭头的位置。
                 Row(
-                    // 起点与标题文字对齐：图标 24dp + 图标右间距 6dp。
-                    modifier = Modifier.fillMaxWidth().padding(start = 40.dp, top = 2.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         text = stringResource(R.string.about_version_label),
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        style = MiuixTheme.textStyles.body2,
+                        color = GlasmioTheme.colors.secondaryContent,
+                        style = IosTypography.subheadline,
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Spacer(modifier = Modifier.weight(1f))
@@ -558,13 +512,23 @@ private fun AboutCard(onNavigateToAbout: () -> Unit) {
                             BuildConfig.VERSION_NAME,
                             BuildConfig.VERSION_CODE.toString(),
                         ),
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        style = MiuixTheme.textStyles.body2,
+                        color = GlasmioTheme.colors.secondaryContent,
+                        style = IosTypography.subheadline,
                         textAlign = TextAlign.End,
                     )
                 }
             },
+            icon = { PreferenceIcon(Icons.Rounded.Info) },
+            trailingContent = {
+                SfIcon(
+                    systemName = "chevron.right",
+                    contentDescription = null,
+                    size = 14.dp,
+                    tint = GlasmioTheme.colors.tertiaryContent,
+                )
+            },
             onClick = onNavigateToAbout,
+            showTopSeparator = false,
         )
     }
 }
@@ -576,8 +540,8 @@ internal fun PreferenceIcon(imageVector: ImageVector, enabled: Boolean = true) {
         contentDescription = null,
         modifier = Modifier.padding(end = 6.dp).size(24.dp),
         tint =
-            if (enabled) MiuixTheme.colorScheme.onBackground
-            else MiuixTheme.colorScheme.disabledOnSecondaryVariant,
+            if (enabled) GlasmioTheme.colors.content
+            else GlasmioTheme.colors.tertiaryContent,
     )
 }
 
@@ -634,10 +598,8 @@ private const val RadialSafeDegrees = 3f
 
 internal val ScreenHorizontalMargin = 12.dp
 internal val ScreenContentMaxWidth = 600.dp
-internal val WideWindowMinWidth = 600.dp
-internal val ScreenTopSpacing = 12.dp
-internal val ScreenBottomSpacing = 12.dp
 private val CardSpacing = 12.dp
+
 /**
  * 拖动「图标大小」时的实时预览：按扇形真实几何画出槽位圆点与「更多」圆盘，
  * 用来确认主题图标与溢出按钮是否对齐。
@@ -649,8 +611,8 @@ internal fun IconSizePreview(
     leftEnabled: Boolean,
     rightEnabled: Boolean,
 ) {
-    val activeColor = MiuixTheme.colorScheme.primary
-    val inactiveColor = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    val activeColor = GlasmioTheme.colors.accent
+    val inactiveColor = GlasmioTheme.colors.secondaryContent
     Canvas(modifier = Modifier.fillMaxSize()) {
         val basePixel = minOf(size.width, size.height) / RadialBaseShortEdgeDp
         // 与 RadialIconGeometry 一致：图标变大时半径同比外推。

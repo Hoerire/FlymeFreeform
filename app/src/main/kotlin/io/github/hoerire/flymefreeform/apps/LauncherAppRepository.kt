@@ -34,8 +34,14 @@ internal class LauncherAppRepository(private val context: Context) {
             ThreadPoolExecutor.DiscardOldestPolicy(),
         )
     private val mutableApps = MutableStateFlow<List<SelectableEntry>>(emptyList())
+    private val mutableLoading = MutableStateFlow(false)
     private var includeSystemApps = false
+
+    /** 上一轮结果：重新打开开关时先按缓存立即生效，再在后台补齐。 */
+    private var cachedSystemEntries: List<SelectableEntry>? = null
+    private var cachedLauncherEntries: List<SelectableEntry> = emptyList()
     val apps: StateFlow<List<SelectableEntry>> = mutableApps.asStateFlow()
+    val loading: StateFlow<Boolean> = mutableLoading.asStateFlow()
 
     private val packageReceiver =
         object : BroadcastReceiver() {
@@ -66,9 +72,20 @@ internal class LauncherAppRepository(private val context: Context) {
      */
     fun refresh(includeSystemApps: Boolean = this.includeSystemApps) {
         this.includeSystemApps = includeSystemApps
+        // 已有系统应用列表时先合成一版：切换开关应当立刻看到结果，
+        // 扫描带图标的全量应用要数秒，期间不能只让界面停在旧列表上。
+        val cached = cachedSystemEntries
+        if (includeSystemApps && cached != null) {
+            emit(cachedLauncherEntries, cached)
+        }
+        mutableLoading.value = true
         worker.execute {
-            val launcherApps = context.getSystemService(LauncherApps::class.java) ?: return@execute
-            val collator = Collator.getInstance(Locale.getDefault())
+            val launcherApps =
+                context.getSystemService(LauncherApps::class.java)
+                    ?: run {
+                        mutableLoading.value = false
+                        return@execute
+                    }
             val launcherEntries =
                 launcherApps
                     .getActivityList(null, Process.myUserHandle())
@@ -87,17 +104,28 @@ internal class LauncherAppRepository(private val context: Context) {
                         }
                     }
                     .toList()
+            cachedLauncherEntries = launcherEntries
             val systemEntries =
                 if (!includeSystemApps) {
                     emptyList()
                 } else {
-                    systemAppEntries()
+                    systemAppEntries().also { cachedSystemEntries = it }
                 }
-            mutableApps.value =
-                (launcherEntries + systemEntries)
-                    .distinctBy(SelectableEntry::packageName)
-                    .sortedWith { first, second -> collator.compare(first.label, second.label) }
+            emit(launcherEntries, systemEntries)
+            mutableLoading.value = false
         }
+    }
+
+    /** 以固定排序规则合成最终列表。 */
+    private fun emit(
+        launcherEntries: List<SelectableEntry>,
+        systemEntries: List<SelectableEntry>,
+    ) {
+        val collator = Collator.getInstance(Locale.getDefault())
+        mutableApps.value =
+            (launcherEntries + systemEntries)
+                .distinctBy(SelectableEntry::packageName)
+                .sortedWith { first, second -> collator.compare(first.label, second.label) }
     }
 
     /**

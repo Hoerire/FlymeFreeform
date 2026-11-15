@@ -186,6 +186,8 @@ internal class ColorOsFreeformCoordinator(
     private var pendingMove: QueuedPointerEvent? = null
     private var movePosted = false
     private var lastOverlayFailureLogAt = -OVERLAY_FAILURE_LOG_INTERVAL_MS
+    /** 模糊接口取不到只记一次：每次呼出都记会把日志刷满。 */
+    private var blurUnavailableLogged = false
 
     fun start() {
         // 识屏宿主被限制后台运行会让三条入口同时失效；开机纠正一次，之后省电策略再改也不会失效。
@@ -292,7 +294,7 @@ internal class ColorOsFreeformCoordinator(
             settings.pinsSaved != lastSettings.pinsSaved ||
                 settings.pinnedTargets != lastSettings.pinnedTargets
         lastSettings = settings
-        overlay?.setBackdropAlpha(settings.shadePercent / 100f)
+        overlay?.setBackdropAlpha(ModulePreferences.backdropShadeAlpha(settings.backdropLevel))
         // monitor 只看"模块是否启用 + 角落是否开启"，不再看环境：
         // 环境判定本来就分两层（isInCornerZone 与 handlePointerEvent 都会拒），
         // 若这里还按环境决定是否注销，改设置时一旦环境判定暂时为 false，
@@ -631,7 +633,7 @@ internal class ColorOsFreeformCoordinator(
     private fun handlePointerEvent(event: MotionEvent) {
         // 会话间隙保护：抢流后如果流被系统掐断（没有 UP/CANCEL），pilferSessionActive 会一直
         // 停在 true，之后每一次新的按下都被当成"重复 DOWN"走 rebase，扇形再也激活不了
-        // （实机 02:49:08：连续 REBASED、没有一次 ACTIVATE）。这里用事件间隔判定新手势。
+        // 
         val now = android.os.SystemClock.uptimeMillis()
         if (pilferSessionActive && now - lastPointerEventAt > SESSION_GAP_MS) {
             trace("SYSTEM_GESTURE_SESSION_RESET_STALE")
@@ -817,13 +819,14 @@ internal class ColorOsFreeformCoordinator(
         // 保持挂起只影响「抬手后是否收起」，与窗口是否可触摸无关：
         // 触摸统一由 attachTouchRegion() 那块小窗口接住。
         val keepOpen = lastSettings.radialKeepOpen
-        val params = createOverlayParams()
+        val blurRadiusPx = overlayBlurRadiusPx(lastSettings.backdropLevel)
+        val params = createOverlayParams(blurRadiusPx = blurRadiusPx)
         var view: CornerRadialOverlayView? = null
         try {
             view = CornerRadialOverlayView(context, this, ::debug)
             // 每次呼出都按当前设置初始化遮罩浓度：设置变化时浮层通常不存在，
             // 只靠 applySettings 里的注入会漏掉"改完再呼出"这条路径。
-            view.setBackdropAlpha(lastSettings.shadePercent / 100f)
+            view.setBackdropAlpha(ModulePreferences.backdropShadeAlpha(lastSettings.backdropLevel))
             view.begin(
                 side = side,
                 catalog = catalogSnapshot,
@@ -841,7 +844,8 @@ internal class ColorOsFreeformCoordinator(
                 trace("SYSTEM_OVERLAY_TYPE_" + OVERLAY_WINDOW_TYPE)
             } catch (exception: RuntimeException) {
                 // 输入法层的窗口类型被系统拒绝时，退回普通悬浮窗，至少保证扇形可用。
-                val fallback = createOverlayParams(type = FALLBACK_OVERLAY_TYPE)
+                val fallback =
+                    createOverlayParams(type = FALLBACK_OVERLAY_TYPE, blurRadiusPx = blurRadiusPx)
                 windowManager.addView(view, fallback)
                 overlayWindowType = FALLBACK_OVERLAY_TYPE
                 logger(Log.WARN, "SYSTEM_OVERLAY_TYPE_FALLBACK_" + FALLBACK_OVERLAY_TYPE, exception)
@@ -1088,6 +1092,7 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun applyBackdropPassThrough(view: CornerRadialOverlayView) {
         try {
+            // 不带模糊重建参数：「更多」面板自己负责背景，这一层退成完全透明。
             val params = createOverlayParams()
             windowManager.updateViewLayout(view, params)
             detachTouchRegion()
@@ -1249,7 +1254,7 @@ internal class ColorOsFreeformCoordinator(
      *
      * 与扇形主窗口的唯一区别是**可触摸**。回退到内建面板时系统侧边栏未接收输入事件，
      * 如果窗口还带 FLAG_NOT_TOUCHABLE、触摸层又被摘掉，面板就收不到任何点击，
-     * 下一次按下会被 monitor 当成"点空白"直接把它关掉（实机 00:58:14 就是这样）。
+     * 下一次按下会被 monitor 当成"点空白"直接把它关掉
      * 同时去掉 FLAG_NOT_FOCUSABLE，让返回键能关闭面板。
      */
     private fun createPanelParams(
@@ -1275,6 +1280,7 @@ internal class ColorOsFreeformCoordinator(
 
     private fun createOverlayParams(
         type: Int = overlayWindowType,
+        blurRadiusPx: Int = 0,
     ): WindowManager.LayoutParams {
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -1293,18 +1299,51 @@ internal class ColorOsFreeformCoordinator(
             setFitInsetsTypes(0)
             windowAnimations = 0
             title = "FlymeFreeformCornerOverlay"
-            // 背景压暗由 Compose 那一层绘制（遮罩透明度可调），不使用窗口模糊：
-            // ColorOS 上 FLAG_BLUR_BEHIND 的合成时序不稳定，窗口加入前不会开始计算，
-            // 表现为"第一帧清晰、之后才模糊"，并伴随多余的合成闪烁。
+            // 压暗由 Compose 那一层绘制（遮罩浓度可调），窗口本身不参与调暗。
+            // 模糊是另一档开关：只有开启「系统模糊」才把半径交给系统合成，
+            // 关闭时窗口表面完全透明，行为与引入该开关之前一致。
+            if (blurRadiusPx > 0) applyBlurBehind(blurRadiusPx)
         }
     }
+
+    /**
+     * 给浮层窗口挂上系统的背景模糊。
+     *
+     * 走窗口自带的那一档（[FLAG_BLUR_BEHIND] + LayoutParams#setBlurBehindRadius）：
+     * WindowManagerService 把半径写进窗口表面的 SurfaceControl，由 SurfaceFlinger 合成时
+     * 模糊窗口下方的内容，和系统面板同一套实现，模块不自己画近似磨砂。
+     * 两个入口都是隐藏 API，取不到就保持透明窗口，不影响扇形本身。
+     */
+    private fun WindowManager.LayoutParams.applyBlurBehind(radiusPx: Int) {
+        val setter =
+            OemReflection.findMethod(
+                javaClass,
+                "setBlurBehindRadius",
+                java.lang.Integer.TYPE,
+            )
+        if (setter == null) {
+            if (!blurUnavailableLogged) {
+                blurUnavailableLogged = true
+                logger(Log.WARN, "SYSTEM_OVERLAY_BLUR_UNAVAILABLE", null)
+            }
+            return
+        }
+        val applied = runCatching { setter.invoke(this, radiusPx) }.isSuccess
+        if (applied) {
+            flags = flags or FLAG_BLUR_BEHIND
+        }
+    }
+
+    /** 模糊半径按 dp 折算：与系统面板的模糊在同一量级，不同密度下观感一致。 */
+    private fun overlayBlurRadiusPx(level: Int): Int =
+        (ModulePreferences.backdropBlurDp(level) * context.resources.displayMetrics.density).toInt()
 
     /**
      * 抢流后流被系统 CANCEL 时启动观察窗。
      *
      * 背景：pilfer 是在 MOVE 帧调用，此时 pointer 已分发，系统夺流时会重发 DOWN 并
-     * CANCEL 旧流；重启后的通道**可能不再投递任何事件**（实机 02:17:36 那次：CANCEL 之后
-     * 3.2 秒零 MOVE，菜单定格）。这时没有任何"是否还在交互"的外部依据，
+     * CANCEL 旧流；重启后的通道**可能不再投递任何事件**（CANCEL 之后连续 3.2 秒零 MOVE、
+     * 菜单定格）。这时没有任何"是否还在交互"的外部依据，
      * 唯一可靠的判据是「观察窗内有没有 MOVE 给这条流续命」。
      */
     private fun scheduleCancelWatch() {
@@ -1783,6 +1822,9 @@ internal class ColorOsFreeformCoordinator(
          */
         const val OVERLAY_WINDOW_TYPE = WindowManager.LayoutParams.TYPE_INPUT_METHOD_DIALOG
         const val FALLBACK_OVERLAY_TYPE = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+
+        /** `WindowManager.LayoutParams.FLAG_BLUR_BEHIND`；隐藏常量，值为 0x4。 */
+        const val FLAG_BLUR_BEHIND = 0x00000004
         const val OVERLAY_FAILURE_LOG_INTERVAL_MS = 10_000L
 
         /** 浮层最小可见时长：短于该值的「呼出即收起」会造成一次画面闪烁。 */

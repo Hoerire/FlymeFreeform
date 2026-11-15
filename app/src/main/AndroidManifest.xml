@@ -10,6 +10,8 @@
 
     <queries>
         <package android:name="com.coloros.smartsidebar" />
+        <!-- 传送门版本决定「自由传送」是否可用；不声明就查不到该包，开关会被误判成不支持。 -->
+        <package android:name="com.oplus.contentportal" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />

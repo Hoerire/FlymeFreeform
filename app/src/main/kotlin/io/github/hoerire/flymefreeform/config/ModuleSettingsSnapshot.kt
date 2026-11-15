@@ -46,9 +46,6 @@ internal data class ModuleSettingsSnapshot(
     /** 分享跳转：分享给另一个应用时改小窗（走模块自己的 zoom 启动）。 */
     val zoomLaunchShareRelay: Boolean = false,
 
-    /** 系统代发：system_server 发起的应用启动。 */
-    val zoomLaunchSystem: Boolean = false,
-
     /** 复制链接：复制链接弹窗与系统分发服务代发的启动。 */
     val zoomLaunchClipboard: Boolean = false,
     /**
@@ -57,8 +54,8 @@ internal data class ModuleSettingsSnapshot(
      * 与 [blacklistPackages] 分开存：那份是「暂停模块增强」，这份只关启动改写。
      */
     val zoomExcludedPackages: List<String> = emptyList(),
-    /** 黑色遮罩浓度（百分比），0 为完全透明。 */
-    val shadePercent: Int = ModulePreferences.DEFAULT_SHADE_PERCENT,
+    /** 背景滑条：负值为黑色遮罩浓度，正值为系统模糊，0 为不处理背景。 */
+    val backdropLevel: Int = ModulePreferences.DEFAULT_BACKDROP_LEVEL,
     val autoCloseWindow: Boolean = ModulePreferences.DEFAULT_AUTO_CLOSE_WINDOW,
     /** 长按迷你窗：长按放大、再长按还原。 */
     val longPressMuteEnabled: Boolean = ModulePreferences.DEFAULT_LONG_PRESS_MUTE,
@@ -75,6 +72,8 @@ internal data class ModuleSettingsSnapshot(
      * 任意页面都能长按拖起文字/图片。只影响「能不能拖」，不参与「拖给谁」。
      */
     val freeDragEnabled: Boolean = ModulePreferences.DEFAULT_FREE_DRAG,
+    /** 拖拽触发延迟：系统长按阈值（毫秒），400 即官方行为。 */
+    val dragLongPressMs: Int = ModulePreferences.DEFAULT_DRAG_LONG_PRESS_MS,
 ) {
 
     /**
@@ -95,7 +94,6 @@ internal data class ModuleSettingsSnapshot(
     val zoomLaunchInterAppResultEffective: Boolean
         get() = zoomInteractionActive && zoomLaunchInterAppResult
     val zoomLaunchShareRelayEffective: Boolean get() = zoomInteractionActive && zoomLaunchShareRelay
-    val zoomLaunchSystemEffective: Boolean get() = zoomInteractionActive && zoomLaunchSystem
     val zoomLaunchClipboardEffective: Boolean
         get() = zoomInteractionActive && zoomLaunchClipboard
     val autoCloseWindowEffective: Boolean get() = zoomInteractionActive && autoCloseWindow
@@ -145,7 +143,6 @@ internal data class ModuleSettingsSnapshot(
                 ModulePreferences.KEY_ZOOM_LAUNCH_SHARE_RELAY,
                 zoomLaunchShareRelay,
             )
-            .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_SYSTEM, zoomLaunchSystem)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_CLIPBOARD, zoomLaunchClipboard)
             .putBoolean(ModulePreferences.KEY_AUTO_CLOSE_WINDOW, autoCloseWindow)
             .putBoolean(ModulePreferences.KEY_FLOAT_KEEP_ALIVE, floatKeepAlive)
@@ -153,13 +150,12 @@ internal data class ModuleSettingsSnapshot(
             .putBoolean(ModulePreferences.KEY_SHOW_SYSTEM_APPS, showSystemApps)
             // 旧分项键不再写入，升级后一并清除，避免残留值干扰排查。
             .remove(ModulePreferences.LEGACY_KEY_ZOOM_INTERACTION_ENABLED)
-            .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_NOTIFICATION)
-            .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_CONTROL_CENTER)
-            .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_INTER_APP)
-            .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCHER_SHORTCUT)
-            .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCHER_CARD)
             .putBoolean(ModulePreferences.KEY_RADIAL_KEEP_OPEN, radialKeepOpen)
             .putBoolean(ModulePreferences.KEY_FREE_DRAG, freeDragEnabled)
+            .putInt(
+                ModulePreferences.KEY_DRAG_LONG_PRESS_MS,
+                ModulePreferences.coerceDragLongPressMs(dragLongPressMs),
+            )
             .putString(
                 ModulePreferences.KEY_BLACKLIST_PACKAGES,
                 blacklistPackages.joinToString("\n"),
@@ -178,9 +174,12 @@ internal data class ModuleSettingsSnapshot(
                 ModulePreferences.coerceRadialHitRangeDp(radialHitRangeDp),
             )
             .putInt(
-                ModulePreferences.KEY_SHADE_PERCENT,
-                ModulePreferences.coerceShadePercent(shadePercent),
+                ModulePreferences.KEY_BACKDROP_LEVEL,
+                ModulePreferences.coerceBackdropLevel(backdropLevel),
             )
+            // 分项时代的两个键不再写入，升级后一并清除。
+            .remove(ModulePreferences.LEGACY_KEY_SHADE_PERCENT)
+            .remove(ModulePreferences.LEGACY_KEY_RADIAL_BLUR_ENABLED)
             .putInt(
                 ModulePreferences.KEY_RADIAL_ICON_SIZE_DP,
                 ModulePreferences.coerceRadialIconSizeDp(radialIconSizeDp),
@@ -259,7 +258,7 @@ internal data class ModuleSettingsSnapshot(
             // 老配置迁移（升级路径）：
             // 1. 总开关「轻量打开」为停用状态但仍有值且为关 —— 说明升级前用户把小窗能力整体关着，
             //    那么所有场景都按关处理；第一次保存设置时这个键会被清掉，之后不再干预。
-            // 2. 新拆出来的场景键（登录授权 / 系统代发 / 复制链接）没存过时继承旧「应用跳转」
+            // 2. 新拆出来的场景键（登录授权 / 复制链接）没存过时继承旧「应用跳转」
             //    的值，避免升级后用户原本能小窗的场景突然变全屏。
             // 3. 「应用分享」为新增能力，不继承旧值：其旧行为表现为全屏，直接打开会造成形态突变。
             val legacyMaster =
@@ -288,18 +287,29 @@ internal data class ModuleSettingsSnapshot(
                 zoomLaunchInterAppResult =
                     sceneInherit(ModulePreferences.KEY_ZOOM_LAUNCH_INTER_APP_RESULT),
                 zoomLaunchShareRelay = scene(ModulePreferences.KEY_ZOOM_LAUNCH_SHARE_RELAY),
-                zoomLaunchSystem = sceneInherit(ModulePreferences.KEY_ZOOM_LAUNCH_SYSTEM),
                 zoomLaunchClipboard = sceneInherit(ModulePreferences.KEY_ZOOM_LAUNCH_CLIPBOARD),
                 leftCornerEnabled = if (bothCornersDisabled) true else leftEnabled,
                 rightCornerEnabled = if (bothCornersDisabled) true else rightEnabled,
                 cornerTriggerRangeDp = cornerTriggerRangeDp,
                 radialHitRangeDp = radialHitRangeDp,
-                shadePercent = ModulePreferences.coerceShadePercent(
-                    preferences.getInt(
-                        ModulePreferences.KEY_SHADE_PERCENT,
-                        ModulePreferences.DEFAULT_SHADE_PERCENT,
+                backdropLevel =
+                    ModulePreferences.coerceBackdropLevel(
+                        preferences.getInt(
+                            ModulePreferences.KEY_BACKDROP_LEVEL,
+                            // 分项时代：开着模糊的按那一版的固定半径折成正值，
+                            // 否则把遮罩浓度折成负值；两者都没设过即不处理背景。
+                            if (
+                                preferences.getBoolean(
+                                    ModulePreferences.LEGACY_KEY_RADIAL_BLUR_ENABLED,
+                                    false,
+                                )
+                            ) {
+                                ModulePreferences.LEGACY_BLUR_LEVEL
+                            } else {
+                                -preferences.getInt(ModulePreferences.LEGACY_KEY_SHADE_PERCENT, 0)
+                            },
+                        ),
                     ),
-                ),
                 radialIconSizeDp =
                     ModulePreferences.coerceRadialIconSizeDp(
                         preferences.getInt(
@@ -377,6 +387,10 @@ internal data class ModuleSettingsSnapshot(
                 freeDragEnabled = preferences.getBoolean(
                     ModulePreferences.KEY_FREE_DRAG,
                     ModulePreferences.DEFAULT_FREE_DRAG,
+                ),
+                dragLongPressMs = preferences.getInt(
+                    ModulePreferences.KEY_DRAG_LONG_PRESS_MS,
+                    ModulePreferences.DEFAULT_DRAG_LONG_PRESS_MS,
                 ),
             )
         }

@@ -4,29 +4,26 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,14 +36,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -60,29 +56,13 @@ import io.github.hoerire.flymefreeform.config.ModulePreferences
 import io.github.hoerire.flymefreeform.config.PinnedTarget
 import io.github.hoerire.flymefreeform.config.PinnedTargetCodec
 import io.github.hoerire.flymefreeform.framework.FrameworkConnectionState
-import io.github.hoerire.flymefreeform.ui.component.TopBarBackdrop
-import io.github.hoerire.flymefreeform.ui.component.captureForTopBar
-import io.github.hoerire.flymefreeform.ui.component.rememberTopBarBackdrop
-import io.github.hoerire.flymefreeform.ui.component.topBarContainerColor
-import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.Check
-import top.yukonga.miuix.kmp.icon.basic.Search
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
-import top.yukonga.miuix.kmp.squircle.squircleBackground
-import top.yukonga.miuix.kmp.squircle.squircleClip
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import io.github.hoerire.flymefreeform.ui.component.BasicComponent
+import io.github.hoerire.flymefreeform.ui.component.SettingsGroup
+import io.github.neoruaa.glasmio.core.GlasmioTheme
+import io.github.neoruaa.glasmio.core.IosTypography
+import io.github.neoruaa.glasmio.scaffold.GlasmioPinnedListPage
+import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
+import io.github.neoruaa.glasmio.ui.GlasmioTextField
 
 @Composable
 internal fun PinnedAppsScreen(
@@ -111,312 +91,255 @@ internal fun PinnedAppsScreen(
     var draggingComponent by remember { mutableStateOf<PinnedTarget?>(null) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
     var rowHeightPx by remember { mutableFloatStateOf(0f) }
-    val scrollBehavior = MiuixScrollBehavior()
-    val backdrop = rememberTopBarBackdrop()
-    val topBarColor = topBarContainerColor(backdrop)
+    val title = stringResource(R.string.radial_apps_screen_title)
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val isWide = maxWidth >= WideWindowMinWidth
-        val title = stringResource(R.string.radial_apps_screen_title)
-        val navigationIcon: @Composable () -> Unit = { BackButton(onBack) }
-        Scaffold(
-            contentWindowInsets =
-                WindowInsets.systemBars
-                    .union(WindowInsets.displayCutout)
-                    .union(WindowInsets.ime),
-            topBar = {
-                TopBarBackdrop(backdrop) {
-                    if (isWide) {
-                        SmallTopAppBar(
-                            title = title,
-                            subtitle = stringResource(R.string.radial_apps_screen_subtitle),
-                            color = topBarColor,
-                            navigationIcon = navigationIcon,
-                            scrollBehavior = scrollBehavior,
-                        )
-                    } else {
-                        TopAppBar(
-                            title = title,
-                            subtitle = stringResource(R.string.radial_apps_screen_subtitle),
-                            color = topBarColor,
-                            navigationIcon = navigationIcon,
-                            scrollBehavior = scrollBehavior,
-                        )
-                    }
-                }
-            },
-        ) { innerPadding ->
-            val direction = LocalLayoutDirection.current
-            val safeStart = innerPadding.calculateStartPadding(direction)
-            val safeEnd = innerPadding.calculateEndPadding(direction)
-            val safeWidth = (maxWidth - safeStart - safeEnd).coerceAtLeast(0.dp)
-            val side = maxOf(ScreenHorizontalMargin, (safeWidth - ScreenContentMaxWidth) / 2)
-            val pinned = state.settings.pinnedTargets
-            LaunchedEffect(pinned) {
-                if (localOrder != null && pinned == localOrder) localOrder = null
-            }
-            val displayed = localOrder ?: pinned
-            val appByComponent = remember(allEntries) { allEntries.associateBy(SelectableEntry::target) }
-            Box(modifier = Modifier.fillMaxSize().captureForTopBar(backdrop)) {
-                LazyColumn(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .consumeWindowInsets(innerPadding)
-                        .scrollEndHaptic()
-                        .overScrollVertical()
-                        .nestedScroll(scrollBehavior.nestedScrollConnection),
-                contentPadding =
-                    PaddingValues(
-                        start = safeStart + side,
-                        top = innerPadding.calculateTopPadding() + ScreenTopSpacing,
-                        end = safeEnd + side,
-                        bottom = innerPadding.calculateBottomPadding() + ScreenBottomSpacing,
-                    ),
-                overscrollEffect = null,
-                ) {
-                item(key = "radial_options") {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        BasicComponent(
-                            title = stringResource(R.string.select_apps_action),
-                            startAction = { PreferenceIcon(Icons.Rounded.Add, state.settingsEditable) },
-                            onClick = {
-                                pickerQuery = ""
-                                pickerOpen = true
-                            },
-                            onClickLabel = stringResource(R.string.select_apps_action),
-                            role = Role.Button,
-                            enabled = state.settingsEditable,
-                        )
-                    }
-                }
-                item(key = "added_intro") {
-                    Text(
-                        text =
-                            stringResource(
-                                R.string.added_apps_title,
-                                displayed.size,
-                                ModulePreferences.MAX_PINNED_APPS,
-                            ),
-                        modifier =
-                            Modifier
-                                .padding(start = 16.dp, bottom = 8.dp)
-                                .semantics { heading() },
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        style = MiuixTheme.textStyles.subtitle,
+        val side = maxOf(ScreenHorizontalMargin, (maxWidth - ScreenContentMaxWidth) / 2)
+        val pinned = state.settings.pinnedTargets
+        LaunchedEffect(pinned) {
+            if (localOrder != null && pinned == localOrder) localOrder = null
+        }
+        val displayed = localOrder ?: pinned
+        val appByComponent = remember(allEntries) { allEntries.associateBy(SelectableEntry::target) }
+        GlasmioPinnedListPage(
+            title = title,
+            subtitle = stringResource(R.string.radial_apps_screen_subtitle),
+            onNavigateBack = onBack,
+            horizontalContentPadding = side,
+        ) {
+            item(key = "radial_options") {
+                SettingsGroup(modifier = Modifier.fillMaxWidth()) {
+                    BasicComponent(
+                        title = stringResource(R.string.select_apps_action),
+                        startAction = { PreferenceIcon(Icons.Rounded.Add, state.settingsEditable) },
+                        onClick = {
+                            pickerQuery = ""
+                            pickerOpen = true
+                        },
+                        enabled = state.settingsEditable,
                     )
                 }
-                item(key = "added") {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        displayed.forEachIndexed { index, component ->
-                            key(PinnedTargetCodec.encode(component)) {
-                                AddedAppRow(
-                                    component = component,
-                                    app = appByComponent[component],
-                                    index = index,
-                                    enabled = state.settingsEditable,
-                                    draggable = state.settingsEditable && displayed.size > 1,
-                                    dragging = draggingComponent == component,
-                                    dragOffsetY = dragOffsetY,
-                                    rowHeightPx = rowHeightPx,
-                                    onRowHeight = { height ->
-                                        if (rowHeightPx != height) rowHeightPx = height
-                                    },
-                                    onRemove = {
-                                        val updated = displayed.filterNot { it == component }
-                                        localOrder = updated
-                                        onPinnedTargetsChange(updated)
-                                    },
-                                    onDragStart = {
-                                        localOrder = displayed
-                                        draggingComponent = component
-                                        dragOffsetY = 0f
-                                    },
-                                    onDrag = { deltaY ->
-                                        if (rowHeightPx > 0f) {
-                                            dragOffsetY += deltaY
-                                            val order =
-                                                (localOrder ?: displayed).toMutableList()
-                                            var current = order.indexOf(component)
-                                            while (current >= 0 &&
-                                                dragOffsetY > rowHeightPx / 2 &&
-                                                current < order.size - 1
-                                            ) {
-                                                order.add(current + 1, order.removeAt(current))
-                                                dragOffsetY -= rowHeightPx
-                                                current++
-                                            }
-                                            while (current >= 0 &&
-                                                dragOffsetY < -rowHeightPx / 2 &&
-                                                current > 0
-                                            ) {
-                                                order.add(current - 1, order.removeAt(current))
-                                                dragOffsetY += rowHeightPx
-                                                current--
-                                            }
-                                            localOrder = order
+            }
+            item(key = "added_intro") {
+                Text(
+                    text =
+                        stringResource(
+                            R.string.added_apps_title,
+                            displayed.size,
+                            ModulePreferences.MAX_PINNED_APPS,
+                        ),
+                    modifier =
+                        Modifier
+                            .padding(start = 16.dp, bottom = 8.dp)
+                            .semantics { heading() },
+                    color = GlasmioTheme.colors.secondaryContent,
+                    style = IosTypography.subheadline,
+                )
+            }
+            item(key = "added") {
+                SettingsGroup(modifier = Modifier.fillMaxWidth()) {
+                    displayed.forEachIndexed { index, component ->
+                        key(PinnedTargetCodec.encode(component)) {
+                            AddedAppRow(
+                                component = component,
+                                app = appByComponent[component],
+                                index = index,
+                                enabled = state.settingsEditable,
+                                draggable = state.settingsEditable && displayed.size > 1,
+                                dragging = draggingComponent == component,
+                                dragOffsetY = dragOffsetY,
+                                rowHeightPx = rowHeightPx,
+                                onRowHeight = { height ->
+                                    if (rowHeightPx != height) rowHeightPx = height
+                                },
+                                onRemove = {
+                                    val updated = displayed.filterNot { it == component }
+                                    localOrder = updated
+                                    onPinnedTargetsChange(updated)
+                                },
+                                onDragStart = {
+                                    localOrder = displayed
+                                    draggingComponent = component
+                                    dragOffsetY = 0f
+                                },
+                                onDrag = { deltaY ->
+                                    if (rowHeightPx > 0f) {
+                                        dragOffsetY += deltaY
+                                        val order =
+                                            (localOrder ?: displayed).toMutableList()
+                                        var current = order.indexOf(component)
+                                        while (current >= 0 &&
+                                            dragOffsetY > rowHeightPx / 2 &&
+                                            current < order.size - 1
+                                        ) {
+                                            order.add(current + 1, order.removeAt(current))
+                                            dragOffsetY -= rowHeightPx
+                                            current++
                                         }
-                                    },
-                                    onDragEnd = {
-                                        val order = localOrder
-                                        draggingComponent = null
-                                        dragOffsetY = 0f
-                                        if (order != null) {
-                                            if (order == pinned) {
-                                                localOrder = null
-                                            } else {
-                                                onPinnedTargetsChange(order)
-                                            }
+                                        while (current >= 0 &&
+                                            dragOffsetY < -rowHeightPx / 2 &&
+                                            current > 0
+                                        ) {
+                                            order.add(current - 1, order.removeAt(current))
+                                            dragOffsetY += rowHeightPx
+                                            current--
                                         }
-                                    },
-                                )
-                            }
-                        }
-                        if (displayed.isEmpty()) {
-                            BasicComponent(
-                                title = stringResource(R.string.added_apps_empty),
-                                summary = stringResource(R.string.added_apps_empty_summary),
-                                enabled = false,
+                                        localOrder = order
+                                    }
+                                },
+                                onDragEnd = {
+                                    val order = localOrder
+                                    draggingComponent = null
+                                    dragOffsetY = 0f
+                                    if (order != null) {
+                                        if (order == pinned) {
+                                            localOrder = null
+                                        } else {
+                                            onPinnedTargetsChange(order)
+                                        }
+                                    }
+                                },
                             )
                         }
                     }
-                }
-                }
-            }
-            // 勾选状态跟随 displayed，sheet 内增删即时可见
-            val addedSet = remember(displayed) { displayed.toSet() }
-            val candidates =
-                remember(allEntries, pickerQuery) {
-                    if (pickerQuery.isBlank()) {
-                        allEntries
-                    } else {
-                        allEntries.filter {
-                            it.label.contains(pickerQuery, ignoreCase = true) ||
-                                it.packageName.contains(pickerQuery, ignoreCase = true)
-                        }
+                    if (displayed.isEmpty()) {
+                        BasicComponent(
+                            title = stringResource(R.string.added_apps_empty),
+                            summary = stringResource(R.string.added_apps_empty_summary),
+                            enabled = false,
+                        )
                     }
                 }
-            val groups = remember(candidates) {
-                listOf(
-                    R.string.entry_group_tools to candidates.filter { (it.target as? PinnedTarget.Sidebar)?.kind == PinnedTarget.Kind.Tool },
-                    R.string.entry_group_shortcuts to candidates.filter {
-                        val kind = (it.target as? PinnedTarget.Sidebar)?.kind
-                        kind == PinnedTarget.Kind.Shortcut || kind == PinnedTarget.Kind.AppEntry
-                    },
-                    R.string.entry_group_cloned_apps to candidates.filter {
-                        (it.target as? PinnedTarget.Sidebar)?.kind == PinnedTarget.Kind.CloneApp
-                    },
-                    // 只列可启动的应用：系统服务在豁免/黑名单里可选，但没有启动入口，不能进扇形。
+            }
+        }
+        // 勾选状态跟随 displayed，sheet 内增删即时可见
+        val addedSet = remember(displayed) { displayed.toSet() }
+        val candidates =
+            remember(allEntries, pickerQuery) {
+                if (pickerQuery.isBlank()) {
+                    allEntries
+                } else {
+                    allEntries.filter {
+                        it.label.contains(pickerQuery, ignoreCase = true) ||
+                            it.packageName.contains(pickerQuery, ignoreCase = true)
+                    }
+                }
+            }
+        val groups = remember(candidates) {
+            listOf(
+                R.string.entry_group_tools to candidates.filter { (it.target as? PinnedTarget.Sidebar)?.kind == PinnedTarget.Kind.Tool },
+                R.string.entry_group_shortcuts to candidates.filter {
+                    val kind = (it.target as? PinnedTarget.Sidebar)?.kind
+                    kind == PinnedTarget.Kind.Shortcut || kind == PinnedTarget.Kind.AppEntry
+                },
+                R.string.entry_group_cloned_apps to candidates.filter {
+                    (it.target as? PinnedTarget.Sidebar)?.kind == PinnedTarget.Kind.CloneApp
+                },
+                // 只列可启动的应用：系统服务在豁免/黑名单里可选，但没有启动入口，不能进扇形。
             R.string.entry_group_apps to candidates.filter {
                 (it.target as? PinnedTarget.App)?.className?.isNotEmpty() == true
             },
-                ).filter { it.second.isNotEmpty() }
-            }
-            OverlayBottomSheet(
-                show = pickerOpen,
-                title = stringResource(R.string.select_apps_action),
-                onDismissRequest = { pickerOpen = false },
+            ).filter { it.second.isNotEmpty() }
+        }
+        val sheetTitle = stringResource(R.string.select_apps_action)
+        GlasmioBottomSheet(
+            visible = pickerOpen,
+            title = sheetTitle,
+            onDismissRequest = { pickerOpen = false },
+        ) {
+            Text(
+                text = sheetTitle,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+                style = IosTypography.title3,
+                color = GlasmioTheme.colors.content,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
-                    TextField(
-                        value = pickerQuery,
-                        onValueChange = { pickerQuery = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = stringResource(R.string.search_apps_placeholder),
-                        useLabelAsPlaceholder = true,
-                        singleLine = true,
-                        leadingIcon = {
-                            Icon(
-                                imageVector = MiuixIcons.Basic.Search,
-                                contentDescription = null,
-                                modifier = Modifier.padding(start = 12.dp, end = 8.dp),
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = null,
+                    modifier = Modifier.padding(start = 16.dp, end = 4.dp).size(20.dp),
+                    tint = GlasmioTheme.colors.secondaryContent,
+                )
+                GlasmioTextField(
+                    value = pickerQuery,
+                    onValueChange = { pickerQuery = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = stringResource(R.string.search_apps_placeholder),
+                )
+            }
+            LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp)) {
+                if (sidebarCatalog.status != SidebarCatalogStatus.Ready) {
+                    item(key = "sidebar_status") {
+                        BasicComponent(
+                            title = stringResource(if (sidebarCatalog.status == SidebarCatalogStatus.Loading) R.string.sidebar_catalog_loading else R.string.sidebar_catalog_unavailable),
+                            summary = stringResource(if (sidebarCatalog.status == SidebarCatalogStatus.Loading) R.string.sidebar_catalog_loading_summary else R.string.sidebar_catalog_retry_summary),
+                            onClick = onRefreshCatalog,
+                            enabled = state.settingsEditable && sidebarCatalog.status != SidebarCatalogStatus.Loading,
+                        )
+                    }
+                }
+                when {
+                    allEntries.isEmpty() ->
+                        item(key = "apps_loading") {
+                            BasicComponent(
+                                title = stringResource(R.string.available_apps_loading),
+                                summary = stringResource(R.string.available_apps_loading_summary),
+                                enabled = false,
                             )
-                        },
-                    )
-                    LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                        if (sidebarCatalog.status != SidebarCatalogStatus.Ready) {
-                            item(key = "sidebar_status") {
-                                BasicComponent(
-                                    title = stringResource(if (sidebarCatalog.status == SidebarCatalogStatus.Loading) R.string.sidebar_catalog_loading else R.string.sidebar_catalog_unavailable),
-                                    summary = stringResource(if (sidebarCatalog.status == SidebarCatalogStatus.Loading) R.string.sidebar_catalog_loading_summary else R.string.sidebar_catalog_retry_summary),
-                                    onClick = onRefreshCatalog,
-                                    onClickLabel = stringResource(R.string.retry_action),
-                                    role = Role.Button,
-                                    enabled = state.settingsEditable && sidebarCatalog.status != SidebarCatalogStatus.Loading,
-                                )
-                            }
                         }
-                        when {
-                            allEntries.isEmpty() ->
-                                item(key = "apps_loading") {
-                                    BasicComponent(
-                                        title = stringResource(R.string.available_apps_loading),
-                                        summary = stringResource(R.string.available_apps_loading_summary),
-                                        enabled = false,
-                                    )
-                                }
-                            candidates.isEmpty() ->
-                                item(key = "apps_no_match") {
-                                    BasicComponent(
-                                        title = stringResource(R.string.no_matching_apps),
-                                        enabled = false,
-                                    )
-                                }
-                            else -> groups.forEach { (title, entries) ->
-                                item(key = "group_$title") {
-                                    Text(
-                                        text = stringResource(title),
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { heading() },
-                                        style = MiuixTheme.textStyles.subtitle,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                    )
-                                }
-                                items(entries, key = { PinnedTargetCodec.encode(it.target) }) { app ->
-                                    val added = app.target in addedSet
-                                    BasicComponent(
-                                        title = app.label,
-                                        summary = app.packageName,
-                                        startAction = { AppIcon(app) },
-                                        endActions =
-                                            if (added) {
-                                                {
-                                                    Icon(
-                                                        imageVector = MiuixIcons.Basic.Check,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = MiuixTheme.colorScheme.primary,
-                                                    )
-                                                }
-                                            } else {
-                                                null
-                                            },
-                                        onClick = {
-                                            val updated =
-                                                if (added) {
-                                                    displayed.filterNot { it == app.target }
-                                                } else {
-                                                    (displayed + app.target)
-                                                        .take(ModulePreferences.MAX_PINNED_APPS)
-                                                }
-                                            localOrder = updated
-                                            onPinnedTargetsChange(updated)
-                                        },
-                                        onClickLabel =
-                                            stringResource(
-                                                if (added) {
-                                                    R.string.remove_named_app_action
-                                                } else {
-                                                    R.string.add_named_app_action
-                                                },
-                                                app.label,
-                                            ),
-                                        role = Role.Button,
-                                        enabled =
-                                            state.settingsEditable &&
-                                                (added || displayed.size < ModulePreferences.MAX_PINNED_APPS) &&
-                                                (added || app.target is PinnedTarget.App || sidebarCatalog.status == SidebarCatalogStatus.Ready),
-                                    )
-                                }
-                            }
+                    candidates.isEmpty() ->
+                        item(key = "apps_no_match") {
+                            BasicComponent(
+                                title = stringResource(R.string.no_matching_apps),
+                                enabled = false,
+                            )
+                        }
+                    else -> groups.forEach { (groupTitle, entries) ->
+                        item(key = "group_$groupTitle") {
+                            Text(
+                                text = stringResource(groupTitle),
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp).semantics { heading() },
+                                style = IosTypography.subheadline,
+                                color = GlasmioTheme.colors.secondaryContent,
+                            )
+                        }
+                        items(entries, key = { PinnedTargetCodec.encode(it.target) }) { app ->
+                            val added = app.target in addedSet
+                            BasicComponent(
+                                title = app.label,
+                                summary = app.packageName,
+                                startAction = { AppIcon(app) },
+                                endActions =
+                                    if (added) {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Check,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(20.dp),
+                                                tint = GlasmioTheme.colors.accent,
+                                            )
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                onClick = {
+                                    val updated =
+                                        if (added) {
+                                            displayed.filterNot { it == app.target }
+                                        } else {
+                                            (displayed + app.target)
+                                                .take(ModulePreferences.MAX_PINNED_APPS)
+                                        }
+                                    localOrder = updated
+                                    onPinnedTargetsChange(updated)
+                                },
+                                enabled =
+                                    state.settingsEditable &&
+                                        (added || displayed.size < ModulePreferences.MAX_PINNED_APPS) &&
+                                        (added || app.target is PinnedTarget.App || sidebarCatalog.status == SidebarCatalogStatus.Ready),
+                            )
                         }
                     }
                 }
@@ -472,7 +395,7 @@ private fun AddedAppRow(
         } else {
             Modifier
         }
-    BasicComponent(
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -480,50 +403,55 @@ private fun AddedAppRow(
                 .graphicsLayer { translationY = if (dragging) dragOffsetY else offsetAnim.value }
                 .zIndex(if (dragging) 1f else 0f)
                 .then(dragModifier),
-        title = app?.label ?: component.displayIdentity(),
-        summary = if (app == null) stringResource(R.string.pinned_app_missing) else null,
-        startAction = {
-            if (app != null) {
-                AppIcon(app)
-            } else {
+    ) {
+        BasicComponent(
+            title = app?.label ?: component.displayIdentity(),
+            summary = if (app == null) stringResource(R.string.pinned_app_missing) else null,
+            startAction = {
+                if (app != null) {
+                    AppIcon(app)
+                } else {
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(GlasmioTheme.colors.container),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "?",
+                            color = GlasmioTheme.colors.secondaryContent,
+                            style = IosTypography.body,
+                        )
+                    }
+                }
+            },
+            endActions = {
                 Box(
                     modifier =
                         Modifier
-                            .size(44.dp)
-                            .squircleBackground(MiuixTheme.colorScheme.secondaryContainer, 12.dp),
+                            .size(26.dp)
+                            .clip(RoundedCornerShape(13.dp))
+                            .background(GlasmioTheme.colors.destructive)
+                            .clickable(enabled = enabled, onClick = onRemove),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = "?",
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        style = MiuixTheme.textStyles.body1,
+                    Icon(
+                        imageVector = Icons.Rounded.Remove,
+                        contentDescription =
+                            stringResource(
+                                R.string.remove_named_app_action,
+                                app?.label ?: component.displayIdentity(),
+                            ),
+                        modifier = Modifier.size(16.dp),
+                        tint = Color.White,
                     )
                 }
-            }
-        },
-        endActions = {
-            IconButton(
-                onClick = onRemove,
-                enabled = enabled,
-                backgroundColor = MiuixTheme.colorScheme.error,
-                cornerRadius = 13.dp,
-                minWidth = 26.dp,
-                minHeight = 26.dp,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Remove,
-                    contentDescription =
-                        stringResource(
-                            R.string.remove_named_app_action,
-                            app?.label ?: component.displayIdentity(),
-                        ),
-                    modifier = Modifier.size(16.dp),
-                    tint = MiuixTheme.colorScheme.onError,
-                )
-            }
-        },
-        enabled = enabled,
-    )
+            },
+            enabled = enabled,
+        )
+    }
 }
 
 @Composable
@@ -532,7 +460,7 @@ private fun AppIcon(app: SelectableEntry) {
         Image(
             bitmap = app.icon.asImageBitmap(),
             contentDescription = null,
-            modifier = Modifier.matchParentSize().squircleClip(12.dp),
+            modifier = Modifier.matchParentSize().clip(RoundedCornerShape(12.dp)),
         )
         app.badge?.let { badge ->
             Image(
@@ -541,17 +469,6 @@ private fun AppIcon(app: SelectableEntry) {
                 modifier = Modifier.matchParentSize(),
             )
         }
-    }
-}
-
-@Composable
-private fun BackButton(onBack: () -> Unit) {
-    IconButton(onClick = onBack) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-            contentDescription = stringResource(R.string.back_action),
-            modifier = Modifier.size(24.dp),
-        )
     }
 }
 

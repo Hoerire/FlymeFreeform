@@ -70,7 +70,7 @@ internal class UpdateChecker(context: Context) {
                         // 手动检查才把失败明示出来。
                         when {
                             force -> mutableState.value = UpdateState.Failed
-                            cached != null -> apply(cached, false)
+                            cached != null -> apply(cached, force)
                             else -> mutableState.value = UpdateState.Idle
                         }
                     } else {

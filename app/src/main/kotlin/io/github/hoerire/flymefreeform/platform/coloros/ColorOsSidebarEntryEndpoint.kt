@@ -45,6 +45,18 @@ internal class ColorOsSidebarEntryEndpoint(
     }
     private val settingsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ModulePreferences.ACTION_SETTINGS_PUSHED) {
+                if (sentFromUid != moduleUid()) return
+                val map = io.github.hoerire.flymefreeform.config.SettingsBridge.readMap(intent.extras)
+                    ?: return
+                val next = try {
+                    io.github.hoerire.flymefreeform.config.SettingsBridge.decode(map)
+                } catch (_: RuntimeException) {
+                    return
+                }
+                configuration.override(next)
+                return
+            }
             if (intent?.action != ModulePreferences.ACTION_PINNED_TARGETS_CHANGED ||
                 sentFromUid != moduleUid()
             ) return
@@ -76,7 +88,9 @@ internal class ColorOsSidebarEntryEndpoint(
         }, Context.RECEIVER_NOT_EXPORTED)
         service.registerReceiver(
             settingsReceiver,
-            IntentFilter(ModulePreferences.ACTION_PINNED_TARGETS_CHANGED),
+            IntentFilter(ModulePreferences.ACTION_PINNED_TARGETS_CHANGED).apply {
+                addAction(ModulePreferences.ACTION_SETTINGS_PUSHED)
+            },
             Context.RECEIVER_EXPORTED,
         )
     }
@@ -98,7 +112,18 @@ internal class ColorOsSidebarEntryEndpoint(
     }
 
     private fun receive(message: Message): Boolean {
-        if (disposed || message.sendingUid != Process.SYSTEM_UID || message.arg1 != SidebarEntryProtocol.VERSION) return true
+        if (disposed || message.sendingUid != Process.SYSTEM_UID ||
+            message.arg1 != SidebarEntryProtocol.VERSION
+        ) {
+            log(
+                Log.WARN,
+                "SIDEBAR_ENTRY_RECV_REJECT_d" + disposed +
+                    "_uid" + message.sendingUid + "_v" + message.arg1 +
+                    "_expect" + SidebarEntryProtocol.VERSION,
+                null,
+            )
+            return true
+        }
         try {
             val data = message.peekData() ?: return true
             val id = data.getString(SidebarEntryProtocol.ID) ?: return true
@@ -138,11 +163,27 @@ internal class ColorOsSidebarEntryEndpoint(
             if (message.what != SidebarEntryProtocol.LIST && message.what != SidebarEntryProtocol.LAUNCH) return true
             if (current != null) return true
             val deadline = data.getLong(SidebarEntryProtocol.DEADLINE)
-            if (!SidebarProtocol.isValidDeadline(deadline, SystemClock.uptimeMillis(), SidebarEntryProtocol.TIMEOUT_MS) || !allowed()) return true
+            if (!SidebarProtocol.isValidDeadline(deadline, SystemClock.uptimeMillis(), SidebarEntryProtocol.TIMEOUT_MS)) {
+                log(Log.WARN, "SIDEBAR_ENTRY_RECV_DEADLINE", null)
+                return true
+            }
+            if (!allowed()) {
+                log(Log.WARN, "SIDEBAR_ENTRY_RECV_NOT_ALLOWED_" + allowedDetail(), null)
+                return true
+            }
             val target = if (message.what == SidebarEntryProtocol.LAUNCH) {
                 data.getString(SidebarEntryProtocol.TARGET)?.let(PinnedTargetCodec::decode) as? PinnedTarget.Sidebar ?: return true
             } else null
-            if (target != null && !launchAllowed(target)) return true
+            if (target != null && !launchAllowed(target)) {
+                log(
+                    Log.WARN,
+                    "SIDEBAR_ENTRY_RECV_TARGET_REJECT_" + target.alias +
+                        "_pinned" + (target in configuration.snapshot.pinnedTargets) +
+                        "_en" + configuration.snapshot.enabled,
+                    null,
+                )
+                return true
+            }
             if (!history.claim(id, deadline, SystemClock.uptimeMillis())) return true
             val request = Request(id, deadline, reply, target)
             current = request
@@ -164,9 +205,16 @@ internal class ColorOsSidebarEntryEndpoint(
         if (current !== request || !request.active.get()) return
         try {
             if (!allowed()) { finish(request); return }
-            if (!entries.ready()) {
-                handler.postDelayed({ prepare(request, entries) }, 50L)
-                return
+            // 侧边栏主视图没准备好时只等一小段时间：部分版本上 ready() 永远为 false，
+            // 一直等下去会让目录请求静默超时（扇形里没有侧边栏工具可选）。
+            val ready = entries.ready()
+            if (!ready) {
+                request.readyRetries++
+                if (request.readyRetries < READY_RETRY_LIMIT) {
+                    handler.postDelayed({ prepare(request, entries) }, 50L)
+                    return
+                }
+                log(Log.WARN, "SIDEBAR_ENTRY_READY_FALLBACK", null)
             }
             val target = request.target
             if (target == null) {
@@ -182,7 +230,7 @@ internal class ColorOsSidebarEntryEndpoint(
                     handler.post { finish(request) }
                 }
             } else {
-                if (!launchAllowed(target) || !entries.sidebarHidden()) { finish(request); return }
+                if (!launchAllowed(target) || (ready && !entries.sidebarHidden())) { finish(request); return }
                 request.prepared = entries
                 execute(request) { send(request, SidebarEntryProtocol.message(SidebarEntryProtocol.PREPARED, request.id)) }
             }
@@ -195,9 +243,22 @@ internal class ColorOsSidebarEntryEndpoint(
         service.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false &&
         Settings.Secure.getInt(service.contentResolver, "edge_panel_toggle", -1) == 1
 
+    /** 逐项输出 allowed() 的判定结果，定位配置没读到的具体原因。 */
+    private fun allowedDetail(): String = "avail" + configuration.isAvailable +
+        "_fg" + (service.getSystemService(UserManager::class.java)?.isUserForeground == true) +
+        "_unlock" + (service.getSystemService(UserManager::class.java)?.isUserUnlocked == true) +
+        "_lock" + (service.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == false) +
+        "_toggle" + Settings.Secure.getInt(service.contentResolver, "edge_panel_toggle", -1)
+
+    /**
+     * 条目启动许可。
+     *
+     * 固定项列表不参与判定：目标由 system_server 侧从扇形已提交的条目下发，
+     * 这里再要求一次"在当前固定列表里"，会让跨进程快照没同步到的条目被静默丢弃。
+     * 仍然要求目标属于当前用户、模块开启、侧边栏可用。
+     */
     private fun launchAllowed(target: PinnedTarget.Sidebar): Boolean = allowed() &&
-        target.userId == (Process.myUid() / 100_000) && configuration.snapshot.enabled &&
-        target in configuration.snapshot.pinnedTargets
+        target.userId == (Process.myUid() / 100_000) && configuration.snapshot.enabled
 
     private fun execute(request: Request, action: () -> Unit) {
         try {
@@ -247,8 +308,15 @@ internal class ColorOsSidebarEntryEndpoint(
     private inner class Request(val id: String, val deadline: Long, val reply: Messenger, val target: PinnedTarget.Sidebar?) {
         val active = AtomicBoolean(true)
         var linked = false
+        /** ready() 的重试次数；到上限后不再等，按不可用兜底继续。 */
+        var readyRetries = 0
         var prepared: ColorOsSidebarEntries? = null
         val timeout = Runnable { finish(this) }
         val death = IBinder.DeathRecipient { handler.post { finish(this) } }
+    }
+
+    private companion object {
+        /** ready() 最多等 800 毫秒（50ms × 16），之后不再等，按不可用兜底继续。 */
+        const val READY_RETRY_LIMIT = 16
     }
 }

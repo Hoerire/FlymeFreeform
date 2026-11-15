@@ -6,7 +6,7 @@
     <string name="framework_status_connected">已连接</string>
     <string name="framework_status_incompatible">不兼容</string>
     <string name="framework_status_error">连接异常</string>
-    <string name="framework_waiting_summary">请确认框架已启用本模块，并允许连接模块服务</string>
+    <string name="framework_waiting_summary">尚未连上模块进程；刚更新模块时重启一次即可</string>
     <string name="framework_connected_summary">%1$s %2$s · Service API %3$s</string>
     <string name="framework_unknown_value">未知</string>
     <string name="framework_api_too_old_summary">框架提供的 Service API 版本低于 102</string>
@@ -14,7 +14,7 @@
     <string name="framework_system_missing_summary">框架不支持 system_server 注入</string>
     <string name="framework_multiple_services_summary">检测到多个框架服务；为避免配置分叉，已禁用写入</string>
     <string name="framework_connection_failed_summary">无法读取框架信息，请检查 LSPosed 日志</string>
-    <string name="framework_write_failed_summary">配置未写入框架，请等待服务重新连接</string>
+    <string name="framework_write_failed_summary">配置未写入，请再试一次</string>
     <string name="scope_title">模块作用域</string>
     <string name="scope_missing">缺少：%1$s，点击请求授权</string>
     <string name="scope_requesting">正在等待框架授权作用域</string>
@@ -50,8 +50,11 @@
 
     <string name="blacklist_title">排除列表</string>
     <string name="blacklist_summary">排除列表内的应用在前台时停用模块全部功能，离开后自动恢复</string>
-    <string name="free_drag_title">自由拖拽</string>
-    <string name="free_drag_summary">解除官方白名单限制，支持大部分页面自由拖拽文字和图片</string>
+    <string name="free_drag_title">自由传送</string>
+    <string name="drag_long_press_title">触发延迟</string>
+    <string name="drag_long_press_summary">长按多久触发拖拽，400 毫秒为官方行为，越小越灵敏</string>
+    <string name="free_drag_summary">解除官方传送门白名单限制，优化使用逻辑</string>
+    <string name="free_drag_unsupported">仅 ColorOS 17 支持，当前系统版本不可用</string>
     <string name="blacklist_screen_title">排除列表</string>
     <string name="blacklist_add_action">添加应用</string>
     <string name="blacklist_add_summary">选择在前台时停用模块全部功能的应用</string>
@@ -68,8 +71,8 @@
     <string name="zoom_excluded_empty_summary">加入后，这些应用或服务不会以任何形式的自由浮窗打开</string>
     <string name="verbose_log_title">详细日志</string>
     <string name="verbose_log_summary">开启后记录详细的诊断日志，在 LSPosed 里导出给开发者，立即生效</string>
-    <string name="radial_shade_title">背景遮罩</string>
-    <string name="radial_shade_summary">扇形呼出时背景的黑色遮罩浓度，0 为完全透明</string>
+    <string name="radial_backdrop_title">背景遮罩</string>
+    <string name="radial_backdrop_summary">向左压暗，向右系统模糊，0 为不处理</string>
     <string name="outside_tap_close_title">关闭小窗</string>
     <string name="outside_tap_close_summary">关闭自由浮窗的触发方式</string>
     <string name="outside_tap_mode_disabled">不执行</string>
@@ -93,10 +96,9 @@
     <string name="zoom_launch_notice_title">通知中心</string>
     <string name="zoom_launch_heads_up_title">通知横幅</string>
     <string name="zoom_launch_control_center_title">控制中心</string>
-    <string name="zoom_launch_inter_app_title">打开应用</string>
+    <string name="zoom_launch_inter_app_title">应用跳转</string>
     <string name="zoom_launch_inter_app_result_title">登录授权</string>
     <string name="zoom_launch_share_relay_title">应用分享</string>
-    <string name="zoom_launch_system_title">系统代发</string>
     <string name="zoom_launch_clipboard_title">复制链接</string>
     <string name="auto_close_window_title">自动收窗</string>
     <string name="auto_close_window_summary">窗口超过数量限制时直接关闭旧窗口，而不是收成贴边浮标</string>

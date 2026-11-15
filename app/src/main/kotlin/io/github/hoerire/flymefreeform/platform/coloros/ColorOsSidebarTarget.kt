@@ -31,12 +31,16 @@ internal object ColorOsSidebarTarget {
     fun supportedUid(context: Context): Int? {
         val manager = context.packageManager
         return try {
-            val service =
+            // 新系统上这个重载对已存在的组件也会抛 NameNotFound，而绑定本身是成功的；
+            // 取不到组件信息时按包级信息继续校验，否则 uid 为空会让整条请求被跳过。
+            val service = runCatching {
                 manager.getServiceInfo(
                     ComponentName(PACKAGE_NAME, SERVICE_CLASS),
                     PackageManager.ComponentInfoFlags.of(0),
                 )
-            val app = service.applicationInfo
+            }.getOrNull()
+            val app = service?.applicationInfo
+                ?: manager.getApplicationInfo(PACKAGE_NAME, PackageManager.ApplicationInfoFlags.of(0))
             val provider =
                 manager.resolveContentProvider(
                     PROVIDER_AUTHORITY,
@@ -60,15 +64,17 @@ internal object ColorOsSidebarTarget {
                 ModuleLog.warn("SIDEBAR_NOT_SYSTEM_APP_" + app.flags)
                 return null
             }
-            if (!app.enabled || !service.enabled || !service.exported) {
-                ModuleLog.warn("SIDEBAR_DISABLED_APP" + app.enabled + "_SVC" + service.enabled)
+            if (!app.enabled || service?.let { !it.enabled || !it.exported } == true) {
+                ModuleLog.warn("SIDEBAR_DISABLED_APP" + app.enabled + "_SVC" + (service?.enabled))
                 return null
             }
             if (app.flags and ApplicationInfo.FLAG_SUSPENDED != 0) {
                 ModuleLog.warn("SIDEBAR_SUSPENDED")
                 return null
             }
-            if (service.permission != REQUIRED_PERMISSION || service.processName != PROCESS_NAME) {
+            if (service != null && (service.permission != REQUIRED_PERMISSION ||
+                    service.processName != PROCESS_NAME)
+            ) {
                 ModuleLog.warn(
                     "SIDEBAR_SERVICE_MISMATCH_" + service.permission + "_" + service.processName,
                 )

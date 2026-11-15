@@ -1,9 +1,7 @@
 package io.github.hoerire.flymefreeform.ui
 
 import android.content.ActivityNotFoundException
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SystemUpdate
@@ -18,16 +16,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.unit.dp
 import io.github.hoerire.flymefreeform.BuildConfig
 import io.github.hoerire.flymefreeform.R
 import io.github.hoerire.flymefreeform.update.UpdateState
-import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.preference.SwitchPreference
+import io.github.hoerire.flymefreeform.ui.component.BasicComponent
+import io.github.hoerire.flymefreeform.ui.component.SettingsGroup
+import io.github.hoerire.flymefreeform.ui.component.SwitchPreference
+import io.github.neoruaa.glasmio.scaffold.GlasmioPinnedListPage
 
 /**
  * 关于页。
@@ -46,92 +41,99 @@ internal fun AboutScreen(
 ) {
     val uriHandler = LocalUriHandler.current
     val available = update as? UpdateState.Available
-    // 标题已在上一级入口显示，这里只保留返回按钮。
-    SettingsPage(title = "", onBack = onBack) {
-        item(key = "updateOverlay") {
+    PageBackdropScope(
+        content = {
+            // 标题已在上一级入口显示，这里只保留返回按钮。
+            GlasmioPinnedListPage(
+                title = "",
+                showsLargeTitle = false,
+                onNavigateBack = onBack,
+            ) {
+                item(key = "about") {
+                    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
+                        BasicComponent(
+                            title = stringResource(R.string.about_check_update_title),
+                            summary = updateSummary(update),
+                            onClick = onCheckUpdate,
+                            startAction = { PreferenceIcon(Icons.Rounded.Refresh) },
+                        )
+                        if (available != null) {
+                            BasicComponent(
+                                title = stringResource(R.string.update_available_title, available.version),
+                                summary =
+                                    stringResource(
+                                        R.string.update_available_summary,
+                                        BuildConfig.VERSION_NAME,
+                                    ),
+                                startAction = { PreferenceIcon(Icons.Rounded.SystemUpdate) },
+                            )
+                            BasicComponent(
+                                title = stringResource(R.string.update_open_action),
+                                summary = stringResource(R.string.update_open_summary),
+                                onClick = {
+                                    try {
+                                        uriHandler.openUri(available.pageUrl)
+                                    } catch (_: IllegalArgumentException) {
+                                    } catch (_: ActivityNotFoundException) {
+                                    }
+                                },
+                            )
+                            BasicComponent(
+                                title = stringResource(R.string.update_dismiss_action),
+                                summary = stringResource(R.string.update_dismiss_summary),
+                                onClick = { onDismissUpdate(available.version) },
+                            )
+                        }
+                        BasicComponent(
+                            title = stringResource(R.string.about_own_repo_title),
+                            summary = stringResource(R.string.about_own_repo_summary),
+                            onClick = {
+                                try {
+                                    uriHandler.openUri(OWN_REPO_URL)
+                                } catch (_: IllegalArgumentException) {
+                                } catch (_: ActivityNotFoundException) {
+                                }
+                            },
+                            startAction = {
+                                PreferenceIcon(ImageVector.vectorResource(R.drawable.ic_github))
+                            },
+                        )
+                        BasicComponent(
+                            title = stringResource(R.string.about_upstream_title),
+                            summary = stringResource(R.string.about_upstream_summary),
+                            onClick = {
+                                try {
+                                    uriHandler.openUri(UPSTREAM_REPO_URL)
+                                } catch (_: IllegalArgumentException) {
+                                } catch (_: ActivityNotFoundException) {
+                                }
+                            },
+                            startAction = {
+                                PreferenceIcon(ImageVector.vectorResource(R.drawable.ic_github))
+                            },
+                        )
+                        SwitchPreference(
+                            checked = verboseLogEnabled,
+                            onCheckedChange = onVerboseLogChange,
+                            title = stringResource(R.string.verbose_log_title),
+                            summary = stringResource(R.string.verbose_log_summary),
+                            startAction = {
+                                PreferenceIcon(
+                                    ImageVector.vectorResource(R.drawable.ic_log),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        },
+        overlay = {
             UpdateOverlay(
                 update = update,
-                backdrop = null,
                 onDismissUpdate = onDismissUpdate,
             )
-        }
-        item(key = "about") {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                BasicComponent(
-                    title = stringResource(R.string.about_check_update_title),
-                    summary = updateSummary(update),
-                    onClick = onCheckUpdate,
-                    startAction = { PreferenceIcon(Icons.Rounded.Refresh) },
-                )
-                if (available != null) {
-                    BasicComponent(
-                        title = stringResource(R.string.update_available_title, available.version),
-                        summary =
-                            stringResource(
-                                R.string.update_available_summary,
-                                BuildConfig.VERSION_NAME,
-                            ),
-                        startAction = { PreferenceIcon(Icons.Rounded.SystemUpdate) },
-                    )
-                    BasicComponent(
-                        title = stringResource(R.string.update_open_action),
-                        summary = stringResource(R.string.update_open_summary),
-                        onClick = {
-                            try {
-                                uriHandler.openUri(available.pageUrl)
-                            } catch (_: IllegalArgumentException) {
-                            } catch (_: ActivityNotFoundException) {
-                            }
-                        },
-                    )
-                    BasicComponent(
-                        title = stringResource(R.string.update_dismiss_action),
-                        summary = stringResource(R.string.update_dismiss_summary),
-                        onClick = { onDismissUpdate(available.version) },
-                    )
-                }
-                BasicComponent(
-                    title = stringResource(R.string.about_own_repo_title),
-                    summary = stringResource(R.string.about_own_repo_summary),
-                    onClick = {
-                        try {
-                            uriHandler.openUri(OWN_REPO_URL)
-                        } catch (_: IllegalArgumentException) {
-                        } catch (_: ActivityNotFoundException) {
-                        }
-                    },
-                    startAction = {
-                        PreferenceIcon(ImageVector.vectorResource(R.drawable.ic_github))
-                    },
-                )
-                BasicComponent(
-                    title = stringResource(R.string.about_upstream_title),
-                    summary = stringResource(R.string.about_upstream_summary),
-                    onClick = {
-                        try {
-                            uriHandler.openUri(UPSTREAM_REPO_URL)
-                        } catch (_: IllegalArgumentException) {
-                        } catch (_: ActivityNotFoundException) {
-                        }
-                    },
-                    startAction = {
-                        PreferenceIcon(ImageVector.vectorResource(R.drawable.ic_github))
-                    },
-                )
-                SwitchPreference(
-                    checked = verboseLogEnabled,
-                    onCheckedChange = onVerboseLogChange,
-                    title = stringResource(R.string.verbose_log_title),
-                    summary = stringResource(R.string.verbose_log_summary),
-                    startAction = {
-                        PreferenceIcon(
-                            ImageVector.vectorResource(R.drawable.ic_log),
-                        )
-                    },
-                )
-            }
-        }
-    }
+        },
+    )
 }
 
 /** 检查更新这一行的小字：随检测状态变化。 */

@@ -14,6 +14,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -35,6 +36,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
@@ -61,6 +63,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
@@ -80,17 +83,13 @@ import io.github.hoerire.flymefreeform.gesture.RadialLayout
 import io.github.hoerire.flymefreeform.platform.coloros.AppCatalogSnapshot
 import io.github.hoerire.flymefreeform.platform.coloros.RadialEntry
 import io.github.hoerire.flymefreeform.ui.theme.CornerOverlayTheme
+import io.github.hoerire.flymefreeform.ui.theme.LocalMorePanelColors
 import io.github.hoerire.flymefreeform.ui.theme.LocalRadialItemColors
 import io.github.hoerire.flymefreeform.ui.theme.RadialItemColors
+import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.anim.folmeSpring
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.squircle.addSquircleRect
-import top.yukonga.miuix.kmp.squircle.isSquircleEnabled
-import top.yukonga.miuix.kmp.squircle.squircleSurface
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @SuppressLint("ViewConstructor")
 /**
@@ -427,9 +426,9 @@ internal class CornerRadialOverlayView(
                             panelProgress.animateTo(
                                 targetValue = 1f,
                                 animationSpec =
-                                    folmeSpring(
-                                        damping = PANEL_EXPAND_DAMPING,
-                                        response = PANEL_EXPAND_RESPONSE_SECONDS,
+                                    spring(
+                                        dampingRatio = PANEL_EXPAND_DAMPING,
+                                        stiffness = PANEL_EXPAND_STIFFNESS,
                                         visibilityThreshold = PANEL_VISIBILITY_THRESHOLD,
                                     ),
                             )
@@ -480,8 +479,12 @@ internal class CornerRadialOverlayView(
                                     if (android.os.SystemClock.uptimeMillis() - shownAtUptime < OPEN_GRACE_MS) {
                                         return@detectTapGestures
                                     }
+                                    // 与圆环同一套缩放单位：用 unit 而不是原始 density，
+                                    // 否则大屏上命中圈会明显小于设置值。
                                     val hitRadius =
-                                        radialHitRangeDp * resources.displayMetrics.density
+                                        radialHitRangeDp *
+                                            (metricsState.value?.radial?.pixelsPerBaseDp
+                                                ?: resources.displayMetrics.density)
                                     val index =
                                         RadialGeometry.selection(
                                             layout = radialLayout,
@@ -566,12 +569,9 @@ internal class CornerRadialOverlayView(
                 panelProgress = panel,
             )
             val visual = entrySample
-            // 遮罩由这里画（窗口不再用 FLAG_DIM_BEHIND）：随内容透明度一起淡入淡出，
-            // 比系统 dim 更贴合入场/收回的节奏。
-            //
-            // 磨砂质感：底色之上叠一层极细的随机颗粒。真背景模糊在本模块的窗口类型上
-            // 不可用（ColorOS 只对特定窗口类型做 cross-window blur），颗粒层用几乎
-            // 不可见的明暗噪点制造"毛玻璃"观感，代价只是一次 drawPoints。
+            // 遮罩由这里画（窗口不用 FLAG_DIM_BEHIND）：随内容透明度一起淡入淡出，
+            // 比系统 dim 更贴合入场/收回的节奏。背景模糊不在这里：是否模糊由
+            // Coordinator 按「系统模糊」开关挂到窗口表面上，这一层只负责纯色。
             val backdropAlpha = backdropAlphaState.value * visual.contentAlpha
             if (backdropAlpha > 0f) {
                 drawRect(Color.Black, alpha = backdropAlpha)
@@ -740,9 +740,9 @@ internal class CornerRadialOverlayView(
         animationsEnabled: Boolean,
     ) {
         val density = androidx.compose.ui.platform.LocalDensity.current
-        val squircleEnabled = isSquircleEnabled()
-        val panelColor = MiuixTheme.colorScheme.surface.copy(alpha = PANEL_SURFACE_ALPHA)
-        val labelColor = MiuixTheme.colorScheme.onSurface
+        val panelColors = LocalMorePanelColors.current
+        val panelColor = panelColors.surface.copy(alpha = PANEL_SURFACE_ALPHA)
+        val labelColor = panelColors.onSurface
         val bounds = metrics.bounds
         val width = with(density) { bounds.width.toDp() }
         val height = with(density) { bounds.height.toDp() }
@@ -766,7 +766,6 @@ internal class CornerRadialOverlayView(
                         seedSize = metrics.iconDiameter,
                         cornerRadius = metrics.cornerRadius,
                         anchorOnLeft = side == CornerSide.Left,
-                        squircleEnabled = squircleEnabled,
                     )
                     .squircleSurface(color = panelColor, cornerRadius = cornerRadius)
                     .pointerInput(Unit) {
@@ -1199,6 +1198,13 @@ internal class CornerRadialOverlayView(
         const val MORE_DOT_SPACING_FRACTION = 7.125f / 24f * 0.6f
         const val PANEL_EXPAND_DAMPING = 0.9f
         const val PANEL_EXPAND_RESPONSE_SECONDS = 0.3f
+
+        /**
+         * 展开弹簧的刚度：响应时长 response 对应的角频率为 ω = 2π / response，刚度取 ω²。
+         * 系统进程内不引入 UI 库，阻尼比与响应时长在此换算为 Compose 原生 spring 的参数。
+         */
+        val PANEL_EXPAND_STIFFNESS =
+            (2.0 * PI / PANEL_EXPAND_RESPONSE_SECONDS).let { omega -> (omega * omega).toFloat() }
         const val PANEL_VISIBILITY_THRESHOLD = 0.0001f
         const val PANEL_CONTENT_DELAY_MILLIS = 45
         const val PANEL_CONTENT_FADE_MILLIS = 180
@@ -1216,7 +1222,6 @@ private fun Modifier.panelReveal(
     seedSize: Float,
     cornerRadius: Float,
     anchorOnLeft: Boolean,
-    squircleEnabled: Boolean,
 ): Modifier =
     drawWithCache {
         val revealPath = Path()
@@ -1232,7 +1237,6 @@ private fun Modifier.panelReveal(
                 width = revealWidth,
                 height = revealHeight,
                 cornerRadius = cornerRadius,
-                squircleEnabled = squircleEnabled,
             )
             translate(left = revealLeft, top = revealTop) {
                 clipPath(revealPath) {
@@ -1242,6 +1246,57 @@ private fun Modifier.panelReveal(
                 }
             }
         }
+    }
+
+/**
+ * 系统进程内不引入 UI 库的本地实现：把连续圆角矩形写入路径。
+ *
+ * 半径先按 [SQUIRCLE_RADIUS_EXTENSION] 放大，再用短边一半截断；四角各用一段三次贝塞尔过渡，
+ * 控制点沿相邻两边各偏移半径的 [SQUIRCLE_CORNER_CONTROL]，直线段与曲线段在衔接处保持切向连续。
+ */
+private fun Path.addSquircleRect(
+    width: Float,
+    height: Float,
+    cornerRadius: Float,
+) {
+    if (width <= 0f || height <= 0f) return
+    val radius = (cornerRadius * SQUIRCLE_RADIUS_EXTENSION).coerceIn(0f, minOf(width, height) * 0.5f)
+    if (radius <= 0f) {
+        addRect(Rect(0f, 0f, width, height))
+        return
+    }
+    val control = radius * SQUIRCLE_CORNER_CONTROL
+    moveTo(radius, 0f)
+    lineTo(width - radius, 0f)
+    cubicTo(width - control, 0f, width, control, width, radius)
+    lineTo(width, height - radius)
+    cubicTo(width, height - control, width - control, height, width - radius, height)
+    lineTo(radius, height)
+    cubicTo(control, height, 0f, height - control, 0f, height - radius)
+    lineTo(0f, radius)
+    cubicTo(0f, control, control, 0f, radius, 0f)
+    close()
+}
+
+/** 连续圆角半径相对普通圆角的放大比例。 */
+private const val SQUIRCLE_RADIUS_EXTENSION = 1.1f
+
+/** 圆角控制点沿相邻两边相对半径的偏移比例。 */
+private const val SQUIRCLE_CORNER_CONTROL = 0.357f
+
+/**
+ * 「更多」面板底色：在内容背后填充与 [panelReveal] 一致的连续圆角轮廓。
+ *
+ * 系统进程内不引入 UI 库，轮廓由 [addSquircleRect] 生成，路径按尺寸缓存后直接绘制。
+ */
+private fun Modifier.squircleSurface(
+    color: Color,
+    cornerRadius: Dp,
+): Modifier =
+    drawWithCache {
+        val background = Path()
+        background.addSquircleRect(size.width, size.height, cornerRadius.toPx())
+        onDrawBehind { drawPath(background, color) }
     }
 
 private class RadialImage(entry: RadialEntry) {

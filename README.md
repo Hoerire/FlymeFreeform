@@ -6,9 +6,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/ROM-ColorOS-00A862" alt="面向 ColorOS" />
-  <img src="https://img.shields.io/badge/Android-16%2B-3DDC84?logo=android" alt="最低 Android 16" />
+  <img src="https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android" alt="最低 Android 15" />
   <img src="https://img.shields.io/badge/libxposed-API_102-4285F4" alt="libxposed API 102" />
-  <img src="https://img.shields.io/badge/version-2.3.4-blue" alt="版本 2.3.4" />
+  <img src="https://img.shields.io/badge/version-2.6.0-blue" alt="版本 2.6.0" />
 </p>
 
 把魅族的 Flyme 小窗交互搬到 ColorOS：从屏幕底角斜向内上滑呼出扇形菜单，滑到目标松手，当即以自由浮窗打开。
@@ -25,7 +25,8 @@
 
 - **呼出**：底角斜向内上滑，可选左右、仅左、仅右
 - **保持挂起**：松手后不收起，可继续滑动点选
-- **范围与大小**：底角识别区 24–160 dp，图标判定半径 40–140 dp，图标 32–56 dp，拖动时屏幕实时预览
+- **范围与大小**：底角识别区 24–160 dp，图标判定半径 40–220 dp，图标 32–56 dp，拖动时屏幕实时预览
+- **背景遮罩**：压暗与模糊合并为一条滑条，向左压暗、向右系统实时模糊（最高 100 dp），居中即不处理背景；模糊由系统合成，背后的画面随手势虚化，不是模块自绘的磨砂
 - **暂停**：横屏与游戏模式只暂停呼出，退出后自动恢复
 
 ### 扇形应用
@@ -45,7 +46,7 @@
 - **长按静音**：长按浮动窗口只静音该应用，再次长按恢复，其他应用不受影响
 - **解除限制**：原本不支持自由浮窗的应用也能打开
 - **快速上滑**：底部横条上滑切为迷你形态
-- **轻量打开**：按场景决定是否以小窗打开——通知中心、通知横幅、控制中心、打开应用、登录授权、应用分享、系统代发、复制链接
+- **轻量打开**：按场景决定是否以小窗打开——通知中心、通知横幅、控制中心、应用跳转、登录授权、应用分享、复制链接
 - **禁用浮窗**：列表内的应用，别人拉起它、它拉起别人都不改写
 
 ### 贴边保活
@@ -64,9 +65,11 @@
 
 判定条件：按下的位置要落在当前浮动窗口的可见区域内，且位移不超过 40px；正常拖动、缩放窗口不会误触发。
 
-### 自由拖拽
+### 自由传送
 
-解除官方白名单限制，标准控件与主窗口内的网页都能长按拖起文字和图片（仅 ColorOS 17）。
+解除官方传送门白名单限制，优化使用逻辑（需传送门 17，即 ColorOS 17）。
+
+优化官方内容传送门：长按即可弹出分享菜单，松手点选。触发快慢可自由调整
 
 ### 排除列表
 
@@ -80,7 +83,7 @@
 ## 安装
 
 1. 装好并启用 **LSPosed**（需支持 libxposed API 102）
-2. 安装本模块，勾选三项作用域：**系统框架**、**系统界面**、**智能侧边栏**
+2. 安装本模块，勾选四项作用域：**系统框架**、**系统界面**、**智能侧边栏**、**内容传送门**
 3. 重启上述进程或重启设备
 4. 打开「Flyme 小窗」，确认框架已连接，再按需调整
 
@@ -88,19 +91,29 @@
 
 | 项 | 要求 |
 |---|---|
-| 系统 | ColorOS 16 与 17（Android 16 及以上） |
-| 自由拖拽 | 仅 ColorOS 17 |
+| 系统 | ColorOS 15 / 16 / 17（Android 15 及以上） |
+| 自由传送 | 需传送门 17（ColorOS 17）|
 | 框架 | LSPosed，libxposed API 102 及以上 |
 | 导航方式 | 手势导航（三键导航下底角区与返回键冲突，模块保持关闭） |
 
 ## 已知限制
 
-- 依赖厂商私有的自由浮窗与侧边栏接口，仅适用于 ColorOS 16 与 17
+- 依赖厂商私有的自由浮窗与侧边栏接口，仅适用于 ColorOS 15、16 与 17
 - 带文件的应用分享、隐式 VIEW 且需要回传结果的启动、游戏内的第三方登录不做改写
-- 自由拖拽取不到自绘界面与独立窗口里的网页
+- 自由传送取不到自绘界面与独立窗口里的网页
 
 ## 致谢
 
 - [Mangi-11/FlymeFreeform](https://github.com/Mangi-11/FlymeFreeform)：上游来源，原作者 Mangi-11
 - [Flyme](https://www.flyme.com/)：交互设计参考
 - [libxposed API](https://github.com/libxposed/api)：现代 Xposed API
+- [vialoyed-ctrl](https://github.com/vialoyed-ctrl)：内容传送门的分享面板与实现思路
+- [Glasmio](https://github.com/NEORUAA/Glasmio)：界面组件库（Liquid Glass），设置页与弹层基于它实现
+
+界面层的第三方许可合规：Glasmio 0.1.3 以 Apache-2.0 发布，使用 Maven Central 的原始 AAR、未修改库源码，完整许可文本随 APK 附带在 `assets/licenses/glasmio-APACHE-2.0.txt`；其折射算法与连续圆角几何适配自 [AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass)、[Capsule](https://github.com/Kyant0/Capsule) 与 [Shapes](https://github.com/Kyant0/Shapes)（均为 Apache-2.0）。应用图标的目录扫描使用 [DexKit 2.3.0](https://github.com/LuckyPray/DexKit/tree/2.3.0)（Apache-2.0 / LGPL-3.0）。完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## 许可
+
+本项目以上游相同的 [GNU General Public License v3.0](LICENSE) 发布，完整协议文本见仓库根目录的 `LICENSE`，APK 内亦随附于 `assets/licenses/GPL-3.0.txt`。
+
+第三方组件各自遵循其自身许可（Glasmio、DexKit 等），声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

@@ -455,7 +455,6 @@ internal class FloatKeepAliveHook(
      * 浮标保活的语义是「这个应用还在前台服务工作」，所以这里直接判为不拦截。
      */
     private fun installAudioFocusGuard(classLoader: ClassLoader) {
-        if (!configuration.snapshot.floatKeepAliveEffective) return
         val enforcerClass = runCatching { classLoader.loadClass(HARDENING_ENFORCER_CLASS) }.getOrNull() ?: return
         val method =
             OemReflection.findMethod(
@@ -475,6 +474,8 @@ internal class FloatKeepAliveHook(
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .setId("flymefreeform.float_keep_alive.audio_focus")
             .intercept { chain ->
+                // 开关随时可改：每次调用都按当前设置判断，不依赖开机时的取值。
+                if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
                 val uid = chain.getArg(0) as? Int ?: -1
                 val taskId = keptFloatTaskOfUid(uid)
                 if (taskId > 0) {
@@ -513,7 +514,6 @@ internal class FloatKeepAliveHook(
      * 这里只对「正在被保活的浮标应用」按调用 uid 返回亮屏，其它进程不受影响。
      */
     private fun installAwakeGuard(classLoader: ClassLoader) {
-        if (!configuration.snapshot.floatKeepAliveEffective) return
         val binderClass = runCatching { classLoader.loadClass(POWER_BINDER_CLASS) }.getOrNull() ?: return
         hookAwakeAnswer(binderClass, "isInteractive", true)
         hookAwakeAnswer(binderClass, "isDeviceIdleMode", false)
@@ -527,6 +527,8 @@ internal class FloatKeepAliveHook(
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .setId("flymefreeform.float_keep_alive.awake_" + name)
             .intercept { chain ->
+                // 开关随时可改：每次调用都按当前设置判断，不依赖开机时的取值。
+                if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
                 val uid = Binder.getCallingUid()
                 val taskId = keptFloatTaskOfUid(uid)
                 if (taskId > 0) {
@@ -555,7 +557,6 @@ internal class FloatKeepAliveHook(
      * 做法只在这一条广播上把保活应用的包名加进 `excludedPackages`，其它应用照常收到。
      */
     private fun installScreenOffGuard(classLoader: ClassLoader) {
-        if (!configuration.snapshot.floatKeepAliveEffective) return
         val controllerClass = runCatching { classLoader.loadClass(BROADCAST_CONTROLLER_CLASS) }.getOrNull() ?: return
         val method =
             controllerClass.declaredMethods.firstOrNull {
@@ -568,6 +569,8 @@ internal class FloatKeepAliveHook(
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .setId("flymefreeform.float_keep_alive.screen_off")
             .intercept { chain ->
+                // 开关随时可改：每次调用都按当前设置判断，不依赖开机时的取值。
+                if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
                 val action = (chain.getArg(3) as? android.content.Intent)?.action
                 if (action != android.content.Intent.ACTION_SCREEN_OFF) {
                     chain.proceed()
@@ -625,7 +628,6 @@ internal class FloatKeepAliveHook(
      * 不可见就不连播；亮屏贴边时（窗口可见）完全正常。
      */
     private fun installClientVisibleKeepOn(classLoader: ClassLoader) {
-        if (!configuration.snapshot.floatKeepAliveEffective) return
         val tokenClass = runCatching { classLoader.loadClass(TOKEN_CLASS) }.getOrNull() ?: return
         val method = OemReflection.findMethod(tokenClass, "setClientVisible", Boolean::class.javaPrimitiveType!!) ?: return
         module
@@ -633,6 +635,8 @@ internal class FloatKeepAliveHook(
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .setId("flymefreeform.float_keep_alive.client_visible_keep")
             .intercept { chain ->
+                // 开关随时可改：每次调用都按当前设置判断，不依赖开机时的取值。
+                if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
                 val visible = chain.getArg(0) as? Boolean
                 val target = chain.thisObject
                 if (visible == false && target?.javaClass?.name == RECORD_CLASS && shouldKeep(target)) {
@@ -661,7 +665,6 @@ internal class FloatKeepAliveHook(
      * state=STATE_ON 的副本（不修改系统内部对象），并记一行日志便于确认。
      */
     private fun installDisplayStateGuard(classLoader: ClassLoader) {
-        if (!configuration.snapshot.floatKeepAliveEffective) return
         val cls = runCatching { classLoader.loadClass(DISPLAY_BINDER_CLASS) }.getOrNull() ?: return
         val method = OemReflection.findMethod(cls, "getDisplayInfo", Int::class.javaPrimitiveType!!) ?: return
         module
@@ -669,6 +672,8 @@ internal class FloatKeepAliveHook(
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .setId("flymefreeform.float_keep_alive.display_state")
             .intercept { chain ->
+                // 开关随时可改：每次调用都按当前设置判断，不依赖开机时的取值。
+                if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
                 val taskId = keptFloatTaskOfUid(Binder.getCallingUid())
                 if (taskId <= 0) {
                     chain.proceed()
@@ -713,7 +718,6 @@ internal class FloatKeepAliveHook(
      * 只对保活应用的调用方返回 false，系统内部组件走的是 LocalService，不受影响。
      */
     private fun installKeyguardLockGuard(classLoader: ClassLoader) {
-        if (!configuration.snapshot.floatKeepAliveEffective) return
         val wmsClass = runCatching { classLoader.loadClass(WMS_CLASS) }.getOrNull() ?: return
         val method = OemReflection.findMethod(wmsClass, "isKeyguardLocked") ?: return
         module
@@ -721,6 +725,8 @@ internal class FloatKeepAliveHook(
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .setId("flymefreeform.float_keep_alive.keyguard_locked")
             .intercept { chain ->
+                // 开关随时可改：每次调用都按当前设置判断，不依赖开机时的取值。
+                if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
                 val taskId = keptFloatTaskOfUid(Binder.getCallingUid())
                 if (taskId > 0) {
                     logKeyguardFaked(taskId)
@@ -747,7 +753,6 @@ internal class FloatKeepAliveHook(
      * 所以这一条只在保活期间生效，退出浮标即撤销，不留长期副作用。
      */
     private fun installIdleExemption() {
-        if (!configuration.snapshot.floatKeepAliveEffective) return
         exemptExecutor.execute {
             // 模组启动就补一次扫描，避免上次异常退出的残留。
             sweepExemptions()

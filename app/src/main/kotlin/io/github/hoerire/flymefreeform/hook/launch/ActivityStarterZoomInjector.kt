@@ -9,6 +9,7 @@ import io.github.libxposed.api.XposedModule
 import io.github.hoerire.flymefreeform.hook.ProcessConfiguration
 import io.github.hoerire.flymefreeform.log.ModuleLog
 import io.github.hoerire.flymefreeform.log.VerboseLog
+import io.github.hoerire.flymefreeform.config.ModulePreferences
 import io.github.hoerire.flymefreeform.hook.OemReflection
 
 /**
@@ -127,6 +128,12 @@ internal class ActivityStarterZoomInjector(
                     ModuleLog.debug(TAG) { "ZOOM_SKIP_PREEMPT_NO_INTENT_" + stage }
                     return false
                 }
+        // 模块自己代发的启动（更多面板里的快捷方式）显式要求保持全屏：
+        // 按组件去猜会误伤真正该开小窗的应用启动，只有发起方自己知道这次是不是快捷方式。
+        if (intent.getBooleanExtra(ModulePreferences.EXTRA_SKIP_ZOOM, false)) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_MARKED_FULLSCREEN_" + stage }
+            return false
+        }
         val pendingIntent = request?.let { OemReflection.readField(it, "originatingPendingIntent") }
         val callingPackage =
             request?.let { OemReflection.readField(it, "callingPackage") as? String }.orEmpty()
@@ -179,7 +186,7 @@ internal class ActivityStarterZoomInjector(
         // 第二条任务，所以不需要额外的回收动作。
         val shareRelay = shareRelayHere
         if (hasResultTo && !trampolineRelay && !shareRelay) {
-            if (isLauncherIconLaunch(callingPackage, intent.action, hasResultTo)) return false
+            if (isLauncherIconLaunch(callingPackage, intent.action, hasResultTo, realCallingUid, requestRealUid)) return false
             ModuleLog.debug(TAG) { "ZOOM_SKIP_RESULT_TO_cp" + callingPackage +
                 "_tg" + target +
                 "_ac" + intent.action.orEmpty() +
@@ -291,8 +298,32 @@ internal class ActivityStarterZoomInjector(
      * 这一类不参与启动改写；逐条记录「跳过原因」只会掩盖真正的异常，
      * 因此三条兜底日志对它一律静默；其余启动照常记录。
      */
-    private fun isLauncherIconLaunch(callingPackage: String?, action: String?, hasResultTo: Boolean): Boolean =
-        callingPackage == LAUNCHER_PACKAGE && action == Intent.ACTION_MAIN && hasResultTo
+    private fun isLauncherIconLaunch(
+        callingPackage: String?,
+        action: String?,
+        hasResultTo: Boolean,
+        realCallingUid: Int = -1,
+        requestRealUid: Int = -1,
+    ): Boolean {
+        if (!hasResultTo) return false
+        // 桌面图标：桌面以 startActivityForResult 拉起应用入口。
+        if (callingPackage in LAUNCHER_PACKAGES && action == Intent.ACTION_MAIN) return true
+        // 图标点开的是中转页（如手机管家的 lite 版），真正的发起方仍是桌面：
+        // 只看包名会把第二跳当成跨应用跳转，于是同一个图标点开变成小窗。
+        return realCallingUid in launcherUids || requestRealUid in launcherUids
+    }
+
+    /** 桌面可能使用的包名；ColorOS 上还有一套 ohome。 */
+    private val launcherUids: Set<Int> by lazy {
+        LAUNCHER_PACKAGES.mapNotNull { pkg ->
+            runCatching {
+                systemContext()
+                    ?.packageManager
+                    ?.getApplicationInfo(pkg, 0)
+                    ?.uid
+            }.getOrNull()
+        }.toSet()
+    }
 
     /**
      * 分享中转页：跨应用、带 resultTo、action 为 VIEW，且目标组件是分享入口。
@@ -456,6 +487,15 @@ internal class ActivityStarterZoomInjector(
             systemContext()?.packageManager?.resolveActivity(intent, 0)?.activityInfo?.packageName
         }.getOrNull()
 
+    /**
+     * 是否为厂商自有组件。
+     *
+     * ColorOS 有一批装在 `/my_stock` 的预装应用（如手机管家的 lite 入口），
+     * 它们的 ApplicationInfo 不带 FLAG_SYSTEM，只看系统标记会被当成第三方应用。
+     */
+    private fun isVendorComponent(packageName: String): Boolean =
+        VENDOR_PREFIXES.any { packageName.startsWith(it) }
+
     /** 是否为非系统应用；无法判定时按系统应用处理，不改写。 */
     private fun isThirdPartyApplication(packageName: String): Boolean =
         runCatching {
@@ -493,9 +533,11 @@ internal class ActivityStarterZoomInjector(
      * 2. 排除列表与返回识别，两者直接放行；
      * 3. 通知点击（发起方为 SystemUI 且携带 PendingIntent）；
      * 4. 文件选择，不改写；
-     * 5. 应用间跳转（携带 resultTo 的跨包启动、双方均为第三方的跨包启动）；
-     * 6. system_server 以 MAIN 代发的启动（系统通知落点、模块管理工具的启动入口）；
-     * 7. SystemUI 自身发起的其余启动，按磁贴 / 通知栏区分。
+     * 5. 应用跳转（携带 resultTo 的跨包启动、双方均为第三方的跨包启动）；
+     * 6. SystemUI 自身发起的其余启动，按磁贴 / 通知栏区分。
+     *
+     * system_server 以 MAIN 启动的落点（系统通知、模块管理工具）不再单列场景：
+     * 这部分改由系统按全屏处理，模块不参与改写。
      *
      * 未命中任何分支的来源落到末尾的「无规则」出口，原样放行。
      *
@@ -688,6 +730,12 @@ internal class ActivityStarterZoomInjector(
             callingPackage != LAUNCHER_PACKAGE &&
             callingPackage != SYSTEM_UI_PACKAGE &&
             callingPackage != target &&
+            // 发起方必须是用户安装的第三方应用：登录授权、分享回传都由它们发起。
+            // 厂商自有包（com.oplus.* / com.coloros.* 等）之间的 resultTo 启动是同一次
+            // 点击的入口链——例如桌面图标先拉起手机管家的 lite 版，再由 lite 拉起正式版；
+            // 这类包常常装在 /my_stock 且不带 FLAG_SYSTEM，只靠系统标记判断会漏。
+            !isVendorComponent(callingPackage) &&
+            isThirdPartyApplication(callingPackage) &&
             (target !in SKIP_TARGETS || isShareSheet(intent))
         ) {
             if (!configuration.snapshot.zoomLaunchInterAppResultEffective) {
@@ -695,6 +743,11 @@ internal class ActivityStarterZoomInjector(
                 return null
             }
             return "inter_app_result"
+        }
+        if (hasResultTo && target != null && callingPackage != null &&
+            (isVendorComponent(callingPackage) || !isThirdPartyApplication(callingPackage))
+        ) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_SYSTEM_RELAY_cp" + callingPackage + "_tg" + target }
         }
         // 跨应用启动：发起方与目标均为第三方应用且不同包。
         //
@@ -718,20 +771,6 @@ internal class ActivityStarterZoomInjector(
         if (target in SKIP_TARGETS) {
             ModuleLog.debug(TAG) { "ZOOM_SKIP_SYSTEM_TARGET_" + target }
             return null
-        }
-        // system_server 以 MAIN 启动应用的两类来源：
-        // 1. 通知点击，落点通常是系统包，见 SYSTEM_NOTIFICATION_TARGETS；
-        // 2. 没有启动入口的模块管理工具（如 LSPosed 管理器）经 root 权限代发，
-        //    落点是用户安装的应用，没有来源标记也没有 PendingIntent。
-        // 两者都按应用跳转处理，以自由浮窗打开。
-        if (callingPackage == SYSTEM_SERVER_PACKAGE && intent.action == Intent.ACTION_MAIN) {
-            if (target in SYSTEM_NOTIFICATION_TARGETS || isThirdPartyApplication(target)) {
-                if (!configuration.snapshot.zoomLaunchSystemEffective) {
-                    ModuleLog.debug(TAG) { "ZOOM_SKIP_SYSTEM_LAUNCH_OFF_tg" + target }
-                    return null
-                }
-                return "system_launch"
-            }
         }
         // 通知栏与控制中心的启动均由 SystemUI 发起，需进一步区分：
         // 磁贴类启动携带 quicksettings 相关 action，交给注入器处理；
@@ -765,7 +804,7 @@ internal class ActivityStarterZoomInjector(
             }
             return "control_center_launcher"
         }
-        if (!isLauncherIconLaunch(callingPackage, intent.action, hasResultTo)) {
+        if (!isLauncherIconLaunch(callingPackage, intent.action, hasResultTo, realCallingUid, requestRealUid)) {
             ModuleLog.debug(TAG) { "ZOOM_SKIP_NO_RULE_cp" + callingPackage +
                 "_tg" + target +
                 "_ac" + intent.action.orEmpty() +
@@ -939,6 +978,13 @@ internal class ActivityStarterZoomInjector(
 
         /** 桌面进程：其发起的启动属于图标点击，不计入应用间跳转。 */
         const val LAUNCHER_PACKAGE = "com.android.launcher"
+
+        /** 厂商自有包名前缀：这类组件之间的启动属于系统内部链路。 */
+        val VENDOR_PREFIXES =
+            listOf("com.oplus.", "com.coloros.", "com.oppo.", "com.android.oplus.")
+
+        /** ColorOS 17 上桌面还可能是 ohome，两套包名都要认。 */
+        val LAUNCHER_PACKAGES = setOf(LAUNCHER_PACKAGE, "com.oplus.ohome")
 
         /** 文件选择与文档选取类动作：始终全屏。 */
         /** 分享流程相关动作：不参与小窗改写。 */

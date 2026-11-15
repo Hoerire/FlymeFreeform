@@ -11,8 +11,7 @@ import io.github.hoerire.flymefreeform.log.ModuleLog
  *
  * 系统手势的入口是 com.android.server.wm.SystemGesturesPointerEventListener：
  * 它是 WMS 的指针监听器，既不受 pilferPointers 影响，也不吃 updateInvalidRegion
- * 挖出来的那块洞，所以在角落上滑时它照样把整屏缩成最近任务
- * （实机 03:26:49：detectSwipe: 2 → detachNavigationBarFromApp → launcher exit gesture）。
+ * 挖出来的那块洞，所以在角落上滑时它照样把整屏缩成最近任务。
  *
  * 这里在它的 onPointerEvent 入口把「落在扇形角区里的按下」整条吞掉：拿不到 DOWN，
  * 它就记不下起点，后续 MOVE/UP 也不会触发任何系统手势。扇形本身走的是模块自己的

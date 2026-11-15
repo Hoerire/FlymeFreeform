@@ -5,6 +5,31 @@ internal object ModulePreferences {
     const val GROUP = "module_runtime"
     const val ACTION_PINNED_TARGETS_CHANGED =
         "io.github.hoerire.flymefreeform.action.PINNED_TARGETS_CHANGED"
+
+    /**
+     * 启动标记：模块自己代发的启动（如更多面板里的快捷方式）不希望被改成小窗。
+     *
+     * 快捷方式指向应用内的具体页面，开成小窗会让流程变形；用显式标记而不是按组件猜，
+     * 才不会误伤真正该开小窗的应用启动。
+     */
+    const val EXTRA_SKIP_ZOOM = "io.github.hoerire.flymefreeform.extra.SKIP_ZOOM"
+
+    /** 模块应用 → system_server：推送整份设置快照（附带回执请求）。 */
+    const val ACTION_SETTINGS_PUSHED = "io.github.hoerire.flymefreeform.action.SETTINGS_PUSHED"
+
+    /** 模块应用 → system_server：只要当前快照，用于应用启动时对齐界面。 */
+    const val ACTION_SETTINGS_REQUEST = "io.github.hoerire.flymefreeform.action.SETTINGS_REQUEST"
+
+    /**
+     * 查询方可显式声明回执地址。
+     *
+     * SystemUI 与侧边栏不在模块应用的包下，靠广播身份取发起方需要额外开共享身份；
+     * 直接写明包名更稳，接收方按白名单校验后照此回执。
+     */
+    const val EXTRA_REQUESTER_PACKAGE = "requester_package"
+
+    /** system_server → 模块应用：权威快照（推送的回执与查询的答复共用）。 */
+    const val ACTION_SETTINGS_SNAPSHOT = "io.github.hoerire.flymefreeform.action.SETTINGS_SNAPSHOT"
     const val EXTRA_PINNED_TARGETS = "pinned_targets"
     const val EXTRA_PINS_SAVED = "pins_saved"
     const val EXTRA_MODULE_ENABLED = "module_enabled"
@@ -14,8 +39,16 @@ internal object ModulePreferences {
     const val KEY_CORNER_TRIGGER_RANGE_DP = "corner_trigger_range_dp"
     const val KEY_RADIAL_HIT_RANGE_DP = "radial_hit_range_dp"
 
-    /** 扇形呼出时的黑色遮罩浓度（百分比，0 = 完全透明）。 */
-    const val KEY_SHADE_PERCENT = "shade_percent"
+    /**
+     * 扇形背景的合并滑条：负值为黑色遮罩浓度，正值为系统模糊，0 为不处理背景。
+     *
+     * 两个方向共用同一条滑块：往左压暗，往右模糊，中间即原样透出背后内容。
+     */
+    const val KEY_BACKDROP_LEVEL = "backdrop_level"
+
+    /** 分项时代的遮罩浓度与布尔模糊开关，合并后只用于迁移。 */
+    const val LEGACY_KEY_SHADE_PERCENT = "shade_percent"
+    const val LEGACY_KEY_RADIAL_BLUR_ENABLED = "radial_blur_enabled"
 
 
     /** 扇形图标的基准直径（dp）；第三方主题图标与「更多」圆盘都按它对齐。 */
@@ -52,9 +85,6 @@ internal object ModulePreferences {
     /** 分享中转页：分享给另一个应用时以浮窗打开（模块另起 zoom 启动）。 */
     const val KEY_ZOOM_LAUNCH_SHARE_RELAY = "zoom_launch_share_relay_v1"
 
-    /** system_server 代发的启动（系统通知落点、模块管理工具入口）。 */
-    const val KEY_ZOOM_LAUNCH_SYSTEM = "zoom_launch_system_v1"
-
     /** 复制链接：复制链接弹窗与系统分发服务代发的 VIEW 启动。 */
     const val KEY_ZOOM_LAUNCH_CLIPBOARD = "zoom_launch_clipboard_v1"
 
@@ -88,14 +118,7 @@ internal object ModulePreferences {
      */
     const val DEVICE_LINK_PACKAGE = "com.oplus.linker"
 
-    /** 旧版三个分项开关的键，仅用于升级后迁移取值。 */
-    const val LEGACY_KEY_ZOOM_LAUNCH_NOTIFICATION = "zoom_launch_notification"
-    const val LEGACY_KEY_ZOOM_LAUNCH_CONTROL_CENTER = "zoom_launch_control_center"
-    const val LEGACY_KEY_ZOOM_LAUNCH_INTER_APP = "zoom_launch_inter_app"
 
-    /** 旧版桌面入口开关（快捷项 / 卡片）的键，仅用于升级后清除残留值。 */
-    const val LEGACY_KEY_ZOOM_LAUNCHER_SHORTCUT = "zoom_launcher_shortcut_v1"
-    const val LEGACY_KEY_ZOOM_LAUNCHER_CARD = "zoom_launcher_card_v1"
     const val KEY_RADIAL_KEEP_OPEN = "radial_keep_open"
 
     /**
@@ -106,6 +129,15 @@ internal object ModulePreferences {
      * 让任意应用、任意页面都能长按拖起内容。只改「能不能拖」，不改「拖给谁」。
      */
     const val KEY_FREE_DRAG = "free_drag_enabled"
+
+    /** 拖拽触发延迟：系统长按阈值（毫秒），默认 400 即官方行为。 */
+    const val KEY_DRAG_LONG_PRESS_MS = "drag_long_press_ms_v1"
+    const val DEFAULT_DRAG_LONG_PRESS_MS = 400
+    const val MIN_DRAG_LONG_PRESS_MS = 100
+    const val MAX_DRAG_LONG_PRESS_MS = 400
+
+    fun coerceDragLongPressMs(value: Int): Int =
+        value.coerceIn(MIN_DRAG_LONG_PRESS_MS, MAX_DRAG_LONG_PRESS_MS)
     const val DEFAULT_ENABLED = false
     const val DEFAULT_CORNER_ENABLED = true
     const val DEFAULT_CORNER_TRIGGER_RANGE_DP = 84
@@ -118,10 +150,14 @@ internal object ModulePreferences {
     const val DEFAULT_PAUSE_IN_LANDSCAPE = true
     const val DEFAULT_PAUSE_IN_GAME_MODE = true
     const val DEFAULT_VERBOSE_LOG = false
-    /** 默认全透明：呼出扇形时不压暗身后内容。 */
-    const val DEFAULT_SHADE_PERCENT = 0
-    const val MIN_SHADE_PERCENT = 0
-    const val MAX_SHADE_PERCENT = 100
+    /** 默认不处理背景：呼出扇形时既不压暗也不模糊。 */
+    const val DEFAULT_BACKDROP_LEVEL = 0
+    const val MIN_BACKDROP_LEVEL = -100
+    const val MAX_BACKDROP_LEVEL = 100
+    /** 滑条正值满格对应的模糊半径（dp）。 */
+    const val MAX_RADIAL_BLUR_DP = 100
+    /** 布尔开关时代开着模糊的机器迁移到的程度：对应上一版固定半径 24dp。 */
+    const val LEGACY_BLUR_LEVEL = 24
 
     const val DEFAULT_ZOOM_MAX_WINDOW_COUNT = 1
     const val MIN_ZOOM_MAX_WINDOW_COUNT = 1
@@ -137,7 +173,11 @@ internal object ModulePreferences {
     const val MIN_CORNER_TRIGGER_RANGE_DP = 24
     const val MAX_CORNER_TRIGGER_RANGE_DP = 160
     const val MIN_RADIAL_HIT_RANGE_DP = 40
-    const val MAX_RADIAL_HIT_RANGE_DP = 140
+    /**
+     * 上限 220：图标圆心在半径 242 基准 dp 的圆弧上，命中半径到这个量级
+     * 才能一直覆盖到屏幕直角本身；再大也不会有新的覆盖区域。
+     */
+    const val MAX_RADIAL_HIT_RANGE_DP = 220
 
     fun coerceCornerTriggerRangeDp(value: Int): Int =
         value.coerceIn(MIN_CORNER_TRIGGER_RANGE_DP, MAX_CORNER_TRIGGER_RANGE_DP)
@@ -151,8 +191,16 @@ internal object ModulePreferences {
     fun coerceZoomMaxWindowCount(value: Int): Int =
         value.coerceIn(MIN_ZOOM_MAX_WINDOW_COUNT, MAX_ZOOM_MAX_WINDOW_COUNT)
 
-    fun coerceShadePercent(value: Int): Int =
-        value.coerceIn(MIN_SHADE_PERCENT, MAX_SHADE_PERCENT)
+    fun coerceBackdropLevel(value: Int): Int =
+        value.coerceIn(MIN_BACKDROP_LEVEL, MAX_BACKDROP_LEVEL)
+
+    /** 遮罩不透明度（0–1）：只有滑条的负值部分参与压暗。 */
+    fun backdropShadeAlpha(level: Int): Float =
+        (-coerceBackdropLevel(level).coerceAtMost(0)).toFloat() / -MIN_BACKDROP_LEVEL
+
+    /** 模糊半径（dp）：只有滑条的正值部分参与模糊。 */
+    fun backdropBlurDp(level: Int): Int =
+        coerceBackdropLevel(level).coerceAtLeast(0) * MAX_RADIAL_BLUR_DP / MAX_BACKDROP_LEVEL
 
 
     /** 黑名单包名：换行分隔，逐条校验，最多 200 条。 */
