@@ -41,3 +41,8 @@ build-out/
 # Operating system files
 .DS_Store
 Thumbs.db
+
+# 编译期占位（androidx AAR 的 classes.jar，体积大且随版本变化）
+# 生成方式见 docs/build-deps.md；缺这两个文件时 :app:assembleRelease 会编译失败
+/libs/preference-classes.jar
+/libs/fragment-classes.jar
