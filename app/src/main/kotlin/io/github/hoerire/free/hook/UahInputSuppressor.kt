@@ -47,7 +47,7 @@ internal class UahInputSuppressor(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.system.uah_input")
+            .setId("free.system.uah_input")
             .intercept { chain ->
                 val event = chain.args.firstNotNullOfOrNull { it as? MotionEvent }
                 if (event != null) {

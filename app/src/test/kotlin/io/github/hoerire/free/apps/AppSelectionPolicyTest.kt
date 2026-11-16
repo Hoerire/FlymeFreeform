@@ -8,7 +8,7 @@ class AppSelectionPolicyTest {
     fun emptyPinsProduceEmptyRadial() {
         assertEquals(
             emptyList<String>(),
-            AppSelectionPolicy.radialItems(emptyList(), { it }, 6),
+            AppSelectionPolicy.radialItems(emptyList(), { value: String -> value }, 6),
         )
     }
 
@@ -16,16 +16,16 @@ class AppSelectionPolicyTest {
     fun onlyPinnedEntriesAreShown() {
         assertEquals(
             listOf("available"),
-            AppSelectionPolicy.radialItems(listOf("available"), { it }, 6),
+            AppSelectionPolicy.radialItems(listOf("available"), { value: String -> value }, 6),
         )
         // 重复项去重；超过上限时截断；不掺任何「最近应用」。
         assertEquals(
             listOf("a", "b"),
-            AppSelectionPolicy.radialItems(listOf("a", "b", "a"), { it }, 6),
+            AppSelectionPolicy.radialItems(listOf("a", "b", "a"), { value: String -> value }, 6),
         )
         assertEquals(
             listOf("a", "b"),
-            AppSelectionPolicy.radialItems(listOf("a", "b", "c"), { it }, 2),
+            AppSelectionPolicy.radialItems(listOf("a", "b", "c"), { value: String -> value }, 2),
         )
     }
 }

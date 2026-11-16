@@ -395,7 +395,7 @@ internal class PortalTapLegacy(
 
     private fun hook(method: Method, id: String, block: (XposedInterface.Chain) -> Any?) {
         module.hook(method)
-            .setId("flymefreeform.portal.$id")
+            .setId("free.portal.$id")
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .intercept { chain -> block(chain) }
     }

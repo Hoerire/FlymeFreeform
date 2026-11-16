@@ -55,7 +55,7 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
         module
             .hook(handle)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.sidebar.breeno_identify")
+            .setId("free.sidebar.breeno_identify")
             .intercept { chain ->
                 // 总开关关闭时走侧边栏自己的启动逻辑，不接管。
                 if (!configuration.snapshot.enabled) return@intercept chain.proceed()
@@ -122,7 +122,7 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
             val mainClass = loader.loadClass(ColorOsAllAppsContent.MAIN_CLASS)
             val changeState = mainClass.getDeclaredMethod("changeState", loader.loadClass("${ColorOsAllAppsContent.MAIN_CLASS}\$State"))
 
-            handles += module.hook(bind).setId("flymefreeform.allapps.bind")
+            handles += module.hook(bind).setId("free.allapps.bind")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
                     val original = chain.proceed()
                     val service = chain.thisObject as? Service
@@ -174,7 +174,7 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
                         entryEndpoint?.takeIf { it.service === service }?.binder ?: original
                     } else original
                 }
-            handles += module.hook(unbind).setId("flymefreeform.allapps.unbind")
+            handles += module.hook(unbind).setId("free.allapps.unbind")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
                     val original = chain.proceed()
                     val intent = chain.getArg(0) as? Intent
@@ -182,7 +182,7 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
                     if (intent?.action == SidebarEntryProtocol.BIND_ACTION) entryEndpoint?.onUnbound(intent.identifier)
                     original
                 }
-            handles += module.hook(destroy).setId("flymefreeform.allapps.destroy")
+            handles += module.hook(destroy).setId("free.allapps.destroy")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
                     if (entryEndpoint?.service === chain.thisObject) {
                         val previous = entryEndpoint
@@ -196,13 +196,13 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
                     }
                     chain.proceed()
                 }
-            handles += module.hook(adapter).setId("flymefreeform.allapps.adapter")
+            handles += module.hook(adapter).setId("free.allapps.adapter")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
                     val original = chain.proceed()
                     endpoint?.onAdapterCreated(chain.thisObject, original)
                     original
                 }
-            handles += module.hook(changeState).setId("flymefreeform.allapps.native_state")
+            handles += module.hook(changeState).setId("free.allapps.native_state")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
                     val original = chain.proceed()
                     endpoint?.onNativeSidebarState((chain.getArg(0) as? Enum<*>)?.name)
@@ -237,7 +237,7 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
                         android.os.UserHandle::class.java,
                     )
                 handles +=
-                    module.hook(startActivityAsUser).setId("flymefreeform.panel.tool_zoom")
+                    module.hook(startActivityAsUser).setId("free.panel.tool_zoom")
                         .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
                             runCatching {
                                 applyToolLaunchZoom(chain.getArg(0) as? Intent, chain.getArg(1) as? Bundle)
@@ -328,7 +328,7 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
         executor.execute {
             try {
                 val target = ColorOsSidebarVisualTarget.resolve(
-                    loader, File(info.sourceDir), File(info.dataDir, "code_cache/flymefreeform/sidebar-symbols"),
+                    loader, File(info.sourceDir), File(info.dataDir, "code_cache/free/sidebar-symbols"),
                 ) { code, exception -> log(if (exception == null) Log.INFO else Log.WARN, code, exception) }
                 handler.post {
                     if (finished.compareAndSet(false, true)) {

@@ -48,7 +48,7 @@ internal class CenterZoomWindowHook(
                 module
                     .hook(method)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.center." + installed)
+                    .setId("free.center." + installed)
                     .intercept { chain ->
                         // 只在"同时只允许一个悬浮小窗"时接管摆放：
                         // 允许多窗口时堆叠会让后面的窗口完全看不见，那种情况交回系统原生排序。

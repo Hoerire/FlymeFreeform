@@ -83,7 +83,7 @@ internal class FreeDragHookInstaller(
             module
                 .hook(method)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.freedrag.config")
+                .setId("free.freedrag.config")
                 .intercept { chain ->
                     val original = chain.proceed()
                     if (!configuration.snapshot.freeDragActive) return@intercept original
@@ -118,7 +118,7 @@ internal class FreeDragHookInstaller(
             module
                 .hook(method)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.freedrag.rawxml")
+                .setId("free.freedrag.rawxml")
                 .intercept { chain ->
                     val original = chain.proceed() as? String
                     if (!original.isNullOrEmpty()) return@intercept original

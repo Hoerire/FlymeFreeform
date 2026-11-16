@@ -40,7 +40,7 @@ internal class SystemGestureSuppressor(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.system.gesture_suppress")
+            .setId("free.system.gesture_suppress")
             .intercept { chain ->
                 val event = chain.getArg(0) as? MotionEvent
                 if (event == null) return@intercept chain.proceed()

@@ -82,7 +82,7 @@ internal class FlexibleWindowLimitHook(
             matched.add(method.name + "/" + method.parameterCount)
             method.isAccessible = true
             val hookId =
-                "flymefreeform.limit." + shortName(className) + "." + method.name + "." + method.parameterCount
+                "free.limit." + shortName(className) + "." + method.name + "." + method.parameterCount
             runCatching {
                 module
                     .hook(method)
@@ -156,7 +156,7 @@ internal class FlexibleWindowLimitHook(
         target.declaredMethods.forEach { method ->
             if (!method.name.contains("updateTaskMaxNum")) return@forEach
             method.isAccessible = true
-            val hookId = "flymefreeform.limit.cache." + method.name + "." + method.parameterCount
+            val hookId = "free.limit.cache." + method.name + "." + method.parameterCount
             runCatching {
                 module
                     .hook(method)

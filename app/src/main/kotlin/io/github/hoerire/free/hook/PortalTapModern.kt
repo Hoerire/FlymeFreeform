@@ -729,7 +729,7 @@ internal class PortalTapModern(
         runCatching {
             method.isAccessible = true
             module.hook(method)
-                .setId("flymefreeform.portal.$id")
+                .setId("free.portal.$id")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept { chain -> block(chain) }
         }.onFailure { ModuleLog.warn("PORTAL_HOOK_FAILED_$id", it) }

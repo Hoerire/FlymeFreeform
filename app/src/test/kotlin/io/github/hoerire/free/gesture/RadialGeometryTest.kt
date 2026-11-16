@@ -34,11 +34,16 @@ class RadialGeometryTest {
     }
 
     @Test
-    fun previousSelectionUsesLargerKeepRadius() {
+    fun previousSelectionKeepsCurrentCellOnlyWithinKeepRadius() {
         val layout = RadialGeometry.layout(CornerSide.Left, 1000f, 2000f, 400f, 7)
         val center = layout.itemCenters[2]
+        // 在保持圈内：不换格。
         assertEquals(2, RadialGeometry.selection(layout, center.x + 39f, center.y, 2, 30f, 42f))
-        assertNull(RadialGeometry.selection(layout, center.x + 45f, center.y, 2, 30f, 42f))
+        // 保持圈大到能盖住相邻格时，即使手指已在该格上仍保持上一格。
+        val neighbor = layout.itemCenters[3]
+        assertEquals(2, RadialGeometry.selection(layout, neighbor.x, neighbor.y, 2, 30f, 100f))
+        // 生产路径传 0：没有保持圈，立刻按最近距离换格。
+        assertEquals(3, RadialGeometry.selection(layout, neighbor.x, neighbor.y, 2, 30f, 0f))
     }
 
     @Test

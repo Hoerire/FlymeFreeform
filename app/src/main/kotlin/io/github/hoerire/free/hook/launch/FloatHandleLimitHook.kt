@@ -50,7 +50,7 @@ internal class FloatHandleLimitHook(
                 getter.isAccessible = true
                 module.hook(getter)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.floathandle.max")
+                    .setId("free.floathandle.max")
                     .intercept { chain ->
                         val original = chain.proceed()
                         val wanted = wantedLimit() ?: return@intercept original
@@ -63,7 +63,7 @@ internal class FloatHandleLimitHook(
                 addPath.isAccessible = true
                 module.hook(addPath)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.floathandle.add")
+                    .setId("free.floathandle.add")
                     .intercept { chain ->
                         val wanted = wantedLimit()
                         if (wanted != null) {

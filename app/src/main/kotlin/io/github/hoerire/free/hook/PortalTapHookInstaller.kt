@@ -57,7 +57,7 @@ internal class PortalTapHookInstaller(
             module
                 .hook(onCreate)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.portal.settings_context")
+                .setId("free.portal.settings_context")
                 .intercept { chain ->
                     val result = chain.proceed()
                     (chain.thisObject as? android.content.Context)?.let(::bindSettingsReceiver)

@@ -77,7 +77,7 @@ internal class FloatKeepAliveHook(
                 module
                     .hook(method)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.keep.fullscreen_diag." + method.name + "." + method.parameterCount)
+                    .setId("free.keep.fullscreen_diag." + method.name + "." + method.parameterCount)
                     .intercept { chain ->
                         val taskId =
                             chain.args.firstOrNull()?.let { OemReflection.readField(it, "mTaskId") as? Int } ?: -1
@@ -119,7 +119,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.make_invisible")
+            .setId("free.float_keep_alive.make_invisible")
             .intercept { chain ->
                 if (shouldKeepVisible(chain.thisObject)) {
                     logSkip(chain.thisObject, "invisible")
@@ -139,7 +139,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.visible_requested")
+            .setId("free.float_keep_alive.visible_requested")
             .intercept { chain ->
                 val visible = chain.getArg(0) as? Boolean
                 if (visible == false && shouldKeepVisible(chain.thisObject)) {
@@ -169,7 +169,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.set_state")
+            .setId("free.float_keep_alive.set_state")
             .intercept { chain ->
                 val state = (chain.getArg(0) as? Enum<*>)?.name
                 if (state in STOP_STATES && shouldKeep(chain.thisObject)) {
@@ -205,7 +205,7 @@ internal class FloatKeepAliveHook(
             module
                 .hook(method)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.float_keep_alive.add_to_stopping_$index")
+                .setId("free.float_keep_alive.add_to_stopping_$index")
                 .intercept { chain ->
                     if (shouldKeep(chain.thisObject)) {
                         logSkip(chain.thisObject, "add_to_stopping")
@@ -240,7 +240,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.schedule_pause")
+            .setId("free.float_keep_alive.schedule_pause")
             .intercept { chain ->
                 val record = chain.getArg(0)
                 if (shouldKeep(record) && scheduleFakePause(record)) {
@@ -258,7 +258,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.pause_timeout")
+            .setId("free.float_keep_alive.pause_timeout")
             .intercept { chain ->
                 if (shouldKeep(chain.thisObject)) {
                     null
@@ -292,7 +292,7 @@ internal class FloatKeepAliveHook(
                 module
                     .hook(method)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.float_keep_alive.rotation_config")
+                    .setId("free.float_keep_alive.rotation_config")
                     .intercept { chain ->
                         val rotated = isRotationChange(chain.getArg(1), chain.getArg(2))
                         if (rotated) beginRotation()
@@ -311,7 +311,7 @@ internal class FloatKeepAliveHook(
                 module
                     .hook(method)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.float_keep_alive.rotation_start")
+                    .setId("free.float_keep_alive.rotation_start")
                     .intercept { chain ->
                         beginRotation()
                         val result = chain.proceed()
@@ -333,7 +333,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.handle_removed")
+            .setId("free.float_keep_alive.handle_removed")
             .intercept { chain ->
                 val taskId = chain.getArg(0) as? Int ?: -1
                 val flag = chain.getArg(3) as? Int ?: -1
@@ -351,7 +351,7 @@ internal class FloatKeepAliveHook(
             module
                 .hook(inner)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.float_keep_alive.handle_removed_inner")
+                .setId("free.float_keep_alive.handle_removed_inner")
                 .intercept { chain ->
                     val taskId = chain.getArg(0) as? Int ?: -1
                     val flag = chain.getArg(2) as? Int ?: -1
@@ -383,7 +383,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.unlock_snapshot")
+            .setId("free.float_keep_alive.unlock_snapshot")
             .intercept { chain ->
                 val showing = chain.getArg(1) as? Boolean
                 // 解锁和横竖屏一样，是一次整屏可见性重排：这时把守卫放下，窗口才不会被顶出来。
@@ -464,7 +464,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.fullscreen_reset")
+            .setId("free.float_keep_alive.fullscreen_reset")
             .intercept { chain ->
                 val taskId = (OemReflection.readField(chain.getArg(0), "mTaskId") as? Int) ?: -1
                 // 放到全屏也可能来自应用自己起新页面（短剧连播、换集）：
@@ -513,7 +513,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.audio_focus")
+            .setId("free.float_keep_alive.audio_focus")
             .intercept { chain ->
                 // 开关随时可改：每次调用都按当前设置判断，不依赖开机时的取值。
                 if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
@@ -566,7 +566,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.awake_" + name)
+            .setId("free.float_keep_alive.awake_" + name)
             .intercept { chain ->
                 // 开关随时可改：每次调用都按当前设置判断，不依赖开机时的取值。
                 if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
@@ -608,7 +608,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.screen_off")
+            .setId("free.float_keep_alive.screen_off")
             .intercept { chain ->
                 // 开关随时可改：每次调用都按当前设置判断，不依赖开机时的取值。
                 if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
@@ -674,7 +674,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.client_visible_keep")
+            .setId("free.float_keep_alive.client_visible_keep")
             .intercept { chain ->
                 // 开关随时可改：每次调用都按当前设置判断，不依赖开机时的取值。
                 if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
@@ -711,7 +711,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.display_state")
+            .setId("free.float_keep_alive.display_state")
             .intercept { chain ->
                 // 开关随时可改：每次调用都按当前设置判断，不依赖开机时的取值。
                 if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
@@ -764,7 +764,7 @@ internal class FloatKeepAliveHook(
         module
             .hook(method)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.float_keep_alive.keyguard_locked")
+            .setId("free.float_keep_alive.keyguard_locked")
             .intercept { chain ->
                 // 开关随时可改：每次调用都按当前设置判断，不依赖开机时的取值。
                 if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
@@ -802,7 +802,7 @@ internal class FloatKeepAliveHook(
 
     private val exemptExecutor =
         java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
-            Thread(runnable, "flymefreeform-idle-exempt").apply { isDaemon = true }
+            Thread(runnable, "free-idle-exempt").apply { isDaemon = true }
         }
 
     /** 包名 -> userId，只记本模组加过的。 */

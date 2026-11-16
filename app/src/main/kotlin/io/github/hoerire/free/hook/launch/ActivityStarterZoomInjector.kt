@@ -53,7 +53,7 @@ internal class ActivityStarterZoomInjector(
             module
                 .hook(method)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.zoom.starter." + method.name + "." + method.parameterCount)
+                .setId("free.zoom.starter." + method.name + "." + method.parameterCount)
                 .intercept { chain ->
                     // 总开关关闭时完全让行：不读配置、不改参数、不启动窗口，
                     // 保证与其他同时启用的模块互不干扰。

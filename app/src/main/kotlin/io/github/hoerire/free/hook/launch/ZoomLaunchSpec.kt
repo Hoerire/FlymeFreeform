@@ -10,7 +10,7 @@ import android.os.Bundle
  */
 internal object ZoomLaunchSpec {
     /** 已注入标记，避免同一次启动被重复改写。 */
-    const val EXTRA_APPLIED = "flymefreeform_zoom_applied"
+    const val EXTRA_APPLIED = "free_zoom_applied"
 
     const val KEY_WINDOW_MODE = "extra_window_mode"
     private const val KEY_WINDOWING_MODE = "android.activity.windowingMode"

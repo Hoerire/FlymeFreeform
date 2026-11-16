@@ -87,7 +87,7 @@ internal class OutsideTapCloseHookInstaller(
                 module
                     .hook(dispatch)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.system.bottom_close_caption_touch")
+                    .setId("free.system.bottom_close_caption_touch")
                     .intercept { chain ->
                         val caption = chain.thisObject
                         val event = chain.getArg(0) as? MotionEvent
@@ -101,7 +101,7 @@ internal class OutsideTapCloseHookInstaller(
             module
                 .hook(updateTouchableRegion)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.system.outside_tap_input_region")
+                .setId("free.system.outside_tap_input_region")
                 .intercept { chain ->
                     val caption = chain.thisObject ?: return@intercept chain.proceed()
                     val originalRegion = chain.getArg(0) as? Region ?: return@intercept chain.proceed()
@@ -137,7 +137,7 @@ internal class OutsideTapCloseHookInstaller(
                 module
                     .hook(addFlexibleTask)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.system.caption_region_refresh")
+                    .setId("free.system.caption_region_refresh")
                     .intercept { chain ->
                         val result = chain.proceed()
                         val controller = chain.thisObject
@@ -167,7 +167,7 @@ internal class OutsideTapCloseHookInstaller(
             module
                 .hook(onPointerEvent)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.system.outside_tap_close")
+                .setId("free.system.outside_tap_close")
                 .intercept { chain ->
                     val listener = chain.thisObject
                     val event = chain.getArg(0) as? MotionEvent
@@ -266,7 +266,7 @@ internal class OutsideTapCloseHookInstaller(
         module
             .hook(innerLocked)
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("flymefreeform.system.replace_to_close")
+            .setId("free.system.replace_to_close")
             .intercept { chain ->
                 if (!configuration.snapshot.enabled) return@intercept chain.proceed()
                 val strategy = chain.args.getOrNull(0)
@@ -361,7 +361,7 @@ internal class OutsideTapCloseHookInstaller(
     private fun installVictimOrderHook(controllerClass: Class<*>) {
         val budget = methodInHierarchy(controllerClass, "handleExceedLimitFlexibleTask", 6)
         if (budget != null) {
-            hookListOrder(budget, "flymefreeform.system.victim_order.budget", listArgIndex = 1)
+            hookListOrder(budget, "free.system.victim_order.budget", listArgIndex = 1)
         } else {
             ModuleLog.warn("ZOOM_VICTIM_ORDER_NO_METHOD")
         }
@@ -374,7 +374,7 @@ internal class OutsideTapCloseHookInstaller(
         ).forEach { method ->
             hookListOrder(
                 method,
-                "flymefreeform.system.victim_order.determine_" + method.parameterCount,
+                "free.system.victim_order.determine_" + method.parameterCount,
                 listArgIndex = 2,
             )
         }

@@ -32,7 +32,7 @@ internal class SystemUiHookInstaller(
             module
                 .hook(onCreate)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.systemui.corner_spy_owner")
+                .setId("free.systemui.corner_spy_owner")
                 .intercept { chain ->
                     val result = chain.proceed()
                     val context = chain.thisObject as? Context

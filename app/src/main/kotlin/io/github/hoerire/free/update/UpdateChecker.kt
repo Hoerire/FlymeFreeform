@@ -280,7 +280,7 @@ internal class UpdateChecker(context: Context) {
         const val USER_AGENT = "Free-UpdateChecker"
         const val HTTP_OK = 200
         const val TIMEOUT_MS = 8000
-        const val THREAD_NAME = "flymefreeform-update"
+        const val THREAD_NAME = "free-update"
 
         /** 两次联网检查的最小间隔：六小时内只读缓存。 */
         const val CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L

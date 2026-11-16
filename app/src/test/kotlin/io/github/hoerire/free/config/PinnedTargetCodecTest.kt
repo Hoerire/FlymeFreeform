@@ -18,13 +18,14 @@ class PinnedTargetCodecTest {
     }
 
     @Test
-    fun legacyMigrationNormalizesEquivalentComponentsAndPreservesSixItemOrder() {
+    fun legacyMigrationNormalizesEquivalentComponentsAndPreservesSevenItemOrder() {
         val raw = "com.example/.Main\ninvalid\ncom.example/com.example.Main\n" +
-            (1..7).joinToString("\n") { "com.app$it/.Main" }
+            (1..8).joinToString("\n") { "com.app$it/.Main" }
         val targets = PinnedTargetCodec.decodeLegacy(raw)
-        assertEquals(6, targets.size)
+        // 同一目标去重后计入上限：com.example 占 1 格，其余按原顺序补到 7 格。
+        assertEquals(7, targets.size)
         assertEquals(PinnedTarget.App("com.example", "com.example.Main"), targets.first())
-        assertEquals(PinnedTarget.App("com.app5", "com.app5.Main"), targets.last())
+        assertEquals(PinnedTarget.App("com.app6", "com.app6.Main"), targets.last())
     }
 
     @Test

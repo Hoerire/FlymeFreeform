@@ -40,7 +40,7 @@ internal class NotifBundleHook(
                 module
                     .hook(method)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.notif.bundle." + target.simpleName)
+                    .setId("free.notif.bundle." + target.simpleName)
                     .intercept { chain ->
                         runCatching { rewriteBundle(chain.thisObject, chain.args) }
                         chain.proceed()
@@ -117,7 +117,7 @@ internal class NotifBundleHook(
                 module
                     .hook(constructor)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .setId("flymefreeform.notif.headsup." + constructor.parameterCount)
+                    .setId("free.notif.headsup." + constructor.parameterCount)
                     .intercept { chain ->
                         val result = chain.proceed()
                         headsUpManager = chain.thisObject
@@ -138,7 +138,7 @@ internal class NotifBundleHook(
             module
                 .hook(show)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.notif.headsup.show")
+                .setId("free.notif.headsup.show")
                 .intercept { chain ->
                     headsUpManager = chain.thisObject
                     chain.proceed()
@@ -195,7 +195,7 @@ internal class NotifBundleHook(
             val removed =
                 manager.javaClass.methods
                     .firstOrNull { it.name == "removeNotification" && it.parameterCount == 3 }
-                    ?.invoke(manager, key, true, "flymefreeform")
+                    ?.invoke(manager, key, true, "free")
             ModuleLog.debug(TAG) { "NOTIF_HEADS_UP_DISMISSED " + key + " -> " + (removed ?: "void") }
             true
         }.onFailure { ModuleLog.warn("NOTIF_HEADS_UP_DISMISS_FAILED", it) }

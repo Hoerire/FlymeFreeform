@@ -40,17 +40,12 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           ls "$ANDROID_HOME/platforms" || true
 
-      # 单元测试是契约门禁：先发现当前 AGP 实际生成的 test*UnitTest 任务再跑，
-      # 避免把任务名写死（AGP 9 下 testReleaseUnitTest 不一定存在）。
-      # 此步只报不挡（continue-on-error）：契约变更期的既有失败不应挡住出包，
-      # 但每次都会把失败清单打出来，便于按清单修复。
+      # 单元测试是契约门禁：失败即挡住出包。任务名在 AGP 9 下是 testDebugUnitTest，
+      # 不存在 testReleaseUnitTest，因此不再做任务名探测。
       - name: Unit tests
-        continue-on-error: true
         run: |
           chmod +x gradlew
-          TASK=$(./gradlew -q :app:tasks --all | grep -oE "test[A-Za-z]+UnitTest" | head -1 || true)
-          echo "unit-test task: ${TASK:-none}"
-          if [ -n "$TASK" ]; then ./gradlew ":app:${TASK}" --stacktrace; else echo "NO_UNIT_TEST_TASK"; fi
+          ./gradlew :app:testDebugUnitTest --stacktrace
 
       # libs/ 下两个 AAR 产物不入库（体积大且随版本变化），构建前现取：
       # 见 docs/build-deps.md。缺这两个文件时 :app:assembleRelease 会编译失败。

@@ -55,7 +55,7 @@ internal class LauncherHookInstaller(
     fun install(classLoader: ClassLoader, applicationInfo: ApplicationInfo) {
         if (!installationStarted.compareAndSet(false, true)) return
         val apk = File(applicationInfo.sourceDir)
-        val cache = File(applicationInfo.dataDir, "code_cache/flymefreeform/launcher-symbols")
+        val cache = File(applicationInfo.dataDir, "code_cache/free/launcher-symbols")
         val finished = AtomicBoolean(false)
         val executor = Executors.newSingleThreadExecutor { task ->
             Thread(task, "Free-LauncherDex").apply { isDaemon = true }
@@ -111,7 +111,7 @@ internal class LauncherHookInstaller(
                 .hook(target.inputMethod)
                 .setPriority(XposedInterface.PRIORITY_HIGHEST)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.launcher.corner_input_owner")
+                .setId("free.launcher.corner_input_owner")
                 .intercept { chain ->
                     val event = chain.getArg(0) as? MotionEvent
                         ?: return@intercept chain.proceed()

@@ -1748,7 +1748,7 @@ internal class ColorOsFreeformCoordinator(
         const val CATALOG_THREAD_NAME = "Free-Catalog"
 
         /** 恢复原因串：与系统点击用的 "onSingleTapConfirmed" 区分，便于在系统日志里识别。 */
-        const val RESTORE_REASON = "flymefreeformFanRestore"
+        const val RESTORE_REASON = "freeFanRestore"
 
         /** 系统"关掉浮动窗口、任务退回后台"的退场策略类。 */
         const val EXIT_TO_BACK_STRATEGY_CLASS =
@@ -1766,7 +1766,7 @@ internal class ColorOsFreeformCoordinator(
 
 
 
-        const val MONITOR_NAME = "flymefreeform-corner"
+        const val MONITOR_NAME = "free-corner"
         /** 抢流被 CANCEL 后，等这么久没有 MOVE 就按取消收场。 */
         const val CANCEL_WATCH_MS = 150L
         /** 两次指针事件间隔超过该值即判定上一次会话结束，避免状态滞留。 */

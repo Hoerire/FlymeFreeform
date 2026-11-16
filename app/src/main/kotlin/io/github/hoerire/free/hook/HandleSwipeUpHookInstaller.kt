@@ -47,7 +47,7 @@ internal class HandleSwipeUpHookInstaller(
             module
                 .hook(getGestureMode)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.system.handle_up_to_mini")
+                .setId("free.system.handle_up_to_mini")
                 .intercept { chain ->
                     val originalResult = chain.proceed()
                     val originalMode = (originalResult as? Number)?.toInt() ?: return@intercept originalResult

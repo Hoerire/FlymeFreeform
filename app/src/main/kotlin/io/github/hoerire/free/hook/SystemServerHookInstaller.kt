@@ -66,7 +66,7 @@ internal class SystemServerHookInstaller(
             module
                 .hook(systemReady)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.system.flexible_ready")
+                .setId("free.system.flexible_ready")
                 .intercept { chain ->
                     val result = chain.proceed()
                     val controller = chain.thisObject
@@ -140,7 +140,7 @@ internal class SystemServerHookInstaller(
             module
                 .hook(method)
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .setId("flymefreeform.system.foreground")
+                .setId("free.system.foreground")
                 .intercept { chain ->
                     runCatching {
                         val record = chain.getArg(0)
