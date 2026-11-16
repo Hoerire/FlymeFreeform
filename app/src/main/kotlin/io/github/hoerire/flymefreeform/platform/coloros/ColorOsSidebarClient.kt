@@ -40,6 +40,8 @@ internal class ColorOsSidebarClient(
 ) {
     enum class Outcome { Shown, Fallback, Abandoned }
 
+    private val nativePanel = NativeSidebarPanel(context, handler, log)
+
     private val worker =
         ThreadPoolExecutor(
             1, 1, 10L, TimeUnit.SECONDS, ArrayBlockingQueue(4),
@@ -189,7 +191,10 @@ internal class ColorOsSidebarClient(
                 request.session.deadline = SystemClock.uptimeMillis() + SidebarProtocol.CLEANUP_TIMEOUT_MS
                 scheduleTimeout(request)
             }
-            MorePanelSession.Effect.Fallback -> finish(request, Outcome.Fallback)
+            MorePanelSession.Effect.Fallback ->
+                if (!nativePanel.open { opened -> if (current === request) finish(request, Outcome.Fallback) else Unit }) {
+                    finish(request, Outcome.Fallback)
+                }
             MorePanelSession.Effect.Shown -> {
                 // 窗口存活期间保留服务绑定，避免原生常驻端 stopService 后 UIService 被销毁。
                 request.committed = true
@@ -367,7 +372,14 @@ internal class ColorOsSidebarClient(
                                 "_WANT_" + SidebarProtocol.DESCRIPTOR,
                             null,
                         )
-                        handler.post { apply(this@Request, session.cleaned(session.id)) }
+                        handler.post {
+                            if (!nativePanel.open {
+                                    if (current === this@Request) finish(this@Request, Outcome.Fallback)
+                                }
+                            ) {
+                                finish(this@Request, Outcome.Fallback)
+                            }
+                        }
                         return@execute
                     }
                     service.linkToDeath(death, 0)
