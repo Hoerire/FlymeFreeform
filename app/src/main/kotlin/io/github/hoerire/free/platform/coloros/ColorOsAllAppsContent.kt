@@ -177,7 +177,7 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
                             index != null && item != null && list != null &&
                                 index in list.indices && list[index] === item
                         // 详细日志：还原一次点击的完整现场。搜索后索引与 currentDataList
-                        // 对不上是历史 bug 的源头（点搜索结果却打开了收藏组第一条），
+                        // 对不上时按索引分发会打开错误条目（点搜索结果却打开收藏组第一条），
                         // 这里把 index / 实际条目 / 是否对齐 / 当前搜索词全部打出来。
                         val query = currentQuery()
                         panelLog(

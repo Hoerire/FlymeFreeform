@@ -40,9 +40,14 @@ unzip -l libs/preference-classes.jar | grep -q 'androidx/preference/PreferenceFr
 unzip -l libs/fragment-classes.jar    | grep -q 'androidx/fragment/app/Fragment.class' && echo ok
 ```
 
+## CI
+
+`.github/workflows/build.yml` 在构建前会自动执行上面的生成命令，仓库本身不含这两个 jar；
+本地构建则需要先跑一次本节步骤。
+
 ## 注意事项
 
 - 生成物**不要用 `git add -f`** 提交：`.gitignore` 已显式忽略这两个文件名，仓库保持轻量。
 - 代码里对它们的引用必须保持 `compileOnly`；改成 `implementation` 会让 APK 里出现重复类。
 - 设备系统设置 APK 里的 `androidx.preference` 版本与本地产物不一致时，优先按设备的类签名调整：
-  缺少类或方法会在运行期表现为 `NoSuchMethodError`，此时用 `dexsql`/`jpype` 对照系统 APK 再生成。
+  缺少类或方法会在运行期表现为 `NoSuchMethodError`，用 dex 反编译工具查看系统 APK 的实际签名，换对应版本重新生成。

@@ -5,11 +5,8 @@ on:
   push:
     branches: [ main ]
 
-# 同一分支只保留最新一次构建：连续推送时自动取消旧的，避免一次多文件提交
-# 触发一堆并行 run（曾经一次 16 个文件 = 16 个 commit = 16 个构建）。
-# 暂时停用并发分组：2026-11-12 04:18 起有两个 run 卡在「未入队」状态，
-# 取消接口返回 409，新提交全部排在它们后面。先去掉分组让构建能重新派发。
-# 恢复时把下面三行取消注释即可。
+# 并发取消当前关闭：每个推送都独立排队构建。
+# 开启时同分支只保留最新一次构建，代价是取消接口异常会让后续提交一起排队。
 # concurrency:
 #   group: build-${{ github.ref }}
 #   cancel-in-progress: true
@@ -45,8 +42,8 @@ jobs:
 
       # 单元测试是契约门禁：先发现当前 AGP 实际生成的 test*UnitTest 任务再跑，
       # 避免把任务名写死（AGP 9 下 testReleaseUnitTest 不一定存在）。
-      # 已知红灯 4 条（CornerGestureEngine ×2 契约已变、AllAppsPanelMotion、RadialIconGeometry），
-      # 列为 S2 待修。此步只报不挡，避免"因为既有失败而无法出包"，但每次都会把失败清单打出来。
+      # 此步只报不挡（continue-on-error）：契约变更期的既有失败不应挡住出包，
+      # 但每次都会把失败清单打出来，便于按清单修复。
       - name: Unit tests
         continue-on-error: true
         run: |
@@ -54,6 +51,19 @@ jobs:
           TASK=$(./gradlew -q :app:tasks --all | grep -oE "test[A-Za-z]+UnitTest" | head -1 || true)
           echo "unit-test task: ${TASK:-none}"
           if [ -n "$TASK" ]; then ./gradlew ":app:${TASK}" --stacktrace; else echo "NO_UNIT_TEST_TASK"; fi
+
+      # libs/ 下两个 AAR 产物不入库（体积大且随版本变化），构建前现取：
+      # 见 docs/build-deps.md。缺这两个文件时 :app:assembleRelease 会编译失败。
+      - name: Prepare compile-only stubs
+        run: |
+          mkdir -p libs
+          curl -sL -o /tmp/preference.aar \
+            https://dl.google.com/android/maven2/androidx/preference/preference/1.2.1/preference-1.2.1.aar
+          unzip -p /tmp/preference.aar classes.jar > libs/preference-classes.jar
+          curl -sL -o /tmp/fragment.aar \
+            https://dl.google.com/android/maven2/androidx/fragment/fragment/1.8.9/fragment-1.8.9.aar
+          unzip -p /tmp/fragment.aar classes.jar > libs/fragment-classes.jar
+          ls -l libs
 
       - name: Assemble release
         run: |
@@ -66,5 +76,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: FlymeFreeform-apk
+          name: Free-apk
           path: app/build/outputs/apk/release/*.apk

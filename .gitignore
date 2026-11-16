@@ -42,6 +42,17 @@ build-out/
 .DS_Store
 Thumbs.db
 
+# 本地运维：交接文档、约束、token、本地脚本与临时/发布目录，一律不入库
+/HANDOFF.md
+/CONSTRAINTS.md
+/PUSH_TOKEN.txt
+/*.js
+/*.sh
+/tmp/
+/tools/
+/archive/
+/reverse/
+
 # 编译期占位（androidx AAR 的 classes.jar，体积大且随版本变化）
 # 生成方式见 docs/build-deps.md；缺这两个文件时 :app:assembleRelease 会编译失败
 /libs/preference-classes.jar

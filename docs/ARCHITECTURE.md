@@ -43,7 +43,7 @@
 ## 几条硬规则
 
 1. 模块不创建、不移动、不缩放窗口
-2. 新增反射前先用 dexsql 在真机 jar 里确认方法签名
+2. 新增反射前先用 dex 反编译工具在真机 jar 里确认方法签名
 3. hook 进程里的跨进程 SharedPreferences 监听不可靠，实时同步只靠广播，且发送端要 `setShareIdentityEnabled`
 4. 每个分支都要有一条能搜到的日志码
 
