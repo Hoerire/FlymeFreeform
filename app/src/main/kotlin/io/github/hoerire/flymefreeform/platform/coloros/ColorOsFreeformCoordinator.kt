@@ -837,6 +837,8 @@ internal class ColorOsFreeformCoordinator(
                 keepOpen = keepOpen,
             )
             overlay = view
+            // 扇形展开才读侧边栏目录：Provider 按需启动，早读必然失败。
+            if (lastSettings.pinnedTargets.any { it is PinnedTarget.Sidebar }) entryCatalog.refresh()
             try {
                 windowManager.addView(view, params)
                 overlayWindowType = OVERLAY_WINDOW_TYPE
@@ -867,6 +869,8 @@ internal class ColorOsFreeformCoordinator(
         gestureEngine.cancel()
         if (view != null) {
             overlay = view
+            // 扇形展开才读侧边栏目录：Provider 按需启动，早读必然失败。
+            if (lastSettings.pinnedTargets.any { it is PinnedTarget.Sidebar }) entryCatalog.refresh()
             removeOverlay()
         } else {
             overlay = null

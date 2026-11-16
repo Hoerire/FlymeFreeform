@@ -167,6 +167,13 @@ internal class FrameworkConnectionRepository(private val context: Context) {
         updateSettings { it.copy(longPressMuteEnabled = enabled) }
 
     /** 收成贴边浮标后是否保持应用继续运行（默认关闭，保持系统原生行为）。 */
+    fun setFloatHandleSwitch(enabled: Boolean) =
+        updateSettings { it.copy(floatHandleSwitch = enabled) }
+
+    fun setFloatHandleMaxCount(count: Int) =
+        updateSettings {
+            it.copy(floatHandleMaxCount = ModulePreferences.coerceFloatHandleMaxCount(count))
+        }
     fun setFloatKeepAlive(enabled: Boolean) =
         updateSettings { it.copy(floatKeepAlive = enabled) }
 
@@ -358,7 +365,7 @@ internal class FrameworkConnectionRepository(private val context: Context) {
         map[ModulePreferences.EXTRA_MODULE_ENABLED] = settings.enabled
         val extras = android.os.Bundle()
         SettingsBridge.putMap(extras, map)
-        listOf("android", "com.android.systemui", "com.coloros.smartsidebar").forEach { target ->
+        listOf("android", "com.android.systemui", "com.coloros.smartsidebar", "com.oplus.contentportal").forEach { target ->
             val intent =
                 Intent(ModulePreferences.ACTION_SETTINGS_PUSHED).apply {
                     setPackage(target)

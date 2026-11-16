@@ -71,6 +71,8 @@ class MainActivity : ComponentActivity() {
                     onZoomLaunchClipboardChange = repository::setZoomLaunchClipboard,
                     onAutoCloseWindowChange = repository::setAutoCloseWindow,
                     onFloatKeepAliveChange = repository::setFloatKeepAlive,
+                    onFloatHandleSwitchChange = repository::setFloatHandleSwitch,
+                    onFloatHandleMaxCountChange = repository::setFloatHandleMaxCount,
                     onLongPressMuteChange = repository::setLongPressMute,
                     onRadialKeepOpenChange = repository::setRadialKeepOpen,
                     onRequestScopes = repository::requestMissingScopes,

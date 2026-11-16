@@ -9,6 +9,8 @@ import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.PictureInPicture
+import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.SwipeUp
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.runtime.Composable
@@ -57,6 +59,8 @@ internal fun ZoomOptionsScreen(
     onZoomAllowAnyAppChange: (Boolean) -> Unit,
     onAutoCloseWindowChange: (Boolean) -> Unit,
     onFloatKeepAliveChange: (Boolean) -> Unit,
+    onFloatHandleSwitchChange: (Boolean) -> Unit,
+    onFloatHandleMaxCountChange: (Int) -> Unit,
     onLongPressMuteChange: (Boolean) -> Unit,
     onNavigateToZoomExcluded: () -> Unit,
     onNavigateToZoomLaunchScenes: () -> Unit,
@@ -159,14 +163,6 @@ internal fun ZoomOptionsScreen(
                     enabled = enabled,
                     startAction = { PreferenceIcon(Icons.Rounded.PictureInPicture, enabled) },
                 )
-                SwitchPreference(
-                    checked = state.settings.floatKeepAlive,
-                    onCheckedChange = onFloatKeepAliveChange,
-                    title = stringResource(R.string.float_keep_alive_title),
-                    summary = stringResource(R.string.float_keep_alive_summary),
-                    enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.ElectricalServices, sub) },
-                )
                 ListChoicePreference(
                     title = stringResource(R.string.outside_tap_close_title),
                     icon = { PreferenceIcon(Icons.Rounded.TouchApp, enabled) },
@@ -182,6 +178,35 @@ internal fun ZoomOptionsScreen(
                     enabled = enabled,
                 )
 
+            }
+        }
+        item(key = "edge_title") {
+            SectionTitle(text = stringResource(R.string.zoom_group_edge_title))
+        }
+        item(key = "edge") {
+            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
+                SwitchPreference(
+                    checked = state.settings.floatKeepAlive,
+                    onCheckedChange = onFloatKeepAliveChange,
+                    title = stringResource(R.string.float_keep_alive_title),
+                    summary = stringResource(R.string.float_keep_alive_summary),
+                    enabled = sub,
+                    startAction = { PreferenceIcon(Icons.Rounded.ElectricalServices, sub) },
+                )
+                RemoteDpSliderPreference(
+                    icon = Icons.Rounded.PushPin,
+                    confirmedValue = state.settings.floatHandleMaxCount,
+                    isUpdating = state.isUpdating,
+                    enabled = sub,
+                    title = stringResource(R.string.float_handle_max_title),
+                    summary = stringResource(R.string.float_handle_max_summary),
+                    minDp = ModulePreferences.MIN_FLOAT_HANDLE_MAX_COUNT,
+                    maxDp = ModulePreferences.MAX_FLOAT_HANDLE_MAX_COUNT,
+                    coerceDp = ModulePreferences::coerceFloatHandleMaxCount,
+                    onPreviewChange = {},
+                    onCommit = onFloatHandleMaxCountChange,
+                    showDpUnit = false,
+                )
             }
         }
     }

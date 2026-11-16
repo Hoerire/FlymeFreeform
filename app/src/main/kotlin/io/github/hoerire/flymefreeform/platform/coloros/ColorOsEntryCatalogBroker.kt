@@ -114,7 +114,9 @@ internal class ColorOsEntryCatalogBroker(
             // 侧边栏进程就绪后才读目录：只读一次，成功即止（事件驱动，不做轮询重试）。
             context.registerReceiver(
                 readyReceiver,
-                IntentFilter(io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_SIDEBAR_READY),
+                IntentFilter(io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_SIDEBAR_READY).apply {
+                    addAction(io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_SIDEBAR_SHOWN)
+                },
                 null,
                 handler,
                 Context.RECEIVER_EXPORTED,
@@ -163,15 +165,23 @@ internal class ColorOsEntryCatalogBroker(
     /** 侧边栏进程就绪广播：校验来源后立即读一次目录。 */
     private val readyReceiver = object : BroadcastReceiver() {
         override fun onReceive(receiverContext: Context?, intent: Intent?) {
-            if (intent?.action != io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_SIDEBAR_READY) return
+            if (intent?.action != io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_SIDEBAR_READY &&
+                intent?.action != io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_SIDEBAR_SHOWN
+            ) return
             val pkg = sentFromPackage
             if (pkg != "com.coloros.smartsidebar" || sentFromUid < 0) {
                 log(Log.WARN, "SIDEBAR_READY_DROP_IDENTITY_pkg" + pkg + "_uid" + sentFromUid, null)
                 return
             }
+            if (intent?.action == io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_SIDEBAR_SHOWN) {
+                retryCount = 0
+                log(Log.INFO, "SIDEBAR_SHOWN_CATALOG_REQUEST", null)
+                refresh()
+                return
+            }
             retryCount = 0
-            log(Log.INFO, "SIDEBAR_READY_CATALOG_REQUEST", null)
-            refresh()
+            // Provider 按需启动：进程就绪就读取必然 provider unavailable，改到扇形展开时再读。
+            log(Log.INFO, "SIDEBAR_READY_DEFERRED_UNTIL_SHOWN", null)
         }
     }
 
@@ -229,8 +239,8 @@ internal class ColorOsEntryCatalogBroker(
          * 现在按 12 秒一轮重试，给足冷启动时间；一旦拿到条目就把计数归零，
          * 恢复正常后不会再有任何重试。
          */
-        const val MAX_RETRIES = 10
-        val RETRY_DELAYS_MS = longArrayOf(12_000L)
+        const val MAX_RETRIES = 3
+        val RETRY_DELAYS_MS = longArrayOf(400L, 800L, 1_500L)
     }
 
     fun invalidate() {

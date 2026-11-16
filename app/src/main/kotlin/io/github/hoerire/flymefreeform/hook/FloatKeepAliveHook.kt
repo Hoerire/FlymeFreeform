@@ -60,7 +60,40 @@ internal class FloatKeepAliveHook(
         installRotationGuard(classLoader)
         installHandleObserver(classLoader)
         installKeyguardSnapshot(classLoader)
+
+    /**
+     * 全屏化路径诊断：把控制器里所有名字带 fullScreen 的方法挂一遍，
+     * 保活浮标被这些方法处理时打一行（每个方法只打一次），用来定位
+     * 「换集后浮标自己展开」到底走哪条路径。
+     */
+    fun installFullScreenDiagnostics(classLoader: ClassLoader) {
+        if (!configuration.snapshot.floatKeepAliveEffective) return
+        val flexibleClass = runCatching { classLoader.loadClass(FLEXIBLE_CONTROLLER_CLASS) }.getOrNull() ?: return
+        val seen = ConcurrentHashMap.newKeySet<String>()
+        for (method in flexibleClass.declaredMethods) {
+            if (!method.name.contains("ullScreen", ignoreCase = true)) continue
+            runCatching {
+                method.isAccessible = true
+                module
+                    .hook(method)
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .setId("flymefreeform.keep.fullscreen_diag." + method.name + "." + method.parameterCount)
+                    .intercept { chain ->
+                        val taskId =
+                            chain.args.firstOrNull()?.let { OemReflection.readField(it, "mTaskId") as? Int } ?: -1
+                        if (configuration.snapshot.floatKeepAliveEffective && isKeptFloat(taskId) &&
+                            seen.add(method.name)
+                        ) {
+                            val frames = Throwable().stackTrace.take(6).joinToString("<-") { it.methodName }
+                            ModuleLog.info("FLOAT_KEEP_ALIVE_FULLSCREEN_CALL_" + method.name + "_task" + taskId + "_" + frames)
+                        }
+                        chain.proceed()
+                    }
+            }
+        }
+    }
         installFullScreenResetGuard(classLoader)
+        installFullScreenDiagnostics(classLoader)
         installAudioFocusGuard(classLoader)
         installAwakeGuard(classLoader)
         installScreenOffGuard(classLoader)
@@ -434,7 +467,15 @@ internal class FloatKeepAliveHook(
             .setId("flymefreeform.float_keep_alive.fullscreen_reset")
             .intercept { chain ->
                 val taskId = (OemReflection.readField(chain.getArg(0), "mTaskId") as? Int) ?: -1
-                if (configuration.snapshot.floatKeepAliveEffective && isLockedOrOff(chain.thisObject) && isKeptFloat(taskId)) {
+                // 放到全屏也可能来自应用自己起新页面（短剧连播、换集）：
+                // 此时任务仍是保活浮标，不能让它被摘成全屏。
+                val fromAppStart = Throwable().stackTrace.any { frame ->
+                    val name = frame.methodName
+                    name.contains("startActivity") ||
+                        name.contains("moveTaskToFront") ||
+                        name.contains("resumeFocusedStacksTopActivities")
+                }
+                if (configuration.snapshot.floatKeepAliveEffective && isKeptFloat(taskId) && (isLockedOrOff(chain.thisObject) || fromAppStart)) {
                     logResetSkipped(taskId)
                     null
                 } else {

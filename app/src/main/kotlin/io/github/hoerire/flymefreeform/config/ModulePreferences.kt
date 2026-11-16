@@ -70,6 +70,10 @@ internal object ModulePreferences {
      */
     const val KEY_ZOOM_EXCLUDED_PACKAGES = "zoom_launch_excluded_v1"
     const val KEY_ZOOM_MAX_WINDOW_COUNT = "zoom_max_window_count"
+    /** 贴边浮标同时保留的个数上限（设置项「贴边数量」）。 */
+    const val KEY_FLOAT_HANDLE_MAX_COUNT = "float_handle_max_count"
+    /** 贴边互切：打开另一个贴边浮标时，前一个窗口继续收成浮标。 */
+    const val KEY_FLOAT_HANDLE_SWITCH = "float_handle_switch_v1"
     const val KEY_ZOOM_ALLOW_ANY_APP = "zoom_allow_any_app"
     /** 已退役的「轻量打开」总开关：仅用于升级后清掉残留值。 */
     const val LEGACY_KEY_ZOOM_INTERACTION_ENABLED = "zoom_interaction_enabled"
@@ -91,6 +95,9 @@ internal object ModulePreferences {
     /** 窗口超过数量限制时，自动关闭旧窗口而不是收成贴边浮标。 */
     /** 侧边栏进程就绪：由模块在侧边栏进程内发出，system_server 收到后才去读目录。 */
     const val ACTION_SIDEBAR_READY = "io.github.hoerire.flymefreeform.action.SIDEBAR_READY"
+
+    /** 侧边栏真正被系统拉起（面板进入 SHOWING）：目录只认这个事件。 */
+    const val ACTION_SIDEBAR_SHOWN = "io.github.hoerire.flymefreeform.action.SIDEBAR_SHOWN"
 
     const val KEY_AUTO_CLOSE_WINDOW = "auto_close_window_v1"
     const val DEFAULT_AUTO_CLOSE_WINDOW = false
@@ -162,6 +169,12 @@ internal object ModulePreferences {
     const val DEFAULT_ZOOM_MAX_WINDOW_COUNT = 1
     const val MIN_ZOOM_MAX_WINDOW_COUNT = 1
     const val MAX_ZOOM_MAX_WINDOW_COUNT = 5
+    /** 贴边数量：系统手机默认 2 个，只放大不缩小，上限 10。 */
+    const val DEFAULT_FLOAT_HANDLE_MAX_COUNT = 2
+    const val MIN_FLOAT_HANDLE_MAX_COUNT = 2
+    const val MAX_FLOAT_HANDLE_MAX_COUNT = 10
+    /** 贴边互切默认关闭：它会接管「自动收窗」与「小窗数量」，不能默认替用户打开。 */
+    const val DEFAULT_FLOAT_HANDLE_SWITCH = false
     const val DEFAULT_ZOOM_ALLOW_ANY_APP = false
     const val DEFAULT_SHOW_SYSTEM_APPS = false
     const val DEFAULT_RADIAL_KEEP_OPEN = false
@@ -187,6 +200,9 @@ internal object ModulePreferences {
 
     fun coerceRadialIconSizeDp(value: Int): Int =
         value.coerceIn(MIN_RADIAL_ICON_SIZE_DP, MAX_RADIAL_ICON_SIZE_DP)
+
+    fun coerceFloatHandleMaxCount(value: Int): Int =
+        value.coerceIn(MIN_FLOAT_HANDLE_MAX_COUNT, MAX_FLOAT_HANDLE_MAX_COUNT)
 
     fun coerceZoomMaxWindowCount(value: Int): Int =
         value.coerceIn(MIN_ZOOM_MAX_WINDOW_COUNT, MAX_ZOOM_MAX_WINDOW_COUNT)

@@ -1,6 +1,10 @@
 package io.github.hoerire.flymefreeform.hook
 
+import io.github.hoerire.flymefreeform.config.ModulePreferences
+import io.github.hoerire.flymefreeform.config.SettingsBridge
 import io.github.hoerire.flymefreeform.log.ModuleLog
+import io.github.hoerire.flymefreeform.platform.coloros.SidebarEntryProtocol
+import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 
 /**
@@ -28,7 +32,89 @@ internal class PortalTapHookInstaller(
     private val module: XposedModule,
     private val configuration: ProcessConfiguration,
 ) {
+    private val settingsReceiverInstalled = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /**
+     * 设置实时同步。
+     *
+     * 本进程只在长按拖起时读设置（「自由传送」「黑名单」），2.7.2 里没有接收器，
+     * 改完开关要等传送门进程重启才生效。这里挂 Application.onCreate 拿 Context，
+     * 注册与其它作用域进程相同的推送接收器，并在启动时主动索取一次当前快照。
+     */
+    private fun installSettingsReceiver(loader: ClassLoader) {
+        val existing =
+            runCatching {
+                Class.forName("android.app.ActivityThread")
+                    .getMethod("currentApplication")
+                    .invoke(null) as? android.content.Context
+            }.getOrNull()
+        if (existing != null) bindSettingsReceiver(existing)
+        if (settingsReceiverInstalled.get()) return
+        runCatching {
+            val application = Class.forName("android.app.Application", false, loader)
+            val onCreate = application.getDeclaredMethod("onCreate")
+            module
+                .hook(onCreate)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .setId("flymefreeform.portal.settings_context")
+                .intercept { chain ->
+                    val result = chain.proceed()
+                    (chain.thisObject as? android.content.Context)?.let(::bindSettingsReceiver)
+                    result
+                }
+        }.onFailure { ModuleLog.warn("PORTAL_SETTINGS_CONTEXT_UNAVAILABLE", it) }
+    }
+
+    private fun bindSettingsReceiver(context: android.content.Context) {
+        if (!settingsReceiverInstalled.compareAndSet(false, true)) return
+        runCatching {
+            val moduleUid =
+                context.packageManager
+                    .getApplicationInfo(SidebarEntryProtocol.MODULE_PACKAGE, 0)
+                    .uid
+            val receiver =
+                object : android.content.BroadcastReceiver() {
+                    override fun onReceive(receiverContext: android.content.Context?, intent: android.content.Intent?) {
+                        when (intent?.action) {
+                            ModulePreferences.ACTION_SETTINGS_PUSHED -> {
+                                if (sentFromUid != moduleUid) return
+                                val map = SettingsBridge.readMap(intent.extras) ?: return
+                                val next = runCatching { SettingsBridge.decode(map) }.getOrNull() ?: return
+                                configuration.override(next)
+                            }
+                            ModulePreferences.ACTION_SETTINGS_SNAPSHOT -> {
+                                val map = SettingsBridge.readMap(intent.extras) ?: return
+                                val next = runCatching { SettingsBridge.decode(map) }.getOrNull() ?: return
+                                configuration.override(next)
+                            }
+                        }
+                    }
+                }
+            context.registerReceiver(
+                receiver,
+                android.content.IntentFilter().apply {
+                    addAction(ModulePreferences.ACTION_SETTINGS_PUSHED)
+                    addAction(ModulePreferences.ACTION_SETTINGS_SNAPSHOT)
+                },
+                android.content.Context.RECEIVER_EXPORTED,
+            )
+            // 进程晚于设置变更启动时，主动要一份当前快照。
+            runCatching {
+                context.sendBroadcast(
+                    android.content.Intent(ModulePreferences.ACTION_SETTINGS_REQUEST)
+                        .setPackage("android")
+                        .putExtra(ModulePreferences.EXTRA_REQUESTER_PACKAGE, PACKAGE_NAME),
+                )
+            }
+            ModuleLog.install("PORTAL_SETTINGS_RECEIVER_INSTALLED")
+        }.onFailure {
+            settingsReceiverInstalled.set(false)
+            ModuleLog.warn("PORTAL_SETTINGS_RECEIVER_FAILED", it)
+        }
+    }
+
     fun install(loader: ClassLoader, apkPath: String?) {
+        installSettingsReceiver(loader)
         if (PortalTapLegacy(module, configuration).install(loader)) {
             ModuleLog.install("PORTAL_MODE_LEGACY")
             return

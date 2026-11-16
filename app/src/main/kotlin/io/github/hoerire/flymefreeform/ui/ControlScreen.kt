@@ -584,7 +584,7 @@ private fun FrameworkConnectionIssue?.errorSummary(): Int =
 
 private data class FrameworkPresentation(val label: String, val summary: String)
 
-internal const val OWN_REPO_URL = "https://github.com/Hoerire/FlymeFreeform"
+internal const val OWN_REPO_URL = "https://github.com/Hoerire/Free"
 internal const val UPSTREAM_REPO_URL = "https://github.com/Mangi-11/FlymeFreeform"
 
 /** 交流反馈：QQ 群邀请链接，点击后交给系统/QQ 打开。 */

@@ -23,6 +23,10 @@ internal data class ModuleSettingsSnapshot(
     val blacklistPackages: List<String> = emptyList(),
     /** 小窗扩展·数量上限：系统允许的最大小窗数至少要达到该值。 */
     val zoomMaxWindowCount: Int = ModulePreferences.DEFAULT_ZOOM_MAX_WINDOW_COUNT,
+    /** 贴边浮标同时保留的个数（2–10）。 */
+    val floatHandleMaxCount: Int = ModulePreferences.DEFAULT_FLOAT_HANDLE_MAX_COUNT,
+    /** 贴边互切：打开另一个浮标时，前一个继续收成浮标。 */
+    val floatHandleSwitch: Boolean = ModulePreferences.DEFAULT_FLOAT_HANDLE_SWITCH,
     /** 小窗扩展·解除应用准入：isSupportFlexibleWindow 一律放行。 */
     val zoomAllowAnyApp: Boolean = ModulePreferences.DEFAULT_ZOOM_ALLOW_ANY_APP,
     // 小窗跳转按入口拆成四项，各自独立存盘、独立判定。
@@ -96,7 +100,8 @@ internal data class ModuleSettingsSnapshot(
     val zoomLaunchShareRelayEffective: Boolean get() = zoomInteractionActive && zoomLaunchShareRelay
     val zoomLaunchClipboardEffective: Boolean
         get() = zoomInteractionActive && zoomLaunchClipboard
-    val autoCloseWindowEffective: Boolean get() = zoomInteractionActive && autoCloseWindow
+    val autoCloseWindowEffective: Boolean
+        get() = zoomInteractionActive && autoCloseWindow
     val floatKeepAliveEffective: Boolean get() = zoomInteractionActive && floatKeepAlive
     /** 长按迷你窗只跟模块总开关走。 */
     val longPressMuteEffective: Boolean get() = enabled && longPressMuteEnabled
@@ -105,8 +110,15 @@ internal data class ModuleSettingsSnapshot(
 
     /** 自由拖拽只跟模块总开关走：它和自由浮窗没有依赖关系。 */
     val freeDragActive: Boolean get() = enabled && freeDragEnabled
+    /** 贴边互切打开时，小窗数量交还默认值（1）。 */
     val zoomMaxWindowCountEffective: Int
         get() = if (zoomInteractionActive) zoomMaxWindowCount else ModulePreferences.DEFAULT_ZOOM_MAX_WINDOW_COUNT
+
+    val floatHandleMaxCountEffective: Int
+        get() = if (zoomInteractionActive) floatHandleMaxCount else ModulePreferences.DEFAULT_FLOAT_HANDLE_MAX_COUNT
+
+    val floatHandleSwitchEffective: Boolean
+        get() = zoomInteractionActive && floatHandleSwitch
 
     fun isBlacklisted(packageName: String?): Boolean =
         packageName != null && blacklistPackages.any { it == packageName }
@@ -130,6 +142,11 @@ internal data class ModuleSettingsSnapshot(
                 ModulePreferences.KEY_ZOOM_MAX_WINDOW_COUNT,
                 ModulePreferences.coerceZoomMaxWindowCount(zoomMaxWindowCount),
             )
+            .putInt(
+                ModulePreferences.KEY_FLOAT_HANDLE_MAX_COUNT,
+                ModulePreferences.coerceFloatHandleMaxCount(floatHandleMaxCount),
+            )
+            .putBoolean(ModulePreferences.KEY_FLOAT_HANDLE_SWITCH, floatHandleSwitch)
             .putBoolean(ModulePreferences.KEY_ZOOM_ALLOW_ANY_APP, zoomAllowAnyApp)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_NOTICE, zoomLaunchNotice)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_HEADS_UP, zoomLaunchHeadsUp)
@@ -360,6 +377,17 @@ internal data class ModuleSettingsSnapshot(
                             ModulePreferences.DEFAULT_ZOOM_MAX_WINDOW_COUNT,
                         ),
                     ),
+                floatHandleMaxCount =
+                    ModulePreferences.coerceFloatHandleMaxCount(
+                        preferences.getInt(
+                            ModulePreferences.KEY_FLOAT_HANDLE_MAX_COUNT,
+                            ModulePreferences.DEFAULT_FLOAT_HANDLE_MAX_COUNT,
+                        ),
+                    ),
+                floatHandleSwitch = preferences.getBoolean(
+                    ModulePreferences.KEY_FLOAT_HANDLE_SWITCH,
+                    ModulePreferences.DEFAULT_FLOAT_HANDLE_SWITCH,
+                ),
                 zoomAllowAnyApp = preferences.getBoolean(
                     ModulePreferences.KEY_ZOOM_ALLOW_ANY_APP,
                     ModulePreferences.DEFAULT_ZOOM_ALLOW_ANY_APP,

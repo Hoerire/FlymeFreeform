@@ -42,6 +42,11 @@ internal class SystemServerHookInstaller(
             configuration,
             environment,
         ).install(classLoader)
+        io.github.hoerire.flymefreeform.hook.launch.FloatHandleLimitHook(
+            module,
+            configuration,
+            environment,
+        ).install(classLoader)
         UahInputSuppressor(module, configuration, environment).install(classLoader)
         // 主路径：把底部角落从 ColorOS 的导航拦截区域里挖掉，从源头上避免和系统手势抢流。
         NavigationInterceptionHook(module, configuration, environment).install(classLoader)

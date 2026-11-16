@@ -1,5 +1,6 @@
 package io.github.hoerire.flymefreeform.hook
 
+
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -25,7 +26,31 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** 只注入侧边栏 UI 进程；服务方法照常执行一次，应用/工具的启动仍交给原厂路由。 */
+
 internal class SidebarHookInstaller(private val module: XposedModule, private val configuration: ProcessConfiguration) {
+    private var lastShownAnnounceAt = 0L
+    private val SHOWN_ANNOUNCE_INTERVAL_MS = 800L
+
+    /** 侧边栏面板进入 SHOWING：通知 system_server 现在可以读目录（800ms 去抖）。 */
+    private fun announceSidebarShown() {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastShownAnnounceAt < SHOWN_ANNOUNCE_INTERVAL_MS) return
+        lastShownAnnounceAt = now
+        runCatching {
+            val app =
+                Class.forName("android.app.ActivityThread")
+                    .getMethod("currentApplication")
+                    .invoke(null) as? android.content.Context
+            val options =
+                android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle()
+            app?.sendBroadcast(
+                Intent(io.github.hoerire.flymefreeform.config.ModulePreferences.ACTION_SIDEBAR_SHOWN),
+                null,
+                options,
+            )
+            log(Log.INFO, "SIDEBAR_SHOWN_ANNOUNCED", null)
+        }.onFailure { log(Log.WARN, "SIDEBAR_SHOWN_ANNOUNCE_FAILED", it) }
+    }
     private var entryEndpoint: ColorOsSidebarEntryEndpoint? = null
     private var endpoint: ColorOsAllAppsEndpoint? = null
 
@@ -124,8 +149,9 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
             handles += module.hook(bind).setId("flymefreeform.allapps.bind")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
                     val original = chain.proceed()
-                    // 总开关关闭时不接管 Binder，避免与侧边栏自身或其他模块的绑定冲突。
-                    if (!configuration.snapshot.enabled) return@intercept original
+                    // 总开关不再决定是否接管：否则未启用时启动的侧边栏进程永远不会建端点，
+                    // 之后启用模块也读不到目录，只能再重启一次该进程。
+                    // 端点恒定安装；是否接管行为由各判定里的 enabled 决定。
                     val service = chain.thisObject as? Service
                     val intent = chain.getArg(0) as? Intent
                     if (service != null && intent?.action == ColorOsSidebarTarget.BIND_ACTION) {
@@ -171,7 +197,9 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
             handles += module.hook(changeState).setId("flymefreeform.allapps.native_state")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
                     val original = chain.proceed()
-                    endpoint?.onNativeSidebarState((chain.getArg(0) as? Enum<*>)?.name)
+                    val stateName = (chain.getArg(0) as? Enum<*>)?.name
+                    endpoint?.onNativeSidebarState(stateName)
+                    if (stateName != null && stateName.contains("SHOWING")) announceSidebarShown()
                     original
                 }
             log(Log.INFO, "ALL_APPS_BRIDGE_INSTALLED", null)

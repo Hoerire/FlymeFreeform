@@ -205,6 +205,7 @@ internal class SystemServerSettingsBridge(
                 SidebarEntryProtocol.MODULE_PACKAGE,
                 "com.android.systemui",
                 "com.coloros.smartsidebar",
+                "com.oplus.contentportal",
             )
 
         const val STORE_NAME = "flymefreeform_settings.bin"

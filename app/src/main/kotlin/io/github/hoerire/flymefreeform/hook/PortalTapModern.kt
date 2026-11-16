@@ -136,7 +136,9 @@ internal class PortalTapModern(
             val event = chain.getArg(0) as? DragEvent
             if (event == null || !configuration.snapshot.freeDragActive) return@hook chain.proceed()
             window = chain.thisObject as? View
-            if (event.action == DragEvent.ACTION_DRAG_STARTED) {
+            if (event.action == DragEvent.ACTION_DRAG_STARTED ||
+                (!takeover && event.action == DragEvent.ACTION_DRAG_LOCATION && window != null && !enterSent)
+            ) {
                 resetSession()
                 lastX = event.x
                 lastY = event.y
@@ -147,16 +149,26 @@ internal class PortalTapModern(
             // 原厂选中分支会读窗口上最近一次 DragEvent / ClipData（中转站走这条），
             // 事件被本模块转发后不再经过原处理，这里等价补写一次。
             writeFields(window, event)
-            val relay = hotView()
-            if (relay != null) {
-                runCatching { relay.second.invoke(relay.first, relay.third, event) }
-                ModuleLog.install("PORTAL_FORWARD_" + event.action)
+            if (!takeover) {
+                val relay = hotView()
+                if (relay != null) {
+                    runCatching { relay.second.invoke(relay.first, relay.third, event) }
+                    ModuleLog.debug { "PORTAL_FORWARD_" + event.action }
+                }
             }
-            // 接管之后不再让原厂按落点选：松开手指要保留面板，由条目点击选择。
-            if (takeover && (event.action == DragEvent.ACTION_DROP ||
-                    event.action == DragEvent.ACTION_DRAG_ENDED)
-            ) {
-                return@hook true
+            // 接管之后整段状态机都归本模块：原厂按「手指是否在底部热区」判定，
+            // 再收到面板范围内的 LOCATION / ENTERED 就会重排列表并收回窗口，
+            // 表现为拖进面板后选项全部消失、面板按它自己的尺寸炸开。
+            // 这里连同 DROP / ENDED 一起吞掉，只保留条目点击这条路。
+            if (takeover) {
+                when (event.action) {
+                    DragEvent.ACTION_DRAG_ENTERED,
+                    DragEvent.ACTION_DRAG_LOCATION,
+                    DragEvent.ACTION_DRAG_EXITED,
+                    DragEvent.ACTION_DROP,
+                    DragEvent.ACTION_DRAG_ENDED,
+                    -> return@hook true
+                }
             }
             chain.proceed()
         }

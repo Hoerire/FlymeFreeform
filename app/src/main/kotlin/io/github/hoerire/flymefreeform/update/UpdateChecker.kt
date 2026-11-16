@@ -274,9 +274,9 @@ internal class UpdateChecker(context: Context) {
         const val KEY_CHECKED_AT = "checked_at"
         const val KEY_DISMISSED_VERSION = "dismissed_version"
 
-        const val RELEASES_URL = "https://github.com/Hoerire/FlymeFreeform/releases/latest"
-        const val RELEASES_ATOM_URL = "https://github.com/Hoerire/FlymeFreeform/releases.atom"
-        const val API_URL = "https://api.github.com/repos/Hoerire/FlymeFreeform/releases/latest"
+        const val RELEASES_URL = "https://github.com/Hoerire/Free/releases/latest"
+        const val RELEASES_ATOM_URL = "https://github.com/Hoerire/Free/releases.atom"
+        const val API_URL = "https://api.github.com/repos/Hoerire/Free/releases/latest"
         const val USER_AGENT = "FlymeFreeform-UpdateChecker"
         const val HTTP_OK = 200
         const val TIMEOUT_MS = 8000
