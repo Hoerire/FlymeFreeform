@@ -18,7 +18,7 @@ internal object RadialEntryMotion {
      * 延迟由 CornerRadialOverlayView 从这里面扣掉，因此展开完成时刻是固定的。
      */
     const val DURATION_MILLIS = 300L
-    const val SELECTION_DURATION_MILLIS = 130L
+    const val SELECTION_DURATION_MILLIS = 200L
     const val HORIZONTAL_OVERSHOOT_DP = 6f
     const val SELECTION_RING_ALPHA = 64f / 255f
 
@@ -46,7 +46,13 @@ internal object RadialEntryMotion {
      */
     private val expandEase = CubicMotionCurve(0.2f, 0f, 0f, 1f)
 
-    private val selection = CubicMotionCurve(0.2f, 0f, 0f, 1f)
+    /**
+     * 选中曲线：两端都缓（0.32, 0 → 0.22, 1）。
+     *
+     * 之前用的是 (0.2, 0, 0, 1)：起步极陡，加上 130ms 的时长，图标几乎是“啪”地
+     * 一下变大，看着很突兀；现在前 40% 慢慢起、末段缓缓收，放大/decrease 都读得出来。
+     */
+    private val selection = CubicMotionCurve(0.32f, 0f, 0.22f, 1f)
 
     fun sample(linearProgress: Float): RadialEntryVisuals {
         val progress = linearProgress.coerceIn(0f, 1f)
@@ -64,7 +70,10 @@ internal object RadialEntryMotion {
         )
     }
 
-    /** Animates ring thickness only; the selected icon retains its size. */
+    /**
+     * 选中进度：同时驱动光圈粗细、外发光、图标放大与新增的投影/细边高光，
+     * 全部按同一条曲线，避免几种效果各走各的节奏。
+     */
     fun selectionProgress(linearProgress: Float): Float = selection.sample(linearProgress)
 }
 

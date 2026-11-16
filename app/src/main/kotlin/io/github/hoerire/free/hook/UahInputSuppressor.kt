@@ -68,6 +68,11 @@ internal class UahInputSuppressor(
                     suppressing = false
                     return@intercept chain.proceed()
                 }
+                // 吞掉事件时必须自己把事件结算掉：这个接收器是输入监控通道，
+                // 跳过 onInputEvent 就等于永不 finishInputEvent，系统等 5 秒后判
+                // 「OplusUAHInputChannel is not responding」，整条输入流水线随之卡死
+                // （日志：AnrLogEnhancement:onAnrLocked ... Waited 5000ms for MotionEvent，
+                // 落点 x=1176.9 y=2754.8 正好在底角触发区与 home 手势条的交叠处）。
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         if (!insideTrigger(event)) {
@@ -78,19 +83,56 @@ internal class UahInputSuppressor(
                         if (VerboseLog.enabled) {
                             io.github.hoerire.free.log.ModuleLog.info("UAH_SUPPRESS_DOWN")
                         }
+                        settle(method.name, chain.thisObject, event)
                         null
                     }
                     MotionEvent.ACTION_UP,
                     MotionEvent.ACTION_CANCEL -> {
                         val holding = suppressing
                         suppressing = false
-                        if (holding) null else chain.proceed()
+                        if (holding) {
+                            settle(method.name, chain.thisObject, event)
+                            null
+                        } else {
+                            chain.proceed()
+                        }
                     }
-                    else -> if (suppressing) null else chain.proceed()
+                    else -> {
+                        if (suppressing) {
+                            settle(method.name, chain.thisObject, event)
+                            null
+                        } else {
+                            chain.proceed()
+                        }
+                    }
                 }
             }
         io.github.hoerire.free.log.ModuleLog.info("UAH_INPUT_HOOK_INSTALLED_" + method.name, null)
         }
+    }
+
+    /**
+     * 只在外层接收器回调里结算一次。
+     *
+     * 同一批事件会同时经过 dealWithInputEvent 与 onInputEvent，两层都结算会二次 finish
+     * 抛异常；这里按方法名过滤，只让接收器回调负责。
+     */
+    private fun settle(methodName: String, receiver: Any?, event: MotionEvent) {
+        if (methodName != "onInputEvent" || receiver == null) return
+        val method =
+            runCatching {
+                var type: Class<*>? = receiver.javaClass
+                while (type != null) {
+                    type.declaredMethods.firstOrNull {
+                        it.name == "finishInputEvent" &&
+                            it.parameterCount == 2 &&
+                            it.parameterTypes[0].name == "android.view.InputEvent"
+                    }?.let { return@runCatching it.apply { isAccessible = true } }
+                    type = type.superclass
+                }
+                null
+            }.getOrNull() ?: return
+        runCatching { method.invoke(receiver, event, true) }
     }
 
     private fun insideTrigger(event: MotionEvent): Boolean {

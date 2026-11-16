@@ -7,6 +7,7 @@ import android.content.SharedPreferences
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
 import io.github.hoerire.free.config.ModulePreferences
+import io.github.hoerire.free.config.RadialShimmer
 import io.github.hoerire.free.config.ModuleSettingsSnapshot
 import io.github.hoerire.free.config.OutsideTapCloseMode
 import io.github.hoerire.free.config.PinnedTarget
@@ -110,6 +111,24 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setRadialKeepOpen(enabled: Boolean) =
         updateSettings { it.copy(radialKeepOpen = enabled) }
 
+    /** 选中光圈：滑选条目时是否绘制白色高亮圈。 */
+    fun setRadialSelectionRing(enabled: Boolean) =
+        updateSettings { it.copy(radialSelectionRing = enabled) }
+
+    /** 流光特效：选中项外沿的动效，与「选中光圈」互相独立。 */
+    fun setRadialShimmerEnabled(enabled: Boolean) =
+        updateSettings { it.copy(radialShimmerEnabled = enabled) }
+
+    /** 选中流光的参数集合。 */
+    fun setRadialShimmer(value: RadialShimmer) =
+        updateSettings { it.copy(radialShimmer = value) }
+
+    /** 扇形半径百分比：左右两侧同步缩放。 */
+    fun setRadialRadiusPercent(value: Int) =
+        updateSettings {
+            it.copy(radialRadiusPercent = ModulePreferences.coerceRadialRadiusPercent(value))
+        }
+
     /** 自由拖拽：改写系统长按拖拽的准入名单。 */
     fun setFreeDragEnabled(enabled: Boolean) =
         updateSettings { it.copy(freeDragEnabled = enabled) }
@@ -164,9 +183,6 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setLongPressMute(enabled: Boolean) =
         updateSettings { it.copy(longPressMuteEnabled = enabled) }
 
-    /** 收成贴边浮标后是否保持应用继续运行（默认关闭，保持系统原生行为）。 */
-    fun setFloatHandleSwitch(enabled: Boolean) =
-        updateSettings { it.copy(floatHandleSwitch = enabled) }
 
     fun setFloatHandleMaxCount(count: Int) =
         updateSettings {

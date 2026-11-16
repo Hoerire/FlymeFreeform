@@ -4,24 +4,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.DeleteSweep
-import androidx.compose.material.icons.rounded.ElectricalServices
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.OpenInNew
-import androidx.compose.material.icons.rounded.PictureInPicture
 import androidx.compose.material.icons.rounded.PushPin
-import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.SwipeUp
-import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import io.github.hoerire.free.R
 import io.github.hoerire.free.config.ModulePreferences
-import io.github.hoerire.free.config.OutsideTapCloseMode
 import io.github.hoerire.free.framework.FrameworkConnectionState
 import io.github.hoerire.free.ui.component.ArrowPreference
-import io.github.hoerire.free.ui.component.ListChoicePreference
 import io.github.hoerire.free.ui.component.SectionTitle
 import io.github.hoerire.free.ui.component.SettingsGroup
 import io.github.hoerire.free.ui.component.SwitchPreference
@@ -58,26 +52,13 @@ internal fun ZoomOptionsScreen(
     onZoomMaxWindowCountChange: (Int) -> Unit,
     onZoomAllowAnyAppChange: (Boolean) -> Unit,
     onAutoCloseWindowChange: (Boolean) -> Unit,
-    onFloatKeepAliveChange: (Boolean) -> Unit,
-    onFloatHandleSwitchChange: (Boolean) -> Unit,
-    onFloatHandleMaxCountChange: (Int) -> Unit,
-    onLongPressMuteChange: (Boolean) -> Unit,
     onNavigateToZoomExcluded: () -> Unit,
     onNavigateToZoomLaunchScenes: () -> Unit,
-    onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
-    onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
+    onNavigateToGesture: () -> Unit,
+    onNavigateToEdgeFloat: () -> Unit,
 ) {
     val enabled = state.settingsEditable && state.settings.enabled
     val sub = enabled
-    val outsideTapModes = OutsideTapCloseMode.entries
-    val outsideTapItems =
-        listOf(
-            stringResource(R.string.outside_tap_mode_disabled),
-            stringResource(R.string.outside_tap_mode_single),
-            stringResource(R.string.outside_tap_mode_double),
-            stringResource(R.string.outside_tap_mode_bottom),
-        )
-
     SettingsPage(
         title = stringResource(R.string.zoom_limit_removed_title),
         onBack = onBack,
@@ -139,75 +120,24 @@ internal fun ZoomOptionsScreen(
                     onCommit = onZoomMaxWindowCountChange,
                     showDpUnit = false,
                 )
+                // 手势交互与贴边浮标各自收成一行入口，具体开关在二级页里；
+                // summary 只列条目名，不复述二级页的说明文字。
+                ArrowPreference(
+                    title = stringResource(R.string.zoom_group_gesture_title),
+                    summary = stringResource(R.string.zoom_gesture_entry_summary),
+                    onClick = onNavigateToGesture,
+                    enabled = sub,
+                    startAction = { PreferenceIcon(Icons.Rounded.SwipeUp, sub) },
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.zoom_group_edge_title),
+                    summary = stringResource(R.string.zoom_edge_entry_summary),
+                    onClick = onNavigateToEdgeFloat,
+                    enabled = sub,
+                    startAction = { PreferenceIcon(Icons.Rounded.PushPin, sub) },
+                )
             }
         }
 
-        item(key = "gesture_title") {
-            SectionTitle(text = stringResource(R.string.zoom_group_gesture_title))
-        }
-        item(key = "gesture") {
-            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
-                SwitchPreference(
-                    checked = state.settings.handleSwipeUpToMiniEnabled,
-                    onCheckedChange = onHandleSwipeUpToMiniEnabledChange,
-                    title = stringResource(R.string.handle_swipe_up_to_mini_title),
-                    summary = stringResource(R.string.handle_swipe_up_to_mini_summary),
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.SwipeUp, enabled) },
-                )
-                SwitchPreference(
-                    checked = state.settings.longPressMuteEnabled,
-                    onCheckedChange = onLongPressMuteChange,
-                    title = stringResource(R.string.mini_long_press_title),
-                    summary = stringResource(R.string.mini_long_press_summary),
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.PictureInPicture, enabled) },
-                )
-                ListChoicePreference(
-                    title = stringResource(R.string.outside_tap_close_title),
-                    icon = { PreferenceIcon(Icons.Rounded.TouchApp, enabled) },
-                    selected =
-                        outsideTapModes
-                            .indexOf(state.settings.outsideTapCloseMode)
-                            .coerceIn(0, outsideTapItems.lastIndex),
-                    values = outsideTapItems.indices.toList(),
-                    valueText = { outsideTapItems[it] },
-                    onSelected = { index ->
-                        outsideTapModes.getOrNull(index)?.let(onOutsideTapCloseModeChange)
-                    },
-                    enabled = enabled,
-                )
-
-            }
-        }
-        item(key = "edge_title") {
-            SectionTitle(text = stringResource(R.string.zoom_group_edge_title))
-        }
-        item(key = "edge") {
-            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
-                SwitchPreference(
-                    checked = state.settings.floatKeepAlive,
-                    onCheckedChange = onFloatKeepAliveChange,
-                    title = stringResource(R.string.float_keep_alive_title),
-                    summary = stringResource(R.string.float_keep_alive_summary),
-                    enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.ElectricalServices, sub) },
-                )
-                RemoteDpSliderPreference(
-                    icon = Icons.Rounded.PushPin,
-                    confirmedValue = state.settings.floatHandleMaxCount,
-                    isUpdating = state.isUpdating,
-                    enabled = sub,
-                    title = stringResource(R.string.float_handle_max_title),
-                    summary = stringResource(R.string.float_handle_max_summary),
-                    minDp = ModulePreferences.MIN_FLOAT_HANDLE_MAX_COUNT,
-                    maxDp = ModulePreferences.MAX_FLOAT_HANDLE_MAX_COUNT,
-                    coerceDp = ModulePreferences::coerceFloatHandleMaxCount,
-                    onPreviewChange = {},
-                    onCommit = onFloatHandleMaxCountChange,
-                    showDpUnit = false,
-                )
-            }
-        }
     }
 }

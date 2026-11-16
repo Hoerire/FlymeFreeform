@@ -231,7 +231,11 @@ internal class ColorOsFreeformCoordinator(
                 y = 0f,
                 hitRangeDp = lastSettings.radialHitRangeDp,
                 iconSizeDp = lastSettings.radialIconSizeDp,
+                radiusPercent = lastSettings.radialRadiusPercent,
                 keepOpen = false,
+                selectionRing = lastSettings.radialSelectionRing,
+                shimmerEnabled = lastSettings.radialShimmerEnabled,
+                shimmer = lastSettings.radialShimmer,
             )
             trace("SYSTEM_OVERLAY_PREWARM_STARTED")
         } catch (_: Throwable) {
@@ -813,7 +817,11 @@ internal class ColorOsFreeformCoordinator(
                 y = y,
                 hitRangeDp = hitRangeDp,
                 iconSizeDp = lastSettings.radialIconSizeDp,
+                radiusPercent = lastSettings.radialRadiusPercent,
                 keepOpen = keepOpen,
+                selectionRing = lastSettings.radialSelectionRing,
+                shimmerEnabled = lastSettings.radialShimmerEnabled,
+                shimmer = lastSettings.radialShimmer,
             )
             overlay = view
             // 扇形展开才读侧边栏目录：Provider 按需启动，早读必然失败。

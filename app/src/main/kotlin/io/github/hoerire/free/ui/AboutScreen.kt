@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,10 +14,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import io.github.hoerire.free.BuildConfig
+import io.github.hoerire.free.logic.LauncherIcon
 import io.github.hoerire.free.R
 import io.github.hoerire.free.update.UpdateState
 import io.github.hoerire.free.ui.component.BasicComponent
@@ -121,6 +124,20 @@ internal fun AboutScreen(
                                 PreferenceIcon(
                                     ImageVector.vectorResource(R.drawable.ic_log),
                                 )
+                            },
+                        )
+                        val context = LocalContext.current
+                        var launcherHidden by remember { mutableStateOf(LauncherIcon.isHidden(context)) }
+                        SwitchPreference(
+                            checked = launcherHidden,
+                            onCheckedChange = { hidden ->
+                                launcherHidden = hidden
+                                LauncherIcon.setHidden(context, hidden)
+                            },
+                            title = stringResource(R.string.hide_launcher_icon_title),
+                            summary = stringResource(R.string.hide_launcher_icon_summary),
+                            startAction = {
+                                PreferenceIcon(Icons.Rounded.VisibilityOff)
                             },
                         )
                     }

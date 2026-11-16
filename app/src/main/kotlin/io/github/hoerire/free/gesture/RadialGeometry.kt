@@ -16,8 +16,10 @@ internal data class RadialLayout(
 )
 
 internal object RadialGeometry {
-    private const val SPAN_DEGREES = 84f
-    private const val SAFE_DEGREES = 3f
+    /** 扇形张开的总角度。图标半径的间距也按它反推（见 `RadialIconGeometry`）。 */
+    internal const val SPAN_DEGREES = 84f
+    /** 圆弧两端各让出的角度：布局与设置页预览共用。 */
+    internal const val SAFE_DEGREES = 3f
 
     fun layout(
         side: CornerSide,

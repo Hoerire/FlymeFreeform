@@ -19,6 +19,18 @@ class MainActivity : ComponentActivity() {
         )
         window.isNavigationBarContrastEnforced = false
 
+        installGestureExclusion()
+
+        // 排查用户反馈时先确认跑的是哪个包：版本号 + 安装时间都写进 logcat。
+        runCatching {
+            val info = packageManager.getPackageInfo(packageName, 0)
+            android.util.Log.i(
+                "Free",
+                "APP_START_c" + info.longVersionCode + "_v" + info.versionName +
+                    "_upd" + info.lastUpdateTime,
+            )
+        }
+
         val repository =
             (application as FreeApplication).frameworkConnectionRepository
         val appRepository =
@@ -71,10 +83,13 @@ class MainActivity : ComponentActivity() {
                     onZoomLaunchClipboardChange = repository::setZoomLaunchClipboard,
                     onAutoCloseWindowChange = repository::setAutoCloseWindow,
                     onFloatKeepAliveChange = repository::setFloatKeepAlive,
-                    onFloatHandleSwitchChange = repository::setFloatHandleSwitch,
                     onFloatHandleMaxCountChange = repository::setFloatHandleMaxCount,
                     onLongPressMuteChange = repository::setLongPressMute,
                     onRadialKeepOpenChange = repository::setRadialKeepOpen,
+                    onRadialSelectionRingChange = repository::setRadialSelectionRing,
+                    onRadialShimmerEnabledChange = repository::setRadialShimmerEnabled,
+                    onRadialShimmerChange = repository::setRadialShimmer,
+                    onRadialRadiusPercentChange = repository::setRadialRadiusPercent,
                     onRequestScopes = repository::requestMissingScopes,
                     onPinnedTargetsChange = repository::setPinnedTargets,
                     onBlacklistChange = repository::setBlacklistPackages,
@@ -86,5 +101,32 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    /**
+     * 把页面顶部的左右两端从系统返回手势里排除出去。
+     *
+     * 顶部返回按钮的落点在屏幕左边缘 24dp 的返回手势区里（日志：action_down is in
+     * interception region {[gesture…][0,141][84,2800]}，点按坐标 x=78），系统会把它当成
+     * 一次返回手势直接退出应用或把任务切到后台，页面看起来就"卡住"了。
+     * 声明手势排除区后，这一带的触摸只交给应用自己的按钮处理。
+     */
+    private fun installGestureExclusion() {
+        val decor = window.decorView
+        decor.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ -> applyGestureExclusion(view) }
+        decor.post { applyGestureExclusion(decor) }
+    }
+
+    private fun applyGestureExclusion(view: android.view.View) {
+        if (view.width <= 0 || view.height <= 0) return
+        val density = resources.displayMetrics.density
+        // 系统对每条边的排除上限是 200dp，这里取整个顶部条带的两端。
+        val width = (200f * density).toInt().coerceAtMost(view.width / 2)
+        val height = (120f * density).toInt().coerceAtMost(view.height)
+        view.systemGestureExclusionRects =
+            listOf(
+                android.graphics.Rect(0, 0, width, height),
+                android.graphics.Rect(view.width - width, 0, view.width, height),
+            )
     }
 }

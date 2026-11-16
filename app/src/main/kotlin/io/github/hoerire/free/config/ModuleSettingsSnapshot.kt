@@ -25,8 +25,6 @@ internal data class ModuleSettingsSnapshot(
     val zoomMaxWindowCount: Int = ModulePreferences.DEFAULT_ZOOM_MAX_WINDOW_COUNT,
     /** 贴边浮标同时保留的个数（2–10）。 */
     val floatHandleMaxCount: Int = ModulePreferences.DEFAULT_FLOAT_HANDLE_MAX_COUNT,
-    /** 贴边互切：打开另一个浮标时，前一个继续收成浮标。 */
-    val floatHandleSwitch: Boolean = ModulePreferences.DEFAULT_FLOAT_HANDLE_SWITCH,
     /** 小窗扩展·解除应用准入：isSupportFlexibleWindow 一律放行。 */
     val zoomAllowAnyApp: Boolean = ModulePreferences.DEFAULT_ZOOM_ALLOW_ANY_APP,
     // 小窗跳转按入口拆成四项，各自独立存盘、独立判定。
@@ -69,6 +67,14 @@ internal data class ModuleSettingsSnapshot(
     val showSystemApps: Boolean = ModulePreferences.DEFAULT_SHOW_SYSTEM_APPS,
     /** 扇形呼出后未选择任何条目时保持显示，不自动收起。 */
     val radialKeepOpen: Boolean = ModulePreferences.DEFAULT_RADIAL_KEEP_OPEN,
+    /** 选中光圈：滑选条目时在图标外沿显示白色高亮圈。 */
+    val radialSelectionRing: Boolean = ModulePreferences.DEFAULT_RADIAL_SELECTION_RING,
+    /** 流光特效：选中项外沿的动效（光圈、星头、轨迹），独立于选中光圈。 */
+    val radialShimmerEnabled: Boolean = ModulePreferences.DEFAULT_RADIAL_SHIMMER_ENABLED,
+    /** 选中流光的参数（速度、亮度、宽度、发光等）。 */
+    val radialShimmer: RadialShimmer = RadialShimmer(),
+    /** 扇形半径百分比：左右两侧同步放大或缩小。 */
+    val radialRadiusPercent: Int = ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT,
     /**
      * 自由拖拽：解除内容传送门的长按拖拽准入限制。
      *
@@ -117,9 +123,6 @@ internal data class ModuleSettingsSnapshot(
     val floatHandleMaxCountEffective: Int
         get() = if (zoomInteractionActive) floatHandleMaxCount else ModulePreferences.DEFAULT_FLOAT_HANDLE_MAX_COUNT
 
-    val floatHandleSwitchEffective: Boolean
-        get() = zoomInteractionActive && floatHandleSwitch
-
     fun isBlacklisted(packageName: String?): Boolean =
         packageName != null && blacklistPackages.any { it == packageName }
 
@@ -146,7 +149,6 @@ internal data class ModuleSettingsSnapshot(
                 ModulePreferences.KEY_FLOAT_HANDLE_MAX_COUNT,
                 ModulePreferences.coerceFloatHandleMaxCount(floatHandleMaxCount),
             )
-            .putBoolean(ModulePreferences.KEY_FLOAT_HANDLE_SWITCH, floatHandleSwitch)
             .putBoolean(ModulePreferences.KEY_ZOOM_ALLOW_ANY_APP, zoomAllowAnyApp)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_NOTICE, zoomLaunchNotice)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_HEADS_UP, zoomLaunchHeadsUp)
@@ -168,6 +170,13 @@ internal data class ModuleSettingsSnapshot(
             // 旧分项键不再写入，升级后一并清除，避免残留值干扰排查。
             .remove(ModulePreferences.LEGACY_KEY_ZOOM_INTERACTION_ENABLED)
             .putBoolean(ModulePreferences.KEY_RADIAL_KEEP_OPEN, radialKeepOpen)
+            .putBoolean(ModulePreferences.KEY_RADIAL_SELECTION_RING, radialSelectionRing)
+            .putBoolean(ModulePreferences.KEY_RADIAL_SHIMMER_ENABLED, radialShimmerEnabled)
+            .putString(ModulePreferences.KEY_RADIAL_SHIMMER, radialShimmer.encode())
+            .putInt(
+                ModulePreferences.KEY_RADIAL_RADIUS_PERCENT,
+                ModulePreferences.coerceRadialRadiusPercent(radialRadiusPercent),
+            )
             .putBoolean(ModulePreferences.KEY_FREE_DRAG, freeDragEnabled)
             .putInt(
                 ModulePreferences.KEY_DRAG_LONG_PRESS_MS,
@@ -384,10 +393,6 @@ internal data class ModuleSettingsSnapshot(
                             ModulePreferences.DEFAULT_FLOAT_HANDLE_MAX_COUNT,
                         ),
                     ),
-                floatHandleSwitch = preferences.getBoolean(
-                    ModulePreferences.KEY_FLOAT_HANDLE_SWITCH,
-                    ModulePreferences.DEFAULT_FLOAT_HANDLE_SWITCH,
-                ),
                 zoomAllowAnyApp = preferences.getBoolean(
                     ModulePreferences.KEY_ZOOM_ALLOW_ANY_APP,
                     ModulePreferences.DEFAULT_ZOOM_ALLOW_ANY_APP,
@@ -411,6 +416,23 @@ internal data class ModuleSettingsSnapshot(
                 radialKeepOpen = preferences.getBoolean(
                     ModulePreferences.KEY_RADIAL_KEEP_OPEN,
                     ModulePreferences.DEFAULT_RADIAL_KEEP_OPEN,
+                ),
+                radialSelectionRing = preferences.getBoolean(
+                    ModulePreferences.KEY_RADIAL_SELECTION_RING,
+                    ModulePreferences.DEFAULT_RADIAL_SELECTION_RING,
+                ),
+                radialShimmerEnabled = preferences.getBoolean(
+                    ModulePreferences.KEY_RADIAL_SHIMMER_ENABLED,
+                    ModulePreferences.DEFAULT_RADIAL_SHIMMER_ENABLED,
+                ),
+                radialShimmer = RadialShimmer.decode(
+                    preferences.getString(ModulePreferences.KEY_RADIAL_SHIMMER, null),
+                ),
+                radialRadiusPercent = ModulePreferences.coerceRadialRadiusPercent(
+                    preferences.getInt(
+                        ModulePreferences.KEY_RADIAL_RADIUS_PERCENT,
+                        ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT,
+                    ),
                 ),
                 freeDragEnabled = preferences.getBoolean(
                     ModulePreferences.KEY_FREE_DRAG,

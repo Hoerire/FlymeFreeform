@@ -1,12 +1,24 @@
 package io.github.hoerire.free.window
 
-/** 扇形与图标共享屏幕比例；条目数量只改变角度，不改变半径。 */
+import io.github.hoerire.free.gesture.RadialGeometry
+import kotlin.math.PI
+import kotlin.math.sin
+
+/**
+ * 扇形与图标共享屏幕比例。
+ *
+ * 条目数量主要改变角度；当槽位多到 84° 弧上排不下时（8 格），半径按弦长自动放大，
+ * 保证图标之间始终留有 [ITEM_MIN_GAP_DP] 的缝隙。
+ */
 internal object RadialIconGeometry {
     private const val BASE_SHORT_EDGE_DP = 400f
-    private const val BASE_RADIUS_DP = 242f
+    /** 基准半径：扇形布局与设置页预览共用。 */
+    internal const val BASE_RADIUS_DP = 242f
     /** 44 dp 基准；设置页「图标大小」默认值与面板图标缩放的比例基准。 */
     const val BASE_ICON_DIAMETER_DP = 44f
     private const val BASE_ITEM_PADDING_DP = 3.25f
+    /** 相邻两格在圆弧上至少留这么多空隙（dp），用来反推最小半径。 */
+    private const val ITEM_MIN_GAP_DP = 5f
 
     /**
      * 命中半径的兜底倍数（设置页没给值时才用）：2.5 倍图标直径，本机约 350px。
@@ -36,10 +48,12 @@ internal object RadialIconGeometry {
         hitRadiusDp: Float? = null,
         /** 设置页「图标大小」；缺省用 44 dp 基准。 */
         iconSizeDp: Float = BASE_ICON_DIAMETER_DP,
+        /** 设置页「扇形大小」（百分比）：左右两侧共用，100 为基准半径。 */
+        radiusPercent: Float = 100f,
     ): RadialVisualMetrics {
         require(width.isFinite() && width > 0f && height.isFinite() && height > 0f)
         require(density.isFinite() && density > 0f)
-        require(itemCount in 1..7)
+        require(itemCount in 1..8)
         val safeWidth = (width - safeInsets.left - safeInsets.right).coerceAtLeast(0f)
         val safeHeight = (height - safeInsets.top - safeInsets.bottom).coerceAtLeast(0f)
         val windowScale = (minOf(width, height) / density) / BASE_SHORT_EDGE_DP
@@ -47,8 +61,19 @@ internal object RadialIconGeometry {
         // 为整个四分之一圆弧保留同一外缘，避免增删条目时安全区适配改变半径。
         // 外缘包含入场回摆和选中外圈；选中不改变图标大小。
         val iconDp = iconSizeDp.coerceIn(24f, 72f)
-        // 图标变大时半径同比外推，保证 6 格在圆弧上仍不互相贴住。
-        val radiusDp = BASE_RADIUS_DP + (iconDp - BASE_ICON_DIAMETER_DP) / 2f
+        // 相邻两格在圆弧上的弦长必须 ≥「图标直径 + 缝隙」，据此反推所需半径：
+        // 图标变大时半径同比外推；条目变多（最多 7 个应用 + 「更多」= 8 格）时
+        // 半径自动放大，否则 84° 弧上 8 个 44dp 图标会互相贴住。
+        val stepRadians = RadialGeometry.SPAN_DEGREES / itemCount * PI.toFloat() / 180f
+        val minRadiusDp = (iconDp + ITEM_MIN_GAP_DP) / (2f * sin(stepRadians / 2f))
+        val baseRadiusDp =
+            maxOf(BASE_RADIUS_DP + (iconDp - BASE_ICON_DIAMETER_DP) / 2f, minRadiusDp)
+        // 「扇形大小」可以缩小，但不能小到格与格重叠。
+        val radiusDp =
+            maxOf(
+                baseRadiusDp * (radiusPercent.coerceIn(60f, 150f) / 100f),
+                minRadiusDp,
+            )
         val requestedExtent =
             (radiusDp + iconDp * 1.05f / 2f + BASE_ITEM_PADDING_DP +
                 RadialEntryMotion.HORIZONTAL_OVERSHOOT_DP) * pixelsPerBaseDp

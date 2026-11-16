@@ -79,6 +79,10 @@ dependencies {
     // framework @hide 类的编译期占位（android.view.InputChannel / InputEventReceiver）。
     // 只参与编译，绝不进 dex，否则运行时会和 bootclasspath 的真实类撞名。
     compileOnly(files(rootProject.file("libs/hidden-stubs.jar")))
+    // 设置页运行在系统设置进程里，androidx 的偏好/碎片类由设置 APK 提供，
+    // 因此同样只取编译期签名（`libs/*-classes.jar` 从官方 AAR 中解出）。
+    compileOnly(files(rootProject.file("libs/preference-classes.jar")))
+    compileOnly(files(rootProject.file("libs/fragment-classes.jar")))
     implementation(libs.dexkit)
     implementation(libs.libxposed.service)
     implementation(libs.glasmio.core)

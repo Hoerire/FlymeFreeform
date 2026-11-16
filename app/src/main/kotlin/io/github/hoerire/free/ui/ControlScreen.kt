@@ -84,13 +84,12 @@ internal fun ControlScreen(
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
-    onFreeDragChange: (Boolean) -> Unit,
-    onDragLongPressChange: (Int) -> Unit,
     onRequestScopes: () -> Unit,
     onNavigateToPinnedApps: () -> Unit,
     onNavigateToRadialSettings: () -> Unit,
     onNavigateToBlacklist: () -> Unit,
     onNavigateToZoomOptions: () -> Unit,
+    onNavigateToFreeDrag: () -> Unit,
     onNavigateToAbout: () -> Unit,
 ) {
     val featuresEnabled = state.settingsEditable && state.settings.enabled
@@ -119,14 +118,7 @@ internal fun ControlScreen(
                             onNavigateToRadialSettings = onNavigateToRadialSettings,
                             onNavigateToZoomOptions = onNavigateToZoomOptions,
                             onNavigateToBlacklist = onNavigateToBlacklist,
-                        )
-                    }
-                    item(key = "freeDrag") {
-                        FreeDragCard(
-                            state = state,
-                            featuresEnabled = featuresEnabled,
-                            onFreeDragChange = onFreeDragChange,
-                            onDragLongPressChange = onDragLongPressChange,
+                            onNavigateToFreeDrag = onNavigateToFreeDrag,
                         )
                     }
                     item(key = "about") {
@@ -144,52 +136,6 @@ internal fun ControlScreen(
     }
 }
 
-/** 自由拖拽：只有一个开关，独立成卡片放在配置入口下面。 */
-@Composable
-private fun FreeDragCard(
-    state: FrameworkConnectionState,
-    featuresEnabled: Boolean,
-    onFreeDragChange: (Boolean) -> Unit,
-    onDragLongPressChange: (Int) -> Unit,
-) {
-    // 只有设备上不存在内容传送门时才禁用：面板接管不依赖具体版本。
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val portalSupported =
-        androidx.compose.runtime.remember(context) {
-            io.github.hoerire.free.platform.coloros.PortalSupport
-                .isSupported(context)
-        }
-    val freeDragUsable = featuresEnabled && portalSupported
-    SettingsGroup(modifier = Modifier.fillMaxWidth()) {
-        SwitchPreference(
-            checked = state.settings.freeDragEnabled,
-            onCheckedChange = onFreeDragChange,
-            title = stringResource(R.string.free_drag_title),
-            summary =
-                if (portalSupported) stringResource(R.string.free_drag_summary)
-                else stringResource(R.string.free_drag_unsupported),
-            enabled = freeDragUsable,
-            startAction = {
-                PreferenceIcon(ImageVector.vectorResource(R.drawable.ic_free_share), freeDragUsable)
-            },
-        )
-        RemoteDpSliderPreference(
-            icon = ImageVector.vectorResource(R.drawable.ic_trigger_delay),
-            confirmedValue = state.settings.dragLongPressMs,
-            isUpdating = state.isUpdating,
-            enabled = featuresEnabled && portalSupported && state.settings.freeDragEnabled,
-            title = stringResource(R.string.drag_long_press_title),
-            summary = stringResource(R.string.drag_long_press_summary),
-            minDp = ModulePreferences.MIN_DRAG_LONG_PRESS_MS,
-            maxDp = ModulePreferences.MAX_DRAG_LONG_PRESS_MS,
-            coerceDp = ModulePreferences::coerceDragLongPressMs,
-            onPreviewChange = {},
-            onCommit = onDragLongPressChange,
-            showDpUnit = false,
-        )
-    }
-}
-
 /** 三个配置分组的入口；具体开关在各自的二级页面内。 */
 @Composable
 private fun EntryCard(
@@ -197,6 +143,7 @@ private fun EntryCard(
     onNavigateToRadialSettings: () -> Unit,
     onNavigateToZoomOptions: () -> Unit,
     onNavigateToBlacklist: () -> Unit,
+    onNavigateToFreeDrag: () -> Unit,
 ) {
     SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         ArrowPreference(
@@ -219,6 +166,17 @@ private fun EntryCard(
             onClick = onNavigateToBlacklist,
             enabled = featuresEnabled,
             startAction = { PreferenceIcon(Icons.Rounded.Block, featuresEnabled) },
+        )
+        // 自由传送原本是独立卡片（开关 + 长按时长两条），并进这张卡后只留一行入口，
+        // 具体开关与滑杆都在二级页里。
+        ArrowPreference(
+            title = stringResource(R.string.free_drag_title),
+            summary = stringResource(R.string.free_drag_summary),
+            onClick = onNavigateToFreeDrag,
+            enabled = featuresEnabled,
+            startAction = {
+                PreferenceIcon(ImageVector.vectorResource(R.drawable.ic_free_share), featuresEnabled)
+            },
         )
     }
 }
@@ -435,7 +393,7 @@ internal fun HitRangePreview(
         val hitRadius = hitRangeDp.dp.toPx()
         val strokeWidth = 2.dp.toPx()
         val dash = PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 5.dp.toPx()))
-        val slots = itemCount.coerceIn(1, 7)
+        val slots = itemCount.coerceIn(1, ModulePreferences.MAX_PINNED_APPS + 1)
         val step = RadialSpanDegrees / slots
 
         fun drawSide(originX: Float, originY: Float, mirrored: Boolean, enabled: Boolean) {
@@ -619,7 +577,7 @@ internal fun IconSizePreview(
         val arcRadius =
             (RadialBaseArcRadiusDp + (iconSizeDp - RadialBaseIconDiameterDp) / 2f) * basePixel
         val iconRadius = iconSizeDp * basePixel / 2f
-        val slots = itemCount.coerceIn(1, 7)
+        val slots = itemCount.coerceIn(1, ModulePreferences.MAX_PINNED_APPS + 1)
         val step = RadialSpanDegrees / slots
         val strokeWidth = 2.dp.toPx()
         val dash = PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 5.dp.toPx()))

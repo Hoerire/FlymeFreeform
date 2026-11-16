@@ -1,58 +1,82 @@
 package io.github.hoerire.free.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
-import androidx.navigation3.runtime.NavEntry
-import androidx.navigation3.runtime.NavKey
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.ui.Modifier
 import io.github.hoerire.free.apps.SelectableEntry
 import io.github.hoerire.free.config.OutsideTapCloseMode
 import io.github.hoerire.free.config.PinnedTarget
+import io.github.hoerire.free.config.RadialShimmer
 import io.github.hoerire.free.framework.FrameworkConnectionState
 import io.github.hoerire.free.update.UpdateState
-import io.github.neoruaa.glasmio.scaffold.navigation.GlasmioNavDisplay
-import io.github.neoruaa.glasmio.scaffold.navigation.GlasmioNavHeaderMotion
-import kotlinx.serialization.Serializable
 
-@Serializable
-internal sealed interface AppRoute : NavKey {
-    @Serializable
-    data object Settings : AppRoute
+/**
+ * 应用内的页面路由标识。
+ *
+ * 只用于本文件的返回栈与保存恢复，不再实现 navigation3 的 `NavKey`：
+ * 栈内容由下面那份 `listSaver` 按类名存取，不经过 Bundle 序列化。
+ */
+internal sealed interface AppRoute {
+    object Settings : AppRoute
 
-    @Serializable
-    data object PinnedApps : AppRoute
+    object PinnedApps : AppRoute
 
-    @Serializable
-    data object Blacklist : AppRoute
+    object Blacklist : AppRoute
 
-    @Serializable
-    data object BlacklistPicker : AppRoute
+    object BlacklistPicker : AppRoute
 
-    @Serializable
-    data object ZoomOptions : AppRoute
+    object ZoomOptions : AppRoute
 
-    @Serializable
-    data object ZoomLaunchScenes : AppRoute
+    object ZoomLaunchScenes : AppRoute
 
-    @Serializable
-    data object ZoomExcluded : AppRoute
+    object ZoomExcluded : AppRoute
 
-    @Serializable
-    data object ZoomExcludedPicker : AppRoute
+    object ZoomExcludedPicker : AppRoute
 
-    @Serializable
-    data object RadialSettings : AppRoute
+    object RadialSettings : AppRoute
 
-    @Serializable
-    data object About : AppRoute
+    /** 选中光圈进去的流光参数页。 */
+    object RadialShimmer : AppRoute
+
+    /** 外观参数页：命中范围 / 图标大小 / 扇形大小 / 背景遮罩。 */
+    object RadialSize : AppRoute
+
+    /** 选中特效二级页：光圈 / 流光 / 选中放大，流光参数再往里一层。 */
+    object RadialEffect : AppRoute
+
+    /** 自由传送二级页：总开关 + 长按时长。 */
+    object FreeDrag : AppRoute
+
+    /** 手势交互二级页：快速上滑 / 长按静音 / 关闭方式。 */
+    object ZoomGesture : AppRoute
+
+    /** 贴边浮标二级页：贴边保活 / 浮标数量。 */
+    object ZoomEdgeFloat : AppRoute
+
+    object About : AppRoute
 }
 
+/**
+ * 设置界面与各级子页面。
+ *
+ * **不要换回 `GlasmioNavDisplay`。** 0.1.3 的导航层给每条 entry 都挂了一层全屏
+ * `pointerInput` 输入阻断，条件是
+ * `blockInputDuringTransition && !isSettled && targetScene != transition.targetState`，
+ * 而 settled 由内部 `SeekableTransitionState` 的 animateTo 协程推动。从二级页返回时
+ * 该协程没走到位，退出的那一页就永远留在组合树里，视觉上它已经透明（看起来停在设置页），
+ * 但它的阻断层把后续所有点击都吞掉 —— 表现就是「返回后界面卡住、只有输入事件、路由不变」。
+ * 日志：返回后路由已变化，后续点击不再产生路由变化 —— 与「阻断层仍在树上」一致。
+ * 因此按路由直接切页，转场交给 [RouteTransition] 用 graphicsLayer 实现：
+ * 没有可拖动的转场状态机、没有残留组合、没有输入阻断，也不逐帧重排页面。
+ */
 @Composable
 internal fun FreeNavHost(
     stateFlow: kotlinx.coroutines.flow.StateFlow<FrameworkConnectionState>,
@@ -85,12 +109,15 @@ internal fun FreeNavHost(
     onZoomLaunchClipboardChange: (Boolean) -> Unit,
     onAutoCloseWindowChange: (Boolean) -> Unit,
     onFloatKeepAliveChange: (Boolean) -> Unit,
-    onFloatHandleSwitchChange: (Boolean) -> Unit,
     onFloatHandleMaxCountChange: (Int) -> Unit,
     onLongPressMuteChange: (Boolean) -> Unit,
     onZoomExcludedChange: (List<String>) -> Unit,
     onShowSystemAppsChange: (Boolean) -> Unit,
     onRadialKeepOpenChange: (Boolean) -> Unit,
+    onRadialSelectionRingChange: (Boolean) -> Unit,
+    onRadialShimmerEnabledChange: (Boolean) -> Unit,
+    onRadialShimmerChange: (RadialShimmer) -> Unit,
+    onRadialRadiusPercentChange: (Int) -> Unit,
     onRequestScopes: () -> Unit,
     onPinnedTargetsChange: (List<PinnedTarget>) -> Unit,
     onBlacklistChange: (List<String>) -> Unit,
@@ -98,233 +125,240 @@ internal fun FreeNavHost(
     onCheckUpdate: () -> Unit,
     onDismissUpdate: (String) -> Unit,
 ) {
-    // 返回栈按类名保存：NavKey 不属于 Bundle 可存类型，直接交给 saveable 会在首帧抛异常。
+    // 返回栈按类名保存：路由对象不属于 Bundle 可存类型，直接交给 saveable 会在首帧抛异常。
     val backStack =
         rememberSaveable(saver = AppBackStackSaver) {
             mutableStateListOf<AppRoute>(AppRoute.Settings)
         }
-    val motion = remember { GlasmioNavHeaderMotion(AppRoute.Settings) }
 
-    val popBackStack = remember(backStack) {
+    // 转场状态由导航动作直接驱动（不靠组合期推断），切页当帧就能开始动画。
+    val transition = remember { RouteTransitionState(backStack.lastOrNull() ?: AppRoute.Settings) }
+
+    val pushRoute: (AppRoute) -> Unit = remember(backStack, transition) {
+        { target ->
+            if (backStack.lastOrNull() != target) {
+                backStack.add(target)
+                transition.switchTo(target, forward = true)
+            }
+        }
+    }
+
+    val popBackStack: () -> Unit = remember(backStack, transition) {
         {
             if (backStack.size > 1) {
                 backStack.removeLastOrNull()
-            }
-            Unit
-        }
-    }
-    val navigateToPinnedApps = remember(backStack) {
-        {
-            if (backStack.lastOrNull() != AppRoute.PinnedApps) {
-                backStack.add(AppRoute.PinnedApps)
-            }
-        }
-    }
-    val navigateToBlacklist = remember(backStack) {
-        {
-            if (backStack.lastOrNull() != AppRoute.Blacklist) {
-                backStack.add(AppRoute.Blacklist)
-            }
-        }
-    }
-    val navigateToBlacklistPicker = remember(backStack) {
-        {
-            if (backStack.lastOrNull() != AppRoute.BlacklistPicker) {
-                backStack.add(AppRoute.BlacklistPicker)
-            }
-        }
-    }
-    val navigateToRadialSettings = remember(backStack) {
-        {
-            if (backStack.lastOrNull() != AppRoute.RadialSettings) {
-                backStack.add(AppRoute.RadialSettings)
-            }
-        }
-    }
-    val navigateToAbout = remember(backStack) {
-        {
-            if (backStack.lastOrNull() != AppRoute.About) {
-                backStack.add(AppRoute.About)
-            }
-        }
-    }
-    val navigateToZoomOptions = remember(backStack) {
-        {
-            if (backStack.lastOrNull() != AppRoute.ZoomOptions) {
-                backStack.add(AppRoute.ZoomOptions)
-            }
-        }
-    }
-    val navigateToZoomLaunchScenes = remember(backStack) {
-        {
-            if (backStack.lastOrNull() != AppRoute.ZoomLaunchScenes) {
-                backStack.add(AppRoute.ZoomLaunchScenes)
-            }
-        }
-    }
-    val navigateToZoomExcluded = remember(backStack) {
-        {
-            if (backStack.lastOrNull() != AppRoute.ZoomExcluded) {
-                backStack.add(AppRoute.ZoomExcluded)
-            }
-        }
-    }
-    val navigateToZoomExcludedPicker = remember(backStack) {
-        {
-            if (backStack.lastOrNull() != AppRoute.ZoomExcludedPicker) {
-                backStack.add(AppRoute.ZoomExcludedPicker)
+                val target = backStack.lastOrNull() ?: AppRoute.Settings
+                transition.switchTo(target, forward = false)
             }
         }
     }
 
-    GlasmioNavDisplay(
-        backStack = backStack,
-        motion = motion,
-        modifier = Modifier.fillMaxSize(),
-        onBack = popBackStack,
-        entryProvider = { route ->
-            NavEntry(key = route, contentKey = route.javaClass.name) {
-                // 在 entry 内部收集：导航层会复用 entry 内容，把已收集好的值当参数传进来
-                // 会被闭包固定在首帧，设置页就永远显示初始的“等待连接”。
-                val state = stateFlow.collectAsState().value
-                // 同理：应用列表、目录、更新状态也必须在本页面内订阅，按值传进来会停在首帧。
-                val apps = appsFlow.collectAsState().value
-                val appsLoading = appsLoadingFlow.collectAsState().value
-                val sidebarCatalog = sidebarCatalogFlow.collectAsState().value
-                val update = updateFlow.collectAsState().value
-                when (route) {
-                    AppRoute.Settings -> {
-                        ControlScreen(
-                            state = state,
-                            update = update,
-                            onDismissUpdate = onDismissUpdate,
-                            onModuleEnabledChange = onModuleEnabledChange,
-                            onCornerSidesChange = onCornerSidesChange,
-                            onCornerTriggerRangeChange = onCornerTriggerRangeChange,
-                            onRadialHitRangeChange = onRadialHitRangeChange,
-                            onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
-                            onHandleSwipeUpToMiniEnabledChange =
-                                onHandleSwipeUpToMiniEnabledChange,
-                            onPauseInLandscapeChange = onPauseInLandscapeChange,
-                            onPauseInGameModeChange = onPauseInGameModeChange,
-                            onFreeDragChange = onFreeDragChange,
-                            onDragLongPressChange = onDragLongPressChange,
-                            onRequestScopes = onRequestScopes,
-                                    onNavigateToPinnedApps = navigateToPinnedApps,
-                            onNavigateToRadialSettings = navigateToRadialSettings,
-                            onNavigateToBlacklist = navigateToBlacklist,
-                            onNavigateToZoomOptions = navigateToZoomOptions,
-                            onNavigateToAbout = navigateToAbout,
-                        )
-                    }
-                    AppRoute.About -> {
-                        AboutScreen(
-                            update = update,
-                            verboseLogEnabled = state.settings.verboseLogEnabled,
-                            onBack = popBackStack,
-                            onVerboseLogChange = onVerboseLogChange,
-                            onCheckUpdate = onCheckUpdate,
-                            onDismissUpdate = onDismissUpdate,
-                        )
-                    }
-                    AppRoute.RadialSettings -> {
-                        RadialSettingsScreen(
-                            state = state,
-                            onBack = popBackStack,
-                            onCornerSidesChange = onCornerSidesChange,
-                            onCornerTriggerRangeChange = onCornerTriggerRangeChange,
-                            onRadialHitRangeChange = onRadialHitRangeChange,
-                            onRadialIconSizeChange = onRadialIconSizeChange,
-                            onBackdropLevelChange = onBackdropLevelChange,
-                            onRadialKeepOpenChange = onRadialKeepOpenChange,
-                            onPauseInLandscapeChange = onPauseInLandscapeChange,
-                            onPauseInGameModeChange = onPauseInGameModeChange,
-                            onNavigateToPinnedApps = navigateToPinnedApps,
-                        )
-                    }
-                    AppRoute.ZoomOptions -> {
-                        ZoomOptionsScreen(
-                            state = state,
-                            onBack = popBackStack,
-                            onZoomMaxWindowCountChange = onZoomMaxWindowCountChange,
-                            onZoomAllowAnyAppChange = onZoomAllowAnyAppChange,
-                            onAutoCloseWindowChange = onAutoCloseWindowChange,
-                            onFloatKeepAliveChange = onFloatKeepAliveChange,
-                            onFloatHandleSwitchChange = onFloatHandleSwitchChange,
-                            onFloatHandleMaxCountChange = onFloatHandleMaxCountChange,
-                            onLongPressMuteChange = onLongPressMuteChange,
-                            onNavigateToZoomExcluded = navigateToZoomExcluded,
-                            onNavigateToZoomLaunchScenes = navigateToZoomLaunchScenes,
-                            onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
-                            onHandleSwipeUpToMiniEnabledChange = onHandleSwipeUpToMiniEnabledChange,
-                        )
-                    }
-                    AppRoute.ZoomLaunchScenes -> {
-                        ZoomLaunchScenesScreen(
-                            state = state,
-                            onBack = popBackStack,
-                            onZoomLaunchNoticeChange = onZoomLaunchNoticeChange,
-                            onZoomLaunchHeadsUpChange = onZoomLaunchHeadsUpChange,
-                            onZoomLaunchControlCenterChange = onZoomLaunchControlCenterChange,
-                            onZoomLaunchInterAppChange = onZoomLaunchInterAppChange,
-                            onZoomLaunchInterAppResultChange = onZoomLaunchInterAppResultChange,
-                            onZoomLaunchShareRelayChange = onZoomLaunchShareRelayChange,
-                            onZoomLaunchClipboardChange = onZoomLaunchClipboardChange,
-                        )
-                    }
-                    AppRoute.ZoomExcluded -> {
-                        ZoomExcludedScreen(
-                            state = state,
-                            apps = apps,
-                            onBack = popBackStack,
-                            onAddApps = navigateToZoomExcludedPicker,
-                            onZoomExcludedChange = onZoomExcludedChange,
-                        )
-                    }
-                    AppRoute.ZoomExcludedPicker -> {
-                        ZoomExcludedPickerScreen(
-                            state = state,
-                            apps = apps,
-                            appsLoading = appsLoading,
-                            onBack = popBackStack,
-                            onZoomExcludedChange = onZoomExcludedChange,
-                            onShowSystemAppsChange = onShowSystemAppsChange,
-                        )
-                    }
-                    AppRoute.Blacklist -> {
-                        BlacklistScreen(
-                            state = state,
-                            apps = apps,
-                            onBack = popBackStack,
-                            onAddApps = navigateToBlacklistPicker,
-                            onBlacklistChange = onBlacklistChange,
-                        )
-                    }
-                    AppRoute.BlacklistPicker -> {
-                        BlacklistPickerScreen(
-                            state = state,
-                            apps = apps,
-                            appsLoading = appsLoading,
-                            onBack = popBackStack,
-                            onBlacklistChange = onBlacklistChange,
-                            onShowSystemAppsChange = onShowSystemAppsChange,
-                        )
-                    }
-                    AppRoute.PinnedApps -> {
-                        PinnedAppsScreen(
-                            state = state,
-                            apps = apps,
-                            sidebarCatalog = sidebarCatalog,
-                            onRefreshCatalog = onRefreshCatalog,
-                            onCancelCatalog = onCancelCatalog,
-                            onBack = popBackStack,
-                            onPinnedTargetsChange = onPinnedTargetsChange,
-                        )
-                    }
-                }
-            }
-        },
-    )
+    val navigateToPinnedApps: () -> Unit = remember(backStack) { { pushRoute(AppRoute.PinnedApps) } }
+    val navigateToBlacklist: () -> Unit = remember(backStack) { { pushRoute(AppRoute.Blacklist) } }
+    val navigateToBlacklistPicker: () -> Unit =
+        remember(backStack) { { pushRoute(AppRoute.BlacklistPicker) } }
+    val navigateToRadialSettings: () -> Unit =
+        remember(backStack) { { pushRoute(AppRoute.RadialSettings) } }
+    val navigateToRadialShimmer: () -> Unit =
+        remember(backStack) { { pushRoute(AppRoute.RadialShimmer) } }
+    val navigateToRadialSize: () -> Unit =
+        remember(backStack) { { pushRoute(AppRoute.RadialSize) } }
+    val navigateToRadialEffect: () -> Unit =
+        remember(backStack) { { pushRoute(AppRoute.RadialEffect) } }
+    val navigateToFreeDrag: () -> Unit = remember(backStack) { { pushRoute(AppRoute.FreeDrag) } }
+    val navigateToGesture: () -> Unit = remember(backStack) { { pushRoute(AppRoute.ZoomGesture) } }
+    val navigateToEdgeFloat: () -> Unit =
+        remember(backStack) { { pushRoute(AppRoute.ZoomEdgeFloat) } }
+    val navigateToAbout: () -> Unit = remember(backStack) { { pushRoute(AppRoute.About) } }
+    val navigateToZoomOptions: () -> Unit =
+        remember(backStack) { { pushRoute(AppRoute.ZoomOptions) } }
+    val navigateToZoomLaunchScenes: () -> Unit =
+        remember(backStack) { { pushRoute(AppRoute.ZoomLaunchScenes) } }
+    val navigateToZoomExcluded: () -> Unit =
+        remember(backStack) { { pushRoute(AppRoute.ZoomExcluded) } }
+    val navigateToZoomExcludedPicker: () -> Unit =
+        remember(backStack) { { pushRoute(AppRoute.ZoomExcludedPicker) } }
+
+    // 系统返回键/返回手势由本实现接管，不依赖导航库的 NavigationEvent 接线。
+    BackHandler(enabled = backStack.size > 1, onBack = popBackStack)
+
+    val route = backStack.lastOrNull() ?: AppRoute.Settings
+    // 设置页可能以浮窗形式显示，此时生命周期不一定是 RESUMED：状态直接跟随组合收集，
+    // 避免界面永远停在初始值。
+    val state = stateFlow.collectAsState().value
+    val apps = appsFlow.collectAsState().value
+    val appsLoading = appsLoadingFlow.collectAsState().value
+    val sidebarCatalog = sidebarCatalogFlow.collectAsState().value
+    val update = updateFlow.collectAsState().value
+
+    LaunchedEffect(route) {
+        if (android.util.Log.isLoggable("Free", android.util.Log.INFO)) {
+            android.util.Log.i("Free", "APP_ROUTE_" + route.javaClass.simpleName + "_size" + backStack.size)
+        }
+    }
+
+    // 转场只用 graphicsLayer 平移：不走布局、不做测量，也不会产生输入阻断层。
+    RouteTransition(state = transition, modifier = Modifier.fillMaxSize()) { pageRoute ->
+        when (pageRoute) {
+            AppRoute.Settings ->
+                ControlScreen(
+                    state = state,
+                    update = update,
+                    onDismissUpdate = onDismissUpdate,
+                    onModuleEnabledChange = onModuleEnabledChange,
+                    onCornerSidesChange = onCornerSidesChange,
+                    onCornerTriggerRangeChange = onCornerTriggerRangeChange,
+                    onRadialHitRangeChange = onRadialHitRangeChange,
+                    onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
+                    onHandleSwipeUpToMiniEnabledChange = onHandleSwipeUpToMiniEnabledChange,
+                    onPauseInLandscapeChange = onPauseInLandscapeChange,
+                    onPauseInGameModeChange = onPauseInGameModeChange,
+                    onRequestScopes = onRequestScopes,
+                    onNavigateToPinnedApps = navigateToPinnedApps,
+                    onNavigateToRadialSettings = navigateToRadialSettings,
+                    onNavigateToBlacklist = navigateToBlacklist,
+                    onNavigateToZoomOptions = navigateToZoomOptions,
+                    onNavigateToFreeDrag = navigateToFreeDrag,
+                    onNavigateToAbout = navigateToAbout,
+                )
+            AppRoute.About ->
+                AboutScreen(
+                    update = update,
+                    verboseLogEnabled = state.settings.verboseLogEnabled,
+                    onBack = popBackStack,
+                    onVerboseLogChange = onVerboseLogChange,
+                    onCheckUpdate = onCheckUpdate,
+                    onDismissUpdate = onDismissUpdate,
+                )
+            AppRoute.RadialSettings ->
+                RadialSettingsScreen(
+                    state = state,
+                    onBack = popBackStack,
+                    onCornerSidesChange = onCornerSidesChange,
+                    onCornerTriggerRangeChange = onCornerTriggerRangeChange,
+                    onRadialKeepOpenChange = onRadialKeepOpenChange,
+                    onPauseInLandscapeChange = onPauseInLandscapeChange,
+                    onPauseInGameModeChange = onPauseInGameModeChange,
+                    onNavigateToPinnedApps = navigateToPinnedApps,
+                    onNavigateToRadialEffect = navigateToRadialEffect,
+                    onNavigateToRadialSize = navigateToRadialSize,
+                )
+            AppRoute.ZoomGesture ->
+                GestureScreen(
+                    state = state,
+                    onBack = popBackStack,
+                    onHandleSwipeUpToMiniEnabledChange = onHandleSwipeUpToMiniEnabledChange,
+                    onLongPressMuteChange = onLongPressMuteChange,
+                    onOutsideTapCloseModeChange = onOutsideTapCloseModeChange,
+                )
+            AppRoute.ZoomEdgeFloat ->
+                EdgeFloatScreen(
+                    state = state,
+                    onBack = popBackStack,
+                    onFloatKeepAliveChange = onFloatKeepAliveChange,
+                    onFloatHandleMaxCountChange = onFloatHandleMaxCountChange,
+                )
+            AppRoute.FreeDrag ->
+                FreeDragScreen(
+                    state = state,
+                    onBack = popBackStack,
+                    onFreeDragChange = onFreeDragChange,
+                    onDragLongPressChange = onDragLongPressChange,
+                )
+            AppRoute.RadialEffect ->
+                RadialEffectScreen(
+                    state = state,
+                    onBack = popBackStack,
+                    onRadialSelectionRingChange = onRadialSelectionRingChange,
+                    onRadialShimmerEnabledChange = onRadialShimmerEnabledChange,
+                    onRadialShimmerChange = onRadialShimmerChange,
+                    onNavigateToRadialShimmer = navigateToRadialShimmer,
+                )
+            AppRoute.RadialShimmer ->
+                RadialShimmerScreen(
+                    state = state,
+                    onBack = popBackStack,
+                    onRadialShimmerChange = onRadialShimmerChange,
+                )
+            AppRoute.RadialSize ->
+                RadialSizeScreen(
+                    state = state,
+                    onBack = popBackStack,
+                    onRadialHitRangeChange = onRadialHitRangeChange,
+                    onRadialIconSizeChange = onRadialIconSizeChange,
+                    onRadialRadiusPercentChange = onRadialRadiusPercentChange,
+                    onBackdropLevelChange = onBackdropLevelChange,
+                )
+            AppRoute.ZoomOptions ->
+                ZoomOptionsScreen(
+                    state = state,
+                    onBack = popBackStack,
+                    onZoomMaxWindowCountChange = onZoomMaxWindowCountChange,
+                    onZoomAllowAnyAppChange = onZoomAllowAnyAppChange,
+                    onAutoCloseWindowChange = onAutoCloseWindowChange,
+                    onNavigateToZoomExcluded = navigateToZoomExcluded,
+                    onNavigateToZoomLaunchScenes = navigateToZoomLaunchScenes,
+                    onNavigateToGesture = navigateToGesture,
+                    onNavigateToEdgeFloat = navigateToEdgeFloat,
+                )
+            AppRoute.ZoomLaunchScenes ->
+                ZoomLaunchScenesScreen(
+                    state = state,
+                    onBack = popBackStack,
+                    onZoomLaunchNoticeChange = onZoomLaunchNoticeChange,
+                    onZoomLaunchHeadsUpChange = onZoomLaunchHeadsUpChange,
+                    onZoomLaunchControlCenterChange = onZoomLaunchControlCenterChange,
+                    onZoomLaunchInterAppChange = onZoomLaunchInterAppChange,
+                    onZoomLaunchInterAppResultChange = onZoomLaunchInterAppResultChange,
+                    onZoomLaunchShareRelayChange = onZoomLaunchShareRelayChange,
+                    onZoomLaunchClipboardChange = onZoomLaunchClipboardChange,
+                )
+            AppRoute.ZoomExcluded ->
+                ZoomExcludedScreen(
+                    state = state,
+                    apps = apps,
+                    onBack = popBackStack,
+                    onAddApps = navigateToZoomExcludedPicker,
+                    onZoomExcludedChange = onZoomExcludedChange,
+                )
+            AppRoute.ZoomExcludedPicker ->
+                ZoomExcludedPickerScreen(
+                    state = state,
+                    apps = apps,
+                    appsLoading = appsLoading,
+                    onBack = popBackStack,
+                    onZoomExcludedChange = onZoomExcludedChange,
+                    onShowSystemAppsChange = onShowSystemAppsChange,
+                )
+            AppRoute.Blacklist ->
+                BlacklistScreen(
+                    state = state,
+                    apps = apps,
+                    onBack = popBackStack,
+                    onAddApps = navigateToBlacklistPicker,
+                    onBlacklistChange = onBlacklistChange,
+                )
+            AppRoute.BlacklistPicker ->
+                BlacklistPickerScreen(
+                    state = state,
+                    apps = apps,
+                    appsLoading = appsLoading,
+                    onBack = popBackStack,
+                    onBlacklistChange = onBlacklistChange,
+                    onShowSystemAppsChange = onShowSystemAppsChange,
+                )
+            AppRoute.PinnedApps ->
+                PinnedAppsScreen(
+                    state = state,
+                    apps = apps,
+                    sidebarCatalog = sidebarCatalog,
+                    onRefreshCatalog = onRefreshCatalog,
+                    onCancelCatalog = onCancelCatalog,
+                    onBack = popBackStack,
+                    onPinnedTargetsChange = onPinnedTargetsChange,
+                )
+        }
+    }
 }
 
 /** 返回栈的保存形式：类名列表，恢复时映射回路由对象。 */
@@ -349,6 +383,12 @@ private fun routeOfName(name: String): AppRoute? =
         AppRoute.ZoomExcluded.javaClass.name -> AppRoute.ZoomExcluded
         AppRoute.ZoomExcludedPicker.javaClass.name -> AppRoute.ZoomExcludedPicker
         AppRoute.RadialSettings.javaClass.name -> AppRoute.RadialSettings
+        AppRoute.RadialShimmer.javaClass.name -> AppRoute.RadialShimmer
+        AppRoute.RadialSize.javaClass.name -> AppRoute.RadialSize
+        AppRoute.RadialEffect.javaClass.name -> AppRoute.RadialEffect
+        AppRoute.FreeDrag.javaClass.name -> AppRoute.FreeDrag
+        AppRoute.ZoomGesture.javaClass.name -> AppRoute.ZoomGesture
+        AppRoute.ZoomEdgeFloat.javaClass.name -> AppRoute.ZoomEdgeFloat
         AppRoute.About.javaClass.name -> AppRoute.About
         else -> null
     }

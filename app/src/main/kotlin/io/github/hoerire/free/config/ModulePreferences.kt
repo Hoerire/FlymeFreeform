@@ -72,8 +72,6 @@ internal object ModulePreferences {
     const val KEY_ZOOM_MAX_WINDOW_COUNT = "zoom_max_window_count"
     /** 贴边浮标同时保留的个数上限（设置项「贴边数量」）。 */
     const val KEY_FLOAT_HANDLE_MAX_COUNT = "float_handle_max_count"
-    /** 贴边互切：打开另一个贴边浮标时，前一个窗口继续收成浮标。 */
-    const val KEY_FLOAT_HANDLE_SWITCH = "float_handle_switch_v1"
     const val KEY_ZOOM_ALLOW_ANY_APP = "zoom_allow_any_app"
     /** 已退役的「轻量打开」总开关：仅用于升级后清掉残留值。 */
     const val LEGACY_KEY_ZOOM_INTERACTION_ENABLED = "zoom_interaction_enabled"
@@ -129,6 +127,28 @@ internal object ModulePreferences {
     const val KEY_RADIAL_KEEP_OPEN = "radial_keep_open"
 
     /**
+     * 选中光圈：滑选到某个条目时，在图标外沿画一圈白色高亮。
+     *
+     * 圈宽由选中进度驱动（0 → 环宽），与图标放大一起构成选中反馈；
+     * 关掉后只剩下放大。
+     */
+    const val KEY_RADIAL_SELECTION_RING = "radial_selection_ring_v1"
+
+    /**
+     * 流光特效：选中项外沿那圈常亮光圈、星头与运动轨迹。
+     *
+     * 与「选中光圈」是两个独立开关：光圈是不动的细白边 + 投影，
+     * 流光是一直在转的动效，可以只开其中一个。
+     */
+    const val KEY_RADIAL_SHIMMER_ENABLED = "radial_shimmer_enabled_v1"
+
+    /** 选中流光的参数集合；存成一行分隔串，见 [RadialShimmer]。 */
+    const val KEY_RADIAL_SHIMMER = "radial_shimmer_v1"
+
+    /** 扇形半径（百分比）：左右两侧共用同一个值，同时放大或缩小。 */
+    const val KEY_RADIAL_RADIUS_PERCENT = "radial_radius_percent_v1"
+
+    /**
      * 「自由拖拽」：解除内容传送门的长按拖拽准入限制。
      *
      * 系统的长按拖拽只对 sys_view_drag_list.xml 里登记过的包 + Activity + 控件类名生效，
@@ -173,16 +193,21 @@ internal object ModulePreferences {
     const val DEFAULT_FLOAT_HANDLE_MAX_COUNT = 2
     const val MIN_FLOAT_HANDLE_MAX_COUNT = 2
     const val MAX_FLOAT_HANDLE_MAX_COUNT = 10
-    /** 贴边互切默认关闭：它会接管「自动收窗」与「小窗数量」，不能默认替用户打开。 */
-    const val DEFAULT_FLOAT_HANDLE_SWITCH = false
     const val DEFAULT_ZOOM_ALLOW_ANY_APP = false
     const val DEFAULT_SHOW_SYSTEM_APPS = false
     const val DEFAULT_RADIAL_KEEP_OPEN = false
+    /** 选中光圈默认关闭：默认只保留 20% 的选中放大，特效由用户自己开。 */
+    const val DEFAULT_RADIAL_SELECTION_RING = false
+    const val DEFAULT_RADIAL_SHIMMER_ENABLED = false
     /** 自由拖拽默认关闭：改写的是系统级拖拽准入，由用户主动开启。 */
     const val DEFAULT_FREE_DRAG = false
-    /** 扇形最多能放几个应用（收藏上限同值）。须定义在引用它的常量之前。 */
-    const val MAX_PINNED_APPS = 6
-    /** 扇形同时显示的条目数：1–6，默认 6。 */
+    /**
+     * 扇形最多能放几个应用（收藏上限同值）。须定义在引用它的常量之前。
+     *
+     * 扇形里还有一个常驻的「更多」格，所以实际槽位是 [MAX_PINNED_APPS] + 1，
+     * 最多 8 格；`RadialIconGeometry` 按槽位数反推最小半径，保证不互相贴住。
+     */
+    const val MAX_PINNED_APPS = 7
     const val MIN_CORNER_TRIGGER_RANGE_DP = 24
     const val MAX_CORNER_TRIGGER_RANGE_DP = 160
     const val MIN_RADIAL_HIT_RANGE_DP = 40
@@ -191,6 +216,14 @@ internal object ModulePreferences {
      * 才能一直覆盖到屏幕直角本身；再大也不会有新的覆盖区域。
      */
     const val MAX_RADIAL_HIT_RANGE_DP = 220
+
+    /** 扇形半径的允许区间与默认值（百分比，100 为基准半径）。 */
+    const val MIN_RADIAL_RADIUS_PERCENT = 70
+    const val MAX_RADIAL_RADIUS_PERCENT = 140
+    const val DEFAULT_RADIAL_RADIUS_PERCENT = 100
+
+    fun coerceRadialRadiusPercent(value: Int): Int =
+        value.coerceIn(MIN_RADIAL_RADIUS_PERCENT, MAX_RADIAL_RADIUS_PERCENT)
 
     fun coerceCornerTriggerRangeDp(value: Int): Int =
         value.coerceIn(MIN_CORNER_TRIGGER_RANGE_DP, MAX_CORNER_TRIGGER_RANGE_DP)

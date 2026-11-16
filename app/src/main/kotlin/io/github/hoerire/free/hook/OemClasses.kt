@@ -7,6 +7,15 @@ package io.github.hoerire.free.hook
  * 统一放这里之后，所有引用点只依赖这一个常量。
  */
 internal object OemClasses {
+    /** 设置首页所在的系统应用。首页是 androidx 偏好树，因此入口按偏好注入。 */
+    const val SETTINGS_PACKAGE = "com.android.settings"
+
+    /** 偏好树基类：`onCreatePreferences` 在 super 调用里完成整棵树。 */
+    const val PREFERENCE_FRAGMENT_COMPAT = "androidx.preference.PreferenceFragmentCompat"
+
+    /** 设置首页的 Fragment：覆盖了基类生命周期，插入点必须挂在这个类上。 */
+    const val SETTINGS_HOME_FRAGMENT = "com.oplus.settings.feature.homepage.OplusTopLevelSettings"
+
     const val ACTIVITY_RECORD = "com.android.server.wm.ActivityRecord"
     const val ACTIVITY_STARTER = "com.android.server.wm.ActivityStarter"
     const val ACTIVITY_TASK_MANAGER = "com.android.server.wm.ActivityTaskManagerService"

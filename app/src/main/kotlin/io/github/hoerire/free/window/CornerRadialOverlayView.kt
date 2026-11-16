@@ -43,11 +43,13 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
@@ -55,6 +57,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
@@ -76,6 +79,7 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.github.hoerire.free.config.ModulePreferences
+import io.github.hoerire.free.config.RadialShimmer
 import io.github.hoerire.free.gesture.CornerSide
 import io.github.hoerire.free.gesture.RadialGeometry
 import io.github.hoerire.free.gesture.GesturePoint
@@ -151,6 +155,18 @@ internal class CornerRadialOverlayView(
     private var side = CornerSide.Right
     private var radialHitRangeDp = ModulePreferences.DEFAULT_RADIAL_HIT_RANGE_DP
     private var radialIconSizeDp = ModulePreferences.DEFAULT_RADIAL_ICON_SIZE_DP
+
+    /** 扇形半径百分比：左右两侧共用，随每次呼出由设置注入。 */
+    private var radialRadiusPercent = ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT
+
+    /** 选中光圈：滑选条目时是否在图标外沿画细白边与投影（静态）。 */
+    private var selectionRingEnabled = ModulePreferences.DEFAULT_RADIAL_SELECTION_RING
+
+    /** 流光特效：常亮光圈、星头与运动轨迹（动态），独立于选中光圈。 */
+    private var shimmerEnabled = ModulePreferences.DEFAULT_RADIAL_SHIMMER_ENABLED
+
+    /** 选中流光的可调参数，随每次呼出由设置注入。 */
+    private var shimmer = RadialShimmer()
     /** 浮层显示时刻：呼出手势的抬手会作为 tap 落到这里，必须忽略。 */
     private var shownAtUptime = 0L
     /** 「永久保持」：松手未选中时保留浮层，并允许直接点选条目。 */
@@ -196,14 +212,22 @@ internal class CornerRadialOverlayView(
         y: Float,
         hitRangeDp: Int = ModulePreferences.DEFAULT_RADIAL_HIT_RANGE_DP,
         iconSizeDp: Int = ModulePreferences.DEFAULT_RADIAL_ICON_SIZE_DP,
+        radiusPercent: Int = ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT,
         keepOpen: Boolean = false,
+        selectionRing: Boolean = ModulePreferences.DEFAULT_RADIAL_SELECTION_RING,
+        shimmerEnabled: Boolean = ModulePreferences.DEFAULT_RADIAL_SHIMMER_ENABLED,
+        shimmer: RadialShimmer = RadialShimmer(),
     ) {
         check(!isAttachedToWindow) { "Overlay must be initialized before it is attached" }
         this.keepOpen = keepOpen
+        this.selectionRingEnabled = selectionRing
+        this.shimmerEnabled = shimmerEnabled
+        this.shimmer = shimmer
         this.side = side
         // 保持挂起不改变命中判定：滑动选格与点选统一使用「命中范围」的设定值。
         this.radialHitRangeDp = ModulePreferences.coerceRadialHitRangeDp(hitRangeDp)
         this.radialIconSizeDp = ModulePreferences.coerceRadialIconSizeDp(iconSizeDp)
+        this.radialRadiusPercent = ModulePreferences.coerceRadialRadiusPercent(radiusPercent)
         shownAtUptime = android.os.SystemClock.uptimeMillis()
         entrySettled = false
         this.catalog = catalog
@@ -536,6 +560,20 @@ internal class CornerRadialOverlayView(
         animationsEnabled: Boolean,
     ) {
         val itemColors = LocalRadialItemColors.current
+        // 选中流光的旋转相位：只在动画可用时逐帧推进，关闭动画时停在固定角度。
+        val shimmerAngle = remember { mutableFloatStateOf(0f) }
+        if (animationsEnabled) {
+            LaunchedEffect(Unit) {
+                var origin = -1L
+                while (true) {
+                    withFrameNanos { now ->
+                        if (origin < 0L) origin = now
+                        shimmerAngle.floatValue =
+                            ((now - origin) / NANOS_PER_SECOND * shimmer.speedDegPerSecond) % FULL_TURN_DEGREES
+                    }
+                }
+            }
+        }
         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
             if (backdropOnlyState.value) {
                 // 「更多」面板期间不画遮罩：那块面板是系统的独立窗口，模块这层暗度会把它压暗，
@@ -587,6 +625,7 @@ internal class CornerRadialOverlayView(
                 contentScale = if (panelModeState.value) handoffVisuals.contentScale else 1f,
                 itemRings = itemRings,
                 colors = itemColors,
+                shimmerAngle = shimmerAngle.floatValue,
             )
         }
     }
@@ -599,6 +638,7 @@ internal class CornerRadialOverlayView(
         contentScale: Float,
         itemRings: List<Animatable<Float, *>>,
         colors: RadialItemColors,
+        shimmerAngle: Float,
     ) {
         val direction = if (layout.side == CornerSide.Left) 1f else -1f
         val overshoot = direction * RadialEntryMotion.HORIZONTAL_OVERSHOOT_DP * metrics.pixelsPerBaseDp * motion.horizontalOvershoot
@@ -615,18 +655,139 @@ internal class CornerRadialOverlayView(
             val centerX = layout.origin.x + (destination.x - layout.origin.x) * localProgress + overshoot * localProgress
             val centerY = layout.origin.y + (destination.y - layout.origin.y) * localProgress
             val ringProgress = itemRings.getOrNull(index)?.value ?: 0f
-            // 选中项放大：复用每格原有 0→1 的进度动画，1f→1.2f 平滑放大；
-            // 不再绘制白色描边外圈（原实现用同一进度画 SELECTION_RING_ALPHA 的圆环）。
-            val selectionScale = 1f + SELECTED_ICON_SCALE_GAIN * ringProgress
+            // 选中项放大：复用每格原有 0→1 的进度动画，1f→1.2f 平滑放大。
+            val selectionScale = 1f + shimmer.selectionScalePercent / 100f * ringProgress
             val scale = motion.iconScale * contentScale * selectionScale
             val diameter = metrics.iconDiameter * scale
             rotate(motion.rotationDegrees, pivot = Offset(centerX, centerY)) {
+                // 选中细节：先落一层很淡的椭圆投影（往下偏 5% 直径），图标看着是浮起来的，
+                // 而不是被硬放大的贴纸；放大完成后外沿再加一圈细高光，边界更清楚。
+                if (selectionRingEnabled && ringProgress > 0f) {
+                    val shadowRadius = diameter * 0.66f
+                    val shadowCenter = Offset(centerX, centerY + diameter * 0.05f)
+                    drawCircle(
+                        brush =
+                            Brush.radialGradient(
+                                colors =
+                                    listOf(
+                                        Color.Black.copy(alpha = METEOR_SHADOW_ALPHA),
+                                        Color.Transparent,
+                                    ),
+                                center = shadowCenter,
+                                radius = shadowRadius,
+                            ),
+                        radius = shadowRadius,
+                        center = shadowCenter,
+                        alpha = ringProgress * contentAlpha,
+                    )
+                }
+                // 外发光归「流光特效」：它的亮度与范围就在流光参数页里。
+                if (shimmerEnabled && ringProgress > 0f) {
+                    val glowRadius = diameter * shimmer.glowRadiusPercent / 100f
+                    drawCircle(
+                        brush =
+                            Brush.radialGradient(
+                                colors =
+                                    listOf(
+                                        Color.White.copy(alpha = shimmer.glowAlphaPercent / 100f),
+                                        Color.Transparent,
+                                    ),
+                                center = Offset(centerX, centerY),
+                                radius = glowRadius,
+                            ),
+                        radius = glowRadius,
+                        center = Offset(centerX, centerY),
+                        alpha = ringProgress * contentAlpha,
+                    )
+                }
                 if (index < catalog.radialApps.size) {
                     radialImages.value.getOrNull(index)?.let { image ->
                         drawSystemImage(image.icon, centerX, centerY, diameter, contentAlpha)
                     }
                 } else {
                     drawMoreItem(centerX, centerY, diameter, contentAlpha, colors)
+                }
+                // 细边高光：只出现在选中态，半径按「光圈大小」缩放（100 = 贴图标外沿）。
+                // 与流光特效是两个独立功能，两者可以同时开着：这里只画静态的圈，动效在下面。
+                if (selectionRingEnabled && ringProgress > 0f) {
+                    val ringScale = shimmer.ringSizePercent.coerceIn(
+                        RadialShimmer.RING_SIZE_RANGE.first,
+                        RadialShimmer.RING_SIZE_RANGE.last,
+                    ) / 100f
+                    drawCircle(
+                        color = Color.White,
+                        radius = diameter / 2f * ringScale,
+                        center = Offset(centerX, centerY),
+                        alpha = ringProgress * contentAlpha * METEOR_RIM_ALPHA,
+                        style = Stroke(width = (diameter * METEOR_RIM_WIDTH).coerceAtLeast(METEOR_MIN_WIDTH_PX)),
+                    )
+                }
+                // 流光特效：一颗小星头 + 一段由细到粗、由亮到淡的运动轨迹，绕着常亮光圈跑。
+                if (shimmerEnabled && ringProgress > 0f) {
+                    val arcRadius =
+                        diameter / 2f + metrics.itemPadding * scale * shimmer.arcGapPercent / 100f
+                    val arcWidth = metrics.itemPadding * scale * shimmer.arcWidthPercent / 100f
+                    val ringAlpha = ringProgress * contentAlpha
+                    val arcAlpha = ringAlpha * shimmer.arcAlphaPercent / 100f
+                    // 光圈：整圈常亮，并随旋转做一次呼吸（角度连续，所以不会跳变）。
+                    // 只在头尾之间画一段的话，光带转过去之后这格就空了；常亮这一圈
+                    // 让选中态看起来是「一直在发光」，尾迹只是它上面跑得最快的那段。
+                    val breath =
+                        0.78f + 0.22f * kotlin.math.sin(Math.toRadians(shimmerAngle.toDouble())).toFloat()
+                    drawArc(
+                        color = Color.White,
+                        startAngle = 0f,
+                        sweepAngle = FULL_TURN_DEGREES,
+                        useCenter = false,
+                        topLeft = Offset(centerX - arcRadius, centerY - arcRadius),
+                        size = Size(arcRadius * 2f, arcRadius * 2f),
+                        alpha = arcAlpha * METEOR_RING_ALPHA * breath,
+                        style = Stroke(width = (arcWidth * METEOR_RING_WIDTH_SCALE).coerceAtLeast(METEOR_MIN_WIDTH_PX)),
+                    )
+                    // 运动轨迹：从星头身后铺开，越靠尾越粗、越淡（二次衰减，像流星尾巴）。
+                    val headAngle = shimmerAngle + METEOR_SWEEP_DEGREES
+                    for (step in 0 until METEOR_SEGMENTS) {
+                        val near = step / METEOR_SEGMENTS.toFloat()
+                        val far = (step + 1) / METEOR_SEGMENTS.toFloat()
+                        val width =
+                            (arcWidth * (METEOR_TAIL_MIN_WIDTH + far) * 0.5f)
+                                .coerceAtLeast(METEOR_MIN_WIDTH_PX)
+                        val tail = 1f - near
+                        val alpha = arcAlpha * tail * tail
+                        if (alpha <= 0.01f) continue
+                        drawArc(
+                            color = Color.White,
+                            startAngle = headAngle - METEOR_SWEEP_DEGREES * far,
+                            sweepAngle = METEOR_SWEEP_DEGREES * (far - near) + 0.6f,
+                            useCenter = false,
+                            topLeft = Offset(centerX - arcRadius, centerY - arcRadius),
+                            size = Size(arcRadius * 2f, arcRadius * 2f),
+                            alpha = alpha,
+                            style = Stroke(width = width),
+                        )
+                    }
+                    // 星头：柔和亮点 + 小五角星，半径取光带宽度的一定比例，绕着光圈跑。
+                    val radians = Math.toRadians(headAngle.toDouble())
+                    val headX = centerX + arcRadius * Math.cos(radians).toFloat()
+                    val headY = centerY + arcRadius * Math.sin(radians).toFloat()
+                    val starRadius =
+                        (arcWidth * METEOR_STAR_RADIUS_SCALE)
+                            .coerceAtLeast(METEOR_MIN_STAR_RADIUS_PX)
+                    drawCircle(
+                        brush =
+                            Brush.radialGradient(
+                                colors =
+                                    listOf(
+                                        Color.White.copy(alpha = arcAlpha * METEOR_STAR_GLOW_ALPHA),
+                                        Color.Transparent,
+                                    ),
+                                center = Offset(headX, headY),
+                                radius = starRadius * METEOR_STAR_GLOW_SCALE,
+                            ),
+                        radius = starRadius * METEOR_STAR_GLOW_SCALE,
+                        center = Offset(headX, headY),
+                    )
+                    drawStar(Offset(headX, headY), starRadius, arcAlpha)
                 }
                 // 左右扇形的角标分别位于左下角、右下角，避开相邻图标，不参与圆形裁剪。
                 radialImages.value.getOrNull(index)?.let { image ->
@@ -639,6 +800,21 @@ internal class CornerRadialOverlayView(
                 }
             }
         }
+    }
+
+    /** 五角星：外接半径 [radius]，内接半径一半，尖端朝上。 */
+    private fun DrawScope.drawStar(center: Offset, radius: Float, alpha: Float) {
+        val path = Path()
+        val points = 5
+        for (index in 0 until points * 2) {
+            val r = if (index % 2 == 0) radius else radius * 0.45f
+            val angle = Math.toRadians(-90.0 + index * 180.0 / points)
+            val x = center.x + r * Math.cos(angle).toFloat()
+            val y = center.y + r * Math.sin(angle).toFloat()
+            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        path.close()
+        drawPath(path = path, color = Color.White, alpha = alpha)
     }
 
     private fun DrawScope.drawBadge(
@@ -842,6 +1018,8 @@ internal class CornerRadialOverlayView(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        // 帧率上限要等视图挂上窗口后才能设（API 35 起 View 自带这个 hint）。
+        runCatching { setRequestedFrameRate(OVERLAY_MAX_FRAME_RATE) }
         if (!disposed && !lifecycleRegistry.currentState.isAtLeast(Lifecycle.State.STARTED)) {
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         }
@@ -924,6 +1102,7 @@ internal class CornerRadialOverlayView(
                 radialItemCount = catalog.radialApps.size + 1,
                 radialHitRangeDp = radialHitRangeDp.toFloat(),
                 radialIconSizeDp = radialIconSizeDp.toFloat(),
+                radialRadiusPercent = radialRadiusPercent,
                 radialInsets = radialInsets,
                 fontScale = resources.configuration.fontScale,
                 panelItemCount = catalog.panelApps.size,
@@ -1062,8 +1241,6 @@ internal class CornerRadialOverlayView(
         if (dismissNotified || disposed) return
         // 收起只有一个出口：通知宿主移除窗口。
         // 选中目标的启动在 dismissAnimated 里已经交出去了（commitNotified），
-        // 原先这里还留了一条"未提交则补发 onEntryCommitted"的分支，
-        // 那是退场动画时代为了在动画结束后才提交而设的，现在用不到了。
         commitNotified = false
         requestDismiss()
     }
@@ -1186,7 +1363,33 @@ internal class CornerRadialOverlayView(
             )
         const val NO_SELECTION = -1
         /** 选中项放大幅度：1f → 1.2f，与每格 0→1 的进度动画相乘。 */
-        const val SELECTED_ICON_SCALE_GAIN = 0.2f
+
+        const val FULL_TURN_DEGREES = 360f
+        const val NANOS_PER_SECOND = 1_000_000_000f
+        /** 流星尾迹扫过的角度与分段数：分段换成宽度/亮度渐变的近似，足够平滑。 */
+        const val METEOR_SWEEP_DEGREES = 220f
+        const val METEOR_SEGMENTS = 20
+        const val METEOR_MIN_WIDTH_PX = 1.2f
+        const val METEOR_TAIL_MIN_WIDTH = 0.15f
+        /** 常亮光圈的亮度与粗细（相对用户设定的光带宽度）。 */
+        const val METEOR_RING_ALPHA = 0.32f
+        const val METEOR_RING_WIDTH_SCALE = 0.62f
+        /** 星头：外接半径相对光带宽度的比例，以及外晕的倍数与亮度。 */
+        const val METEOR_STAR_RADIUS_SCALE = 0.40f
+        const val METEOR_MIN_STAR_RADIUS_PX = 1.4f
+        const val METEOR_STAR_GLOW_SCALE = 1.5f
+        const val METEOR_STAR_GLOW_ALPHA = 0.55f
+        /** 选中态的投影与细边高光。 */
+        const val METEOR_SHADOW_ALPHA = 0.20f
+        const val METEOR_RIM_ALPHA = 0.28f
+        const val METEOR_RIM_WIDTH = 0.022f
+        /**
+         * 浮层请求的刷新率上限：流光每帧都在动，交给系统按内容猜会掉到 120 甚至 60；
+         * 显式要 165Hz，让 165Hz 屏上的旋转轨迹真正跑满。
+         */
+        const val OVERLAY_MAX_FRAME_RATE = 165f
+
+
         const val PANEL_SURFACE_ALPHA = 253f / 255f
         // 24dp 图标在 40dp 圆盘内：点径 3.5、点距 7.125（图标视口单位）。
         /** 呼出后的静默窗口：屏蔽呼出手势残留的那次抬手。 */

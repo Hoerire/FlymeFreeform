@@ -7,6 +7,7 @@ import io.github.libxposed.api.XposedModuleInterface
 import io.github.hoerire.free.hook.LauncherHookInstaller
 import io.github.hoerire.free.hook.PortalTapHookInstaller
 import io.github.hoerire.free.hook.ProcessConfiguration
+import io.github.hoerire.free.hook.SettingsHookInstaller
 import io.github.hoerire.free.hook.SidebarHookInstaller
 import io.github.hoerire.free.platform.coloros.ColorOsSidebarTarget
 import io.github.hoerire.free.hook.SystemServerHookInstaller
@@ -45,6 +46,7 @@ class ModuleMain : XposedModule() {
         io.github.hoerire.free.log.ModuleLog.attach { priority, code, throwable ->
             log(priority, TAG, code, throwable)
         }
+        io.github.hoerire.free.settings.ModuleRuntime.module = this
         log(Log.INFO, TAG, "MODULE_LOG_ATTACHED_" + LogTag.of(param.processName))
 
         try {
@@ -88,6 +90,7 @@ class ModuleMain : XposedModule() {
                     "_scnAc" + settings.autoCloseWindow +
                     "_scnSu" + settings.handleSwipeUpToMiniEnabled +
                     "_keep" + settings.radialKeepOpen +
+                    "_ring" + settings.radialSelectionRing +
                     "_tap" + settings.outsideTapCloseMode.storedValue +
                     "_vlog" + settings.verboseLogEnabled +
                     "_pins" + settings.pinnedTargets.size +
@@ -138,6 +141,11 @@ class ModuleMain : XposedModule() {
                 LauncherHookInstaller(this, settings).install(param.classLoader, param.applicationInfo)
             }
 
+            processName == PROCESS_SETTINGS && param.packageName == PROCESS_SETTINGS -> {
+                hooksInstalled = true
+                SettingsHookInstaller(this, settings).install(param.classLoader)
+            }
+
         }
     }
 
@@ -150,6 +158,7 @@ class ModuleMain : XposedModule() {
         param.isSystemServer ||
             param.processName == PROCESS_SYSTEM_UI ||
             param.processName == PROCESS_LAUNCHER ||
+            param.processName == PROCESS_SETTINGS ||
             param.processName == PortalTapHookInstaller.PACKAGE_NAME ||
             isSidebarProcess(param.processName)
 
@@ -177,6 +186,7 @@ class ModuleMain : XposedModule() {
         const val TAG = "Free"
         const val PROCESS_SYSTEM_UI = "com.android.systemui"
         const val PROCESS_LAUNCHER = "com.android.launcher"
+        const val PROCESS_SETTINGS = "com.android.settings"
     }
 
     /** 进程名转成日志里可安全拼接的短标记。 */

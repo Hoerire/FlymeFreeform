@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
-import androidx.compose.material.icons.rounded.BlurCircular
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.ScreenRotation
@@ -24,7 +24,6 @@ import io.github.hoerire.free.config.ModulePreferences
 import io.github.hoerire.free.framework.FrameworkConnectionState
 import io.github.hoerire.free.ui.component.ArrowPreference
 import io.github.hoerire.free.ui.component.ListChoicePreference
-import io.github.hoerire.free.ui.component.SectionTitle
 import io.github.hoerire.free.ui.component.SettingsGroup
 import io.github.hoerire.free.ui.component.SwitchPreference
 
@@ -43,19 +42,16 @@ internal fun RadialSettingsScreen(
     onBack: () -> Unit,
     onCornerSidesChange: (Boolean, Boolean) -> Unit,
     onCornerTriggerRangeChange: (Int) -> Unit,
-    onRadialHitRangeChange: (Int) -> Unit,
-    onRadialIconSizeChange: (Int) -> Unit,
-    onBackdropLevelChange: (Int) -> Unit,
 
     onRadialKeepOpenChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
     onNavigateToPinnedApps: () -> Unit,
+    onNavigateToRadialEffect: () -> Unit,
+    onNavigateToRadialSize: () -> Unit,
 ) {
     val enabled = state.settingsEditable && state.settings.enabled
     var cornerRangePreviewDp by remember { mutableStateOf<Int?>(null) }
-    var hitRangePreviewDp by remember { mutableStateOf<Int?>(null) }
-    var iconSizePreviewDp by remember { mutableStateOf<Int?>(null) }
     val left = state.settings.leftCornerEnabled
     val right = state.settings.rightCornerEnabled
     val sideIndex =
@@ -84,10 +80,8 @@ internal fun RadialSettingsScreen(
         title = stringResource(R.string.radial_settings_title),
         onBack = onBack,
     ) {
-        item(key = "radialGroupApp_title") {
-            SectionTitle(text = stringResource(R.string.radial_group_app_title))
-        }
-        item(key = "radialGroupApp") {
+        // 整页只有一个卡片：八项都是同一层级的开关或入口，再分四段会让页面被标题切成碎片。
+        item(key = "radialSettings") {
             SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                 SwitchPreference(
                     checked = state.settings.radialKeepOpen,
@@ -104,13 +98,6 @@ internal fun RadialSettingsScreen(
                     enabled = enabled,
                     startAction = { PreferenceIcon(Icons.Rounded.Apps, enabled) },
                 )
-            }
-        }
-        item(key = "radialGroupTrigger_title") {
-            SectionTitle(text = stringResource(R.string.radial_group_trigger_title))
-        }
-        item(key = "radialGroupTrigger") {
-            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                 ListChoicePreference(
                     title = stringResource(R.string.corner_trigger_side_title),
                     icon = { PreferenceIcon(Icons.Rounded.SwipeRight, enabled) },
@@ -139,61 +126,20 @@ internal fun RadialSettingsScreen(
                     onPreviewChange = { cornerRangePreviewDp = it },
                     onCommit = onCornerTriggerRangeChange,
                 )
-            }
-        }
-        item(key = "radialGroupLook_title") {
-            SectionTitle(text = stringResource(R.string.radial_group_look_title))
-        }
-        item(key = "radialGroupLook") {
-            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
-                RemoteDpSliderPreference(
-                    icon = Icons.Rounded.CenterFocusStrong,
-                    confirmedValue = state.settings.radialHitRangeDp,
-                    isUpdating = state.isUpdating,
+                ArrowPreference(
+                    title = stringResource(R.string.radial_effect_group_title),
+                    summary = stringResource(R.string.radial_effect_entry_summary),
+                    onClick = onNavigateToRadialEffect,
                     enabled = enabled,
-                    title = stringResource(R.string.radial_hit_range_title),
-                    summary = stringResource(R.string.radial_hit_range_summary),
-                    minDp = ModulePreferences.MIN_RADIAL_HIT_RANGE_DP,
-                    maxDp = ModulePreferences.MAX_RADIAL_HIT_RANGE_DP,
-                    coerceDp = ModulePreferences::coerceRadialHitRangeDp,
-                    onPreviewChange = { hitRangePreviewDp = it },
-                    onCommit = onRadialHitRangeChange,
+                    startAction = { PreferenceIcon(Icons.Rounded.AutoAwesome, enabled) },
                 )
-                RemoteDpSliderPreference(
-                    icon = Icons.Rounded.Apps,
-                    confirmedValue = state.settings.radialIconSizeDp,
-                    isUpdating = state.isUpdating,
+                ArrowPreference(
+                    title = stringResource(R.string.radial_size_page_title),
+                    summary = stringResource(R.string.radial_size_entry_summary),
+                    onClick = onNavigateToRadialSize,
                     enabled = enabled,
-                    title = stringResource(R.string.radial_icon_size_title),
-                    summary = stringResource(R.string.radial_icon_size_summary),
-                    minDp = ModulePreferences.MIN_RADIAL_ICON_SIZE_DP,
-                    maxDp = ModulePreferences.MAX_RADIAL_ICON_SIZE_DP,
-                    coerceDp = ModulePreferences::coerceRadialIconSizeDp,
-                    onPreviewChange = { iconSizePreviewDp = it },
-                    onCommit = onRadialIconSizeChange,
+                    startAction = { PreferenceIcon(Icons.Rounded.CenterFocusStrong, enabled) },
                 )
-                RemoteDpSliderPreference(
-                    icon = Icons.Rounded.BlurCircular,
-                    confirmedValue = state.settings.backdropLevel,
-                    isUpdating = state.isUpdating,
-                    enabled = enabled,
-                    title = stringResource(R.string.radial_backdrop_title),
-                    summary = stringResource(R.string.radial_backdrop_summary),
-                    minDp = ModulePreferences.MIN_BACKDROP_LEVEL,
-                    maxDp = ModulePreferences.MAX_BACKDROP_LEVEL,
-                    coerceDp = ModulePreferences::coerceBackdropLevel,
-                    onPreviewChange = {},
-                    onCommit = onBackdropLevelChange,
-                    showDpUnit = false,
-                )
-                // 这两项只暂停扇形菜单的呼出，其余能力不受影响，因此归在扇形这一页。
-            }
-        }
-        item(key = "radialGroupPause_title") {
-            SectionTitle(text = stringResource(R.string.radial_group_pause_title))
-        }
-        item(key = "radialGroupPause") {
-            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                 SwitchPreference(
                     checked = state.settings.pauseInLandscape,
                     onCheckedChange = onPauseInLandscapeChange,
@@ -216,32 +162,6 @@ internal fun RadialSettingsScreen(
     cornerRangePreviewDp?.let { rangeDp ->
         CornerRangePreview(
             rangeDp = rangeDp,
-            leftEnabled = left,
-            rightEnabled = right,
-        )
-    }
-    hitRangePreviewDp?.let { rangeDp ->
-        HitRangePreview(
-            hitRangeDp = rangeDp,
-            itemCount =
-                if (state.settings.pinsSaved) {
-                    state.settings.pinnedTargets.size + 1
-                } else {
-                    ModulePreferences.MAX_PINNED_APPS + 1
-                },
-            leftEnabled = left,
-            rightEnabled = right,
-        )
-    }
-    iconSizePreviewDp?.let { sizeDp ->
-        IconSizePreview(
-            iconSizeDp = sizeDp,
-            itemCount =
-                if (state.settings.pinsSaved) {
-                    state.settings.pinnedTargets.size + 1
-                } else {
-                    ModulePreferences.MAX_PINNED_APPS + 1
-                },
             leftEnabled = left,
             rightEnabled = right,
         )

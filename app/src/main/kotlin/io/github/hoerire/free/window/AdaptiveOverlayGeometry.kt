@@ -79,6 +79,7 @@ internal object AdaptiveOverlayGeometry {
         radialItemCount: Int,
         radialHitRangeDp: Float? = null,
         radialIconSizeDp: Float? = null,
+        radialRadiusPercent: Int? = null,
         radialInsets: OverlaySafeInsets = safeInsets,
         fontScale: Float,
         panelItemCount: Int,
@@ -105,6 +106,7 @@ internal object AdaptiveOverlayGeometry {
                 itemCount = radialItemCount,
                 hitRadiusDp = radialHitRangeDp,
                 iconSizeDp = radialIconSizeDp ?: RadialIconGeometry.BASE_ICON_DIAMETER_DP,
+                radiusPercent = (radialRadiusPercent ?: 100).toFloat(),
             )
 
         val outerMargin = plateDiameter * OUTER_MARGIN_FRACTION
