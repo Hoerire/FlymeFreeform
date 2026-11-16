@@ -44,7 +44,6 @@
     <string name="radial_settings_title">扇形相关</string>
     <string name="radial_settings_summary">呼出位置与命中判定</string>
     <string name="radial_apps_title">扇形应用</string>
-    <string name="radial_apps_recent_summary">首次使用时默认展示最近使用的六个应用</string>
     <string name="radial_apps_empty_summary">未固定快捷项，扇形中仅显示“更多”</string>
     <string name="radial_apps_count_summary">已固定 %1$d 项</string>
 

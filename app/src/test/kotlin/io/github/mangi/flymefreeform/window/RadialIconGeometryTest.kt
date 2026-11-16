@@ -1,7 +1,7 @@
-package io.github.hoerire.flymefreeform.window
+package io.github.hoerire.free.window
 
-import io.github.hoerire.flymefreeform.gesture.CornerSide
-import io.github.hoerire.flymefreeform.gesture.RadialGeometry
+import io.github.hoerire.free.gesture.CornerSide
+import io.github.hoerire.free.gesture.RadialGeometry
 import kotlin.math.hypot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

@@ -1,6 +1,6 @@
-package io.github.hoerire.flymefreeform.platform.coloros
+package io.github.hoerire.free.platform.coloros
 
-import io.github.hoerire.flymefreeform.config.PinnedTarget
+import io.github.hoerire.free.config.PinnedTarget
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

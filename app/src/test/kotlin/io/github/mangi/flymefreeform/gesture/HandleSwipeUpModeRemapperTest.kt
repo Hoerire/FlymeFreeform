@@ -1,4 +1,4 @@
-package io.github.hoerire.flymefreeform.gesture
+package io.github.hoerire.free.gesture
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

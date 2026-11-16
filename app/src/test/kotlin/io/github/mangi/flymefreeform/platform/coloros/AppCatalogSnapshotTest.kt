@@ -1,6 +1,6 @@
-package io.github.hoerire.flymefreeform.platform.coloros
+package io.github.hoerire.free.platform.coloros
 
-import io.github.hoerire.flymefreeform.config.ModuleSettingsSnapshot
+import io.github.hoerire.free.config.ModuleSettingsSnapshot
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

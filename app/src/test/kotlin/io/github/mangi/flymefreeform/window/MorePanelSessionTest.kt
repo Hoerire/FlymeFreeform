@@ -1,7 +1,7 @@
-package io.github.hoerire.flymefreeform.window
+package io.github.hoerire.free.window
 
-import io.github.hoerire.flymefreeform.window.MorePanelSession.Effect
-import io.github.hoerire.flymefreeform.platform.coloros.SidebarProtocol
+import io.github.hoerire.free.window.MorePanelSession.Effect
+import io.github.hoerire.free.platform.coloros.SidebarProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

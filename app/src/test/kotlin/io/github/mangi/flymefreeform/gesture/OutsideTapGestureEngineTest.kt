@@ -1,6 +1,6 @@
-package io.github.hoerire.flymefreeform.gesture
+package io.github.hoerire.free.gesture
 
-import io.github.hoerire.flymefreeform.config.OutsideTapCloseMode
+import io.github.hoerire.free.config.OutsideTapCloseMode
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

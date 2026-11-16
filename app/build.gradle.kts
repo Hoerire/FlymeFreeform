@@ -4,21 +4,21 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-val flymeFreeformVersionCode = providers.gradleProperty("flymeFreeformVersionCode").get().toInt()
-val flymeFreeformVersionName = providers.gradleProperty("flymeFreeformVersionName").get()
+val freeVersionCode = providers.gradleProperty("freeVersionCode").get().toInt()
+val freeVersionName = providers.gradleProperty("freeVersionName").get()
 
 android {
-    namespace = "io.github.hoerire.flymefreeform"
+    namespace = "io.github.hoerire.free"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "io.github.hoerire.flymefreeform"
+        applicationId = "io.github.hoerire.free"
         minSdk = 35
         targetSdk = 37
-        versionCode = flymeFreeformVersionCode
-        versionName = flymeFreeformVersionName
+        versionCode = freeVersionCode
+        versionName = freeVersionName
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -58,7 +58,7 @@ androidComponents {
         val suffix = if (variant.buildType == "debug") "-Debug" else ""
         variant.outputs.forEach { output ->
             output.outputFileName.set(
-                output.versionName.map { version -> "FlymeFreeform-v$version$suffix.apk" },
+                output.versionName.map { version -> "Free-v$version$suffix.apk" },
             )
         }
     }

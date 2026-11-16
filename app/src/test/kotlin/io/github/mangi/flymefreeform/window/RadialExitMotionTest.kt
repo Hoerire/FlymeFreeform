@@ -1,4 +1,4 @@
-package io.github.hoerire.flymefreeform.window
+package io.github.hoerire.free.window
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

@@ -1,4 +1,4 @@
-package io.github.hoerire.flymefreeform.window
+package io.github.hoerire.free.window
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -18,8 +18,8 @@ class AdaptiveOverlayGeometryTest {
         )
         assertEquals(242f, metrics.radial.radius, 0.001f)
         assertTrue(metrics.panel.bounds.left >= panelInsets.left)
-        val layout = io.github.hoerire.flymefreeform.gesture.RadialGeometry.layout(
-            io.github.hoerire.flymefreeform.gesture.CornerSide.Left,
+        val layout = io.github.hoerire.free.gesture.RadialGeometry.layout(
+            io.github.hoerire.free.gesture.CornerSide.Left,
             400f, 890f - radialInsets.top - radialInsets.bottom, metrics.radial.radius, 7,
             radialInsets.left, radialInsets.top,
         )

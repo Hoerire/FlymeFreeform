@@ -1,31 +1,31 @@
-package io.github.hoerire.flymefreeform.apps
+package io.github.hoerire.free.apps
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class AppSelectionPolicyTest {
     @Test
-    fun firstUsePrefersRecentAppsAndFillsRemainingSlots() {
-        val recent = (1..7).map { "recent-$it" }
+    fun emptyPinsProduceEmptyRadial() {
         assertEquals(
-            recent.take(6),
-            AppSelectionPolicy.radialItems(false, emptyList(), recent, listOf("other"), { it }, 6),
-        )
-        assertEquals(
-            listOf("recent", "other"),
-            AppSelectionPolicy.radialItems(false, emptyList(), listOf("recent"), listOf("recent", "other"), { it }, 6),
+            emptyList<String>(),
+            AppSelectionPolicy.radialItems(emptyList(), { it }, 6),
         )
     }
 
     @Test
-    fun savedPinsPreferPinnedEntriesThenRecentApps() {
+    fun onlyPinnedEntriesAreShown() {
         assertEquals(
-            listOf("available", "recent"),
-            AppSelectionPolicy.radialItems(true, listOf("available"), listOf("recent"), listOf("other"), { it }, 6),
+            listOf("available"),
+            AppSelectionPolicy.radialItems(listOf("available"), { it }, 6),
+        )
+        // 重复项去重；超过上限时截断；不掺任何「最近应用」。
+        assertEquals(
+            listOf("a", "b"),
+            AppSelectionPolicy.radialItems(listOf("a", "b", "a"), { it }, 6),
         )
         assertEquals(
-            listOf("recent"),
-            AppSelectionPolicy.radialItems(true, emptyList(), listOf("recent"), listOf("other"), { it }, 6),
+            listOf("a", "b"),
+            AppSelectionPolicy.radialItems(listOf("a", "b", "c"), { it }, 2),
         )
     }
 }

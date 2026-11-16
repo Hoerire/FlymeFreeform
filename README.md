@@ -2,13 +2,13 @@
   <img src="app/src/main/res/drawable-nodpi/ic_launcher_mark.png" width="112" alt="Flyme 小窗" />
 </p>
 
-<h1 align="center">Flyme 小窗（FlymeFreeform）</h1>
+<h1 align="center">Flyme 小窗（Free）</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/ROM-ColorOS-00A862" alt="面向 ColorOS" />
   <img src="https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android" alt="最低 Android 15" />
   <img src="https://img.shields.io/badge/libxposed-API_102-4285F4" alt="libxposed API 102" />
-  <img src="https://img.shields.io/badge/version-2.6.0-blue" alt="版本 2.6.0" />
+  <img src="https://img.shields.io/badge/version-3.0-blue" alt="版本 3.0" />
 </p>
 
 把魅族的 Flyme 小窗交互搬到 ColorOS：从屏幕底角斜向内上滑呼出扇形菜单，滑到目标松手，当即以自由浮窗打开。
@@ -104,7 +104,7 @@
 
 ## 致谢
 
-- [Mangi-11/FlymeFreeform](https://github.com/Mangi-11/FlymeFreeform)：上游来源，原作者 Mangi-11
+- [Mangi-11/Flyna](https://github.com/Mangi-11/Flyna)：上游来源，原作者 Mangi-11
 - [Flyme](https://www.flyme.com/)：交互设计参考
 - [libxposed API](https://github.com/libxposed/api)：现代 Xposed API
 - [vialoyed-ctrl](https://github.com/vialoyed-ctrl)：内容传送门的分享面板与实现思路

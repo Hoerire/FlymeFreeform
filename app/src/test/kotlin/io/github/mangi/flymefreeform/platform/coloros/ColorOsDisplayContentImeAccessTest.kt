@@ -1,4 +1,4 @@
-package io.github.hoerire.flymefreeform.platform.coloros
+package io.github.hoerire.free.platform.coloros
 
 import org.junit.Assert.assertSame
 import org.junit.Test

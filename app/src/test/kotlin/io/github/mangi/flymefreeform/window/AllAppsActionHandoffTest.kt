@@ -1,6 +1,6 @@
-package io.github.hoerire.flymefreeform.window
+package io.github.hoerire.free.window
 
-import io.github.hoerire.flymefreeform.window.AllAppsActionHandoff.Action
+import io.github.hoerire.free.window.AllAppsActionHandoff.Action
 import org.junit.Assert.*
 import org.junit.Test
 

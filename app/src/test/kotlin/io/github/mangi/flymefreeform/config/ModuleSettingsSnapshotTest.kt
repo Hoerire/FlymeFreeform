@@ -1,4 +1,4 @@
-package io.github.hoerire.flymefreeform.config
+package io.github.hoerire.free.config
 
 import android.content.SharedPreferences
 import org.junit.Assert.assertEquals
