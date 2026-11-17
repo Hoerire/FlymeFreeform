@@ -40,13 +40,6 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           ls "$ANDROID_HOME/platforms" || true
 
-      # 单元测试是契约门禁：失败即挡住出包。任务名在 AGP 9 下是 testDebugUnitTest，
-      # 不存在 testReleaseUnitTest，因此不再做任务名探测。
-      - name: Unit tests
-        run: |
-          chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --stacktrace
-
       # libs/ 下两个 AAR 产物不入库（体积大且随版本变化），构建前现取：
       # 见 docs/build-deps.md。缺这两个文件时 :app:assembleRelease 会编译失败。
       - name: Prepare compile-only stubs
@@ -59,6 +52,13 @@ jobs:
             https://dl.google.com/android/maven2/androidx/fragment/fragment/1.8.9/fragment-1.8.9.aar
           unzip -p /tmp/fragment.aar classes.jar > libs/fragment-classes.jar
           ls -l libs
+
+      # 单元测试是契约门禁：失败即挡住出包。任务名在 AGP 9 下是 testDebugUnitTest，
+      # 不存在 testReleaseUnitTest，因此不再做任务名探测。
+      - name: Unit tests
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --stacktrace
 
       - name: Assemble release
         run: |
