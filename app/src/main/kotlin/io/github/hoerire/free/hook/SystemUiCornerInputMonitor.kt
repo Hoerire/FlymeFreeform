@@ -275,6 +275,8 @@ internal class SystemUiCornerInputMonitor(
         private var activePointerId = -1
         private var tracking = false
         private var pilferAttempted = false
+        private var downX = 0f
+        private var downY = 0f
 
         val streamActive: Boolean
             get() = tracking
@@ -320,6 +322,8 @@ internal class SystemUiCornerInputMonitor(
                                 rightEnabled = side == CornerSide.Right,
                             )
                         activePointerId = event.getPointerId(0)
+                        downX = event.x
+                        downY = event.y
                         gestureEngine.down(activePointerId, event.x, event.y, config)
                         if (gestureEngine.phase == GesturePhase.Armed) {
                             activeConfig = config
@@ -349,9 +353,17 @@ internal class SystemUiCornerInputMonitor(
                             } else {
                                 gestureEngine.cancel()
                             }
-                        // 只在手势真正激活（位移达到 touchSlop）时抢流。
-                        // 之前位移 3dp 就抢，角区里普通的点按（手指常见 3–8dp 抖动）会被吞掉，
-                        // 应用收不到 ACTION_UP，表现为「底角点不到、要点好几次」。
+                        if (!pilferAttempted && pointerIndex >= 0) {
+                            // 位移 3dp 就抢流，不等引擎的 Activate（touchSlop）。
+                            // 只在 Activate 抢的话，滑动开头那几个事件仍会落到下层应用。
+                            val slop = PILFER_SLOP_DP * density
+                            val dx = event.getX(pointerIndex) - downX
+                            val dy = event.getY(pointerIndex) - downY
+                            if (dx * dx + dy * dy >= slop * slop) {
+                                pilferAttempted = true
+                                pilfer(this)
+                            }
+                        }
                         if (!pilferAttempted && action is GestureAction.Activate) {
                             pilferAttempted = true
                             pilfer(this)
@@ -392,5 +404,8 @@ internal class SystemUiCornerInputMonitor(
         const val CORNER_GESTURE_WINDOW_TYPE = 2024
         const val CORNER_INPUT_CHANNEL_TITLE = "Free-corner-input"
         const val PILFER_FAILURE_LOG_INTERVAL_MS = 10_000L
+
+        /** 位移到这个距离就抢流，不等 touchSlop。 */
+        const val PILFER_SLOP_DP = 3f
     }
 }

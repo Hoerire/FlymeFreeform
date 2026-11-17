@@ -40,10 +40,10 @@ internal class SystemUiHookInstaller(
                         // 通知点击小窗：改 Bundle（含剥离 remote 转场），让窗口不被横幅压住。
                         NotifBundleHook(module, configuration).install(classLoader)
                         installSettingsObserver(context)
-                        // 角区受信任 SPY 热区：只有它能在第三方应用里把触摸流抢过来，
-                        // 否则下拉扇形时下层应用照样会收到手指（system_server 只旁观）。
+                        // 角区抢流：InputMonitor 收事件不消费、不占屏幕，点击不再被吃；
+                        // 位移到 3dp 才 pilfer，保住“滑动不穿透到下层应用”。
                         runCatching {
-                            SystemUiCornerInputMonitor(context, module, configuration).start()
+                            CornerInputPilferMonitor(module, configuration).start(context)
                         }.onSuccess {
                             io.github.hoerire.free.log.ModuleLog.info(
                                 "SYSTEMUI_CORNER_SPY_STARTED",
