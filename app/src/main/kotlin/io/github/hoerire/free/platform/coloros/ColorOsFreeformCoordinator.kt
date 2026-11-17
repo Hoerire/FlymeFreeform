@@ -1460,7 +1460,7 @@ internal class ColorOsFreeformCoordinator(
     private fun isGestureEnvironmentAllowed(): Boolean {
         if (!environmentState.isGestureAllowed(refreshKeyguard = true)) return false
         if (isCriticalSystemUiForeground()) return false
-        // 屏蔽键盘：输入法弹出时不接管手势，否则打字时从底角起手会误触扇形。
+        // 屏蔽键盘：输入法弹出时暂停扇形，否则打字时从底角起手会误触。
         if (lastSettings.pauseInKeyboard && isInputMethodVisible()) return false
         // 排除列表命中时不接管手势：不是「呼出后再关闭」，而是保持系统原样。
         return !lastSettings.isBlacklisted(focusedWindowPackage())

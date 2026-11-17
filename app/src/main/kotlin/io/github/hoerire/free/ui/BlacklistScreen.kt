@@ -204,7 +204,7 @@ private fun PackagePickerScreen(
         item(key = "list") {
             SettingsGroup(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 if (appsLoading) {
-                    // 扫描系统应用要重建数百个图标，先给出正在加载的行，避免列表看起来没反应。
+                    // 首次扫描要给数百个应用重建图标，先给出正在加载的行，避免列表看起来没反应。
                     BasicComponent(
                         title = stringResource(R.string.available_apps_loading),
                         enabled = false,

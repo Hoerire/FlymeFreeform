@@ -105,7 +105,7 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setPauseInGameMode(enabled: Boolean) =
         updateSettings { it.copy(pauseInGameMode = enabled) }
 
-    /** 屏蔽键盘：输入法弹出时不响应扇形手势。 */
+    /** 屏蔽键盘：输入法弹出时暂停扇形手势。 */
     fun setPauseInKeyboard(enabled: Boolean) =
         updateSettings { it.copy(pauseInKeyboard = enabled) }
 

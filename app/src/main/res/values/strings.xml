@@ -140,8 +140,6 @@
     <string name="float_handle_max_title">贴边数量</string>
     <string name="float_handle_max_summary">同时保留的浮标个数，最多 10 个</string>
     <string name="zoom_max_windows_blocked_summary">已由「贴边互切」接管，开启期间固定为 1</string>
-    <string name="show_system_apps_title">全部应用</string>
-    <string name="show_system_apps_summary">连没有桌面图标的应用（系统组件、预装应用）一起显示</string>
     <string name="handle_swipe_up_to_mini_title">快速上滑</string>
     <string name="handle_swipe_up_to_mini_summary">底部横条上滑，切为迷你浮窗</string>
 

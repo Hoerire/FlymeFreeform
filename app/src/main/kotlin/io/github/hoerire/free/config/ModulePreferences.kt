@@ -73,7 +73,7 @@ internal object ModulePreferences {
     const val KEY_PAUSE_IN_LANDSCAPE = "pause_in_landscape"
     const val KEY_PAUSE_IN_GAME_MODE = "pause_in_game_mode"
 
-    /** 屏蔽键盘：输入法弹出时不响应扇形手势（默认关闭）。 */
+    /** 屏蔽键盘：输入法弹出时暂停扇形手势（默认关闭）。 */
     const val KEY_PAUSE_IN_KEYBOARD = "pause_in_keyboard_v1"
     const val KEY_VERBOSE_LOG = "verbose_log_enabled"
     const val KEY_BLACKLIST_PACKAGES = "foreground_blacklist_v1"
@@ -124,9 +124,6 @@ internal object ModulePreferences {
     /** 贴边挂机：收成贴边浮标后保持应用继续运行，不停止任务。 */
     const val KEY_FLOAT_KEEP_ALIVE = "float_keep_alive_v1"
     const val DEFAULT_FLOAT_KEEP_ALIVE = false
-
-    /** 应用选择列表是否列出系统应用；默认关，保持列表干净。 */
-    const val KEY_SHOW_SYSTEM_APPS = "show_system_apps_v1"
 
     /** 「禁用浮窗」默认屏蔽项的一次性迁移标记；写过一次设置后就不再自动补。 */
     const val KEY_ZOOM_EXCLUDED_LINKER_MIGRATED = "zoom_excluded_linker_migrated_v1"
@@ -211,7 +208,6 @@ internal object ModulePreferences {
     const val MIN_FLOAT_HANDLE_MAX_COUNT = 2
     const val MAX_FLOAT_HANDLE_MAX_COUNT = 10
     const val DEFAULT_ZOOM_ALLOW_ANY_APP = false
-    const val DEFAULT_SHOW_SYSTEM_APPS = false
     const val DEFAULT_RADIAL_KEEP_OPEN = false
     /** 选中光圈默认关闭：默认只保留 20% 的选中放大，特效由用户自己开。 */
     const val DEFAULT_RADIAL_SELECTION_RING = false

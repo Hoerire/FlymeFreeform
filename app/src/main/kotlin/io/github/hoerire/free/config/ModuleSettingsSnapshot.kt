@@ -61,12 +61,10 @@ internal data class ModuleSettingsSnapshot(
     /** 背景滑条：负值为黑色遮罩浓度，正值为系统模糊，0 为不处理背景。 */
     val backdropLevel: Int = ModulePreferences.DEFAULT_BACKDROP_LEVEL,
     val autoCloseWindow: Boolean = ModulePreferences.DEFAULT_AUTO_CLOSE_WINDOW,
-    /** 长按迷你窗：长按放大、再长按还原。 */
+    /** 长按迷你窗静音，再次长按恢复；普通小窗不响应。 */
     val longPressMuteEnabled: Boolean = ModulePreferences.DEFAULT_LONG_PRESS_MUTE,
     /** 贴边挂机：收成贴边浮标后保持应用继续运行。 */
     val floatKeepAlive: Boolean = ModulePreferences.DEFAULT_FLOAT_KEEP_ALIVE,
-    /** 应用选择列表是否列出系统应用（本机生效，不影响 Hook 判定）。 */
-    val showSystemApps: Boolean = ModulePreferences.DEFAULT_SHOW_SYSTEM_APPS,
     /** 扇形呼出后未选择任何条目时保持显示，不自动收起。 */
     val radialKeepOpen: Boolean = ModulePreferences.DEFAULT_RADIAL_KEEP_OPEN,
     /** 选中光圈：滑选条目时在图标外沿显示白色高亮圈。 */
@@ -169,7 +167,6 @@ internal data class ModuleSettingsSnapshot(
             .putBoolean(ModulePreferences.KEY_AUTO_CLOSE_WINDOW, autoCloseWindow)
             .putBoolean(ModulePreferences.KEY_FLOAT_KEEP_ALIVE, floatKeepAlive)
             .putBoolean(ModulePreferences.KEY_LONG_PRESS_MUTE, longPressMuteEnabled)
-            .putBoolean(ModulePreferences.KEY_SHOW_SYSTEM_APPS, showSystemApps)
             // 旧分项键不再写入，升级后一并清除，避免残留值干扰排查。
             .remove(ModulePreferences.LEGACY_KEY_ZOOM_INTERACTION_ENABLED)
             .putBoolean(ModulePreferences.KEY_RADIAL_KEEP_OPEN, radialKeepOpen)
@@ -415,10 +412,6 @@ internal data class ModuleSettingsSnapshot(
                 longPressMuteEnabled = preferences.getBoolean(
                     ModulePreferences.KEY_LONG_PRESS_MUTE,
                     ModulePreferences.DEFAULT_LONG_PRESS_MUTE,
-                ),
-                showSystemApps = preferences.getBoolean(
-                    ModulePreferences.KEY_SHOW_SYSTEM_APPS,
-                    ModulePreferences.DEFAULT_SHOW_SYSTEM_APPS,
                 ),
                 radialKeepOpen = preferences.getBoolean(
                     ModulePreferences.KEY_RADIAL_KEEP_OPEN,

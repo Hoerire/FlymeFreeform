@@ -36,7 +36,7 @@ internal class LauncherAppRepository(private val context: Context) {
     private val mutableLoading = MutableStateFlow(false)
 
     /** 上一轮结果：重新打开开关时先按缓存立即生效，再在后台补齐。 */
-    private var cachedSystemEntries: List<SelectableEntry>? = null
+    private var cachedNonLauncherEntries: List<SelectableEntry>? = null
     private var cachedLauncherEntries: List<SelectableEntry> = emptyList()
     val apps: StateFlow<List<SelectableEntry>> = mutableApps.asStateFlow()
     val loading: StateFlow<Boolean> = mutableLoading.asStateFlow()
@@ -71,7 +71,7 @@ internal class LauncherAppRepository(private val context: Context) {
      */
     fun refresh() {
         // 上一轮结果先顶上：首次扫描要重建数百个图标，期间不能只让界面停在空列表。
-        cachedSystemEntries?.let { emit(cachedLauncherEntries, it) }
+        cachedNonLauncherEntries?.let { emit(cachedLauncherEntries, it) }
         mutableLoading.value = true
         worker.execute {
             val launcherApps =
@@ -101,8 +101,8 @@ internal class LauncherAppRepository(private val context: Context) {
             cachedLauncherEntries = launcherEntries
             // 桌面图标列表之外的应用（系统组件、预装组件、没有图标的包）一并列出。
             val otherEntries =
-                systemAppEntries(launcherEntries.mapTo(HashSet()) { it.packageName })
-                    .also { cachedSystemEntries = it }
+                nonLauncherEntries(launcherEntries.mapTo(HashSet()) { it.packageName })
+                    .also { cachedNonLauncherEntries = it }
             emit(launcherEntries, otherEntries)
             mutableLoading.value = false
         }
@@ -111,17 +111,17 @@ internal class LauncherAppRepository(private val context: Context) {
     /** 以固定排序规则合成最终列表。 */
     private fun emit(
         launcherEntries: List<SelectableEntry>,
-        systemEntries: List<SelectableEntry>,
+        otherEntries: List<SelectableEntry>,
     ) {
         val collator = Collator.getInstance(Locale.getDefault())
         mutableApps.value =
-            (launcherEntries + systemEntries)
+            (launcherEntries + otherEntries)
                 .distinctBy(SelectableEntry::packageName)
                 .sortedWith { first, second -> collator.compare(first.label, second.label) }
     }
 
     /**
-     * 系统应用条目：桌面图标列表之外的所有已安装应用。
+     * 非桌面应用条目：桌面图标列表之外的所有已安装应用。
      *
      * 这里**不要求有启动入口**：跨端互联、消息同步这类系统组件本身没有桌面图标，
      * 但会以调用方身份拉起界面；排除列表按包名匹配，必须能选到它们。
@@ -132,7 +132,7 @@ internal class LauncherAppRepository(private val context: Context) {
      * 只按系统标记扫会让它们在排除列表里彻底选不到。桌面图标列表里已有的包跳过，
      * 避免重复加载图标。
      */
-    private fun systemAppEntries(known: Set<String>): List<SelectableEntry> {
+    private fun nonLauncherEntries(known: Set<String>): List<SelectableEntry> {
         val manager = context.packageManager
         return manager
             .getInstalledApplications(0)
