@@ -61,8 +61,9 @@ internal class NotifBundleHook(
         val entry = args.getOrNull(1)
         val pkg = packageOf(entry)
         if (pkg != null && pkg in SKIP_PACKAGES) return
-        // 排除列表内的应用保持系统原有启动方式。
-        if (pkg != null && settings.isBlacklisted(pkg)) {
+        // 黑名单（暂停增强）与排除列表（禁用浮窗）都保持系统原有启动方式。
+        // 通知路径此前只查黑名单，导致「排除列表」里的应用从通知/横幅点开仍被改成小窗。
+        if (pkg != null && (settings.isBlacklisted(pkg) || settings.isZoomLaunchExcluded(pkg))) {
             ModuleLog.debug(TAG) { "NOTIF_BUNDLE_SKIPPED_EXCLUDED " + pkg }
             return
         }

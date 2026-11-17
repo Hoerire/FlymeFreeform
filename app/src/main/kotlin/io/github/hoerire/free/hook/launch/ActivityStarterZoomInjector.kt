@@ -635,6 +635,19 @@ internal class ActivityStarterZoomInjector(
                     ModuleLog.debug(TAG) { "ZOOM_SKIP_NO_TARGET_ac" + intent.action.orEmpty() }
                     return null
                 }
+        // 系统/服务代发启动：没有启动入口的应用（如设备互联 com.oplus.linker）靠服务
+        // 在后台代为发起，前台往往还是别的应用，只有「目标包」这一维度能判准。
+        // 2.6.0 曾用 zoomLaunchSystem 整体关掉这类改写，该开关在 2.7.2 被移除后，
+        // 列表里的应用会重新被开成小窗（透明 Activity 在小窗里会露出一块深色面板）。
+        // 这里只针对「屏蔽列表 / 禁用浮窗」里的目标包回退成全屏，其余系统代发不受影响。
+        if (callingPackage == SYSTEM_SERVER_PACKAGE && intent.action == Intent.ACTION_MAIN) {
+            val targetListed =
+                environment?.isZoomExcluded(target) == true || environment?.isExcluded(target) == true
+            if (targetListed) {
+                ModuleLog.info("ZOOM_SKIP_SYSTEM_LAUNCH_EXCLUDED_tg" + target)
+                return null
+            }
+        }
         // 闸门 3（目标维度）：命中「禁用浮窗」的应用，不以任何形式的自由浮窗打开。
         if (environment?.isZoomExcluded(target) == true) {
             ModuleLog.debug(TAG) { "ZOOM_SKIP_EXCLUDED_TARGET_" + target }
