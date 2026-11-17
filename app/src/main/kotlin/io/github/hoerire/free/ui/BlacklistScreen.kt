@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Remove
-import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,7 +26,6 @@ import io.github.hoerire.free.config.PinnedTarget
 import io.github.hoerire.free.framework.FrameworkConnectionState
 import io.github.hoerire.free.ui.component.BasicComponent
 import io.github.hoerire.free.ui.component.SettingsGroup
-import io.github.hoerire.free.ui.component.SwitchPreference
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.core.IosTypography
 import io.github.neoruaa.glasmio.ui.GlasmioTextField
@@ -173,7 +171,6 @@ private fun PackagePickerScreen(
     onBack: () -> Unit,
     packages: List<String>,
     onChange: (List<String>) -> Unit,
-    onShowSystemAppsChange: (Boolean) -> Unit,
     title: String,
     addedLabel: String,
 ) {
@@ -203,18 +200,6 @@ private fun PackagePickerScreen(
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = stringResource(R.string.search_apps_placeholder),
             )
-        }
-        item(key = "system") {
-            SettingsGroup(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                SwitchPreference(
-                    checked = state.settings.showSystemApps,
-                    onCheckedChange = onShowSystemAppsChange,
-                    title = stringResource(R.string.show_system_apps_title),
-                    summary = stringResource(R.string.show_system_apps_summary),
-                    enabled = state.settingsEditable,
-                    startAction = { PreferenceIcon(Icons.Rounded.Widgets, enabled) },
-                )
-            }
         }
         item(key = "list") {
             SettingsGroup(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
@@ -271,7 +256,6 @@ internal fun BlacklistPickerScreen(
     appsLoading: Boolean,
     onBack: () -> Unit,
     onBlacklistChange: (List<String>) -> Unit,
-    onShowSystemAppsChange: (Boolean) -> Unit,
 ) {
     PackagePickerScreen(
         state = state,
@@ -280,7 +264,6 @@ internal fun BlacklistPickerScreen(
         onBack = onBack,
         packages = state.settings.blacklistPackages,
         onChange = onBlacklistChange,
-        onShowSystemAppsChange = onShowSystemAppsChange,
         title = stringResource(R.string.blacklist_add_action),
         addedLabel = stringResource(R.string.blacklist_added),
     )
@@ -294,7 +277,6 @@ internal fun ZoomExcludedPickerScreen(
     appsLoading: Boolean,
     onBack: () -> Unit,
     onZoomExcludedChange: (List<String>) -> Unit,
-    onShowSystemAppsChange: (Boolean) -> Unit,
 ) {
     PackagePickerScreen(
         state = state,
@@ -303,7 +285,6 @@ internal fun ZoomExcludedPickerScreen(
         onBack = onBack,
         packages = state.settings.zoomExcludedPackages,
         onChange = onZoomExcludedChange,
-        onShowSystemAppsChange = onShowSystemAppsChange,
         title = stringResource(R.string.zoom_excluded_add_action),
         addedLabel = stringResource(R.string.blacklist_added),
     )

@@ -80,7 +80,16 @@ internal fun PinnedAppsScreen(
         if (state.canChangeSettings) refreshCatalog()
         onPauseOrDispose { cancelCatalog() }
     }
-    val allEntries = remember(apps, sidebarCatalog.entries) { apps + sidebarCatalog.entries }
+    // 应用列表现在包含全部已安装应用（排除列表要按包名选到没有图标的组件），
+    // 但扇形只能启动有启动入口的应用：这里把没有入口的条目挡在添加列表之外。
+    val launchableApps =
+        remember(apps) {
+            apps.filter { entry ->
+                val target = entry.target
+                target !is PinnedTarget.App || target.className.isNotEmpty()
+            }
+        }
+    val allEntries = remember(launchableApps, sidebarCatalog.entries) { launchableApps + sidebarCatalog.entries }
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerQuery by remember { mutableStateOf("") }
     // 拖动或增删后的本地顺序；远端配置回读同步前以它为准，避免列表闪回旧顺序
@@ -276,7 +285,8 @@ internal fun PinnedAppsScreen(
                             title = stringResource(if (sidebarCatalog.status == SidebarCatalogStatus.Loading) R.string.sidebar_catalog_loading else R.string.sidebar_catalog_unavailable),
                             summary = stringResource(if (sidebarCatalog.status == SidebarCatalogStatus.Loading) R.string.sidebar_catalog_loading_summary else R.string.sidebar_catalog_retry_summary),
                             onClick = onRefreshCatalog,
-                            enabled = state.settingsEditable && sidebarCatalog.status != SidebarCatalogStatus.Loading,
+                            // 读取中也允许点：卡住时这是唯一的自救入口，点了就重新发起一轮。
+                            enabled = state.settingsEditable,
                         )
                     }
                 }

@@ -18,6 +18,8 @@ internal data class ModuleSettingsSnapshot(
         ModulePreferences.DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED,
     val pauseInLandscape: Boolean = ModulePreferences.DEFAULT_PAUSE_IN_LANDSCAPE,
     val pauseInGameMode: Boolean = ModulePreferences.DEFAULT_PAUSE_IN_GAME_MODE,
+    /** 屏蔽键盘：输入法弹出时暂停扇形手势（默认关闭）。 */
+    val pauseInKeyboard: Boolean = ModulePreferences.DEFAULT_PAUSE_IN_KEYBOARD,
     val verboseLogEnabled: Boolean = ModulePreferences.DEFAULT_VERBOSE_LOG,
     /** 这些应用在前台时不触发扇形菜单。 */
     val blacklistPackages: List<String> = emptyList(),
@@ -140,6 +142,7 @@ internal data class ModuleSettingsSnapshot(
             .putBoolean(ModulePreferences.KEY_RIGHT_CORNER_ENABLED, rightCornerEnabled)
             .putBoolean(ModulePreferences.KEY_PAUSE_IN_LANDSCAPE, pauseInLandscape)
             .putBoolean(ModulePreferences.KEY_PAUSE_IN_GAME_MODE, pauseInGameMode)
+            .putBoolean(ModulePreferences.KEY_PAUSE_IN_KEYBOARD, pauseInKeyboard)
             .putBoolean(ModulePreferences.KEY_VERBOSE_LOG, verboseLogEnabled)
             .putInt(
                 ModulePreferences.KEY_ZOOM_MAX_WINDOW_COUNT,
@@ -354,6 +357,10 @@ internal data class ModuleSettingsSnapshot(
                 pauseInGameMode = preferences.getBoolean(
                     ModulePreferences.KEY_PAUSE_IN_GAME_MODE,
                     ModulePreferences.DEFAULT_PAUSE_IN_GAME_MODE,
+                ),
+                pauseInKeyboard = preferences.getBoolean(
+                    ModulePreferences.KEY_PAUSE_IN_KEYBOARD,
+                    ModulePreferences.DEFAULT_PAUSE_IN_KEYBOARD,
                 ),
                 verboseLogEnabled = preferences.getBoolean(
                     ModulePreferences.KEY_VERBOSE_LOG,

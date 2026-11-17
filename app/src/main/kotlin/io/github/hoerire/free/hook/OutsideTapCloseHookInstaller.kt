@@ -20,6 +20,7 @@ import io.github.hoerire.free.gesture.OutsideTapGestureEngine
 import io.github.hoerire.free.logic.CloseDecision
 import io.github.hoerire.free.logic.ClosePolicy
 import io.github.hoerire.free.platform.coloros.ColorOsDisplayContentImeAccess
+import io.github.hoerire.free.platform.coloros.WindowMuteEvents
 import io.github.hoerire.free.platform.coloros.ColorOsTaskImeBoundsAccess
 import java.lang.reflect.Field
 import java.lang.reflect.InvocationTargetException
@@ -271,6 +272,9 @@ internal class OutsideTapCloseHookInstaller(
                 if (!configuration.snapshot.enabled) return@intercept chain.proceed()
                 val strategy = chain.args.getOrNull(0)
                 val isFloatExit = strategy != null && floatStrategyClass.isInstance(strategy)
+                // 长按静音的回收：退成浮标的窗口还有效，静音保持；其余退场（回后台、被替换关闭）
+                // 就是窗口没了，交给 WindowMuteEvents。任务被直接移除那条路在 WindowMuteHook 里。
+                if (!isFloatExit) WindowMuteEvents.windowClosed(taskIdOfStrategy(strategy))
                 // 诊断：ColorOS 17 收贴边时交来的策略类不是浮动策略，仅详细日志时输出。
                 if (strategy != null && !isFloatExit && VerboseLog.enabled) {
                     ModuleLog.debug { "ZOOM_EXIT_NOT_FLOAT_" + strategy.javaClass.simpleName }
@@ -332,6 +336,8 @@ internal class OutsideTapCloseHookInstaller(
                             if (VerboseLog.enabled) {
                                 ModuleLog.debug { "ZOOM_REPLACE_TO_CLOSE" }
                             }
+                            // 原本是"收浮标"的退场被替换成"关窗"：窗口确实没了，静音要回收。
+                            WindowMuteEvents.windowClosed(taskIdOfTask(task))
                             // 同帧替换为 ToBack，但不再隐藏 surface：退场动画交给系统照常播完。
                             return@intercept chain.proceed(arrayOf(back))
                         }
@@ -491,6 +497,20 @@ internal class OutsideTapCloseHookInstaller(
         }
     }
 
+
+    /** 退场策略里的任务号；取不到返回 -1（事件侧会忽略）。 */
+    private fun taskIdOfStrategy(strategy: Any?): Int {
+        if (strategy == null) return -1
+        val task = runCatching { fieldInHierarchy(strategy.javaClass, "mTask")?.get(strategy) }.getOrNull()
+        return taskIdOfTask(task)
+    }
+
+    /** 任务的 mTaskId；取不到返回 -1。 */
+    private fun taskIdOfTask(task: Any?): Int {
+        if (task == null) return -1
+        return runCatching { fieldInHierarchy(task.javaClass, "mTaskId")?.get(task) as? Int }.getOrNull()
+            ?: -1
+    }
 
     /** 沿继承链找字段（厂商把字段放在父类上）。 */
     private fun fieldInHierarchy(start: Class<*>, name: String): java.lang.reflect.Field? {

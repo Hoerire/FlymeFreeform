@@ -75,7 +75,22 @@ internal class SystemUiHookInstaller(
                 override fun onReceive(receiverContext: Context?, intent: android.content.Intent?) {
                     when (intent?.action) {
                         ModulePreferences.ACTION_PINNED_TARGETS_CHANGED -> {
-                            configuration.forceReload()
+                            // 这条广播带的是整份设置快照：直接覆盖内存快照，改动即时生效。
+                            // 只 reload 远程偏好不够——模块应用刚写进去的值，本进程的
+                            // SharedPreferences 句柄未必看得到（「屏蔽键盘」等新开关就卡在这里）。
+                            val pushed =
+                                io.github.hoerire.free.config.SettingsBridge
+                                    .readMap(intent.extras)
+                                    ?.let { map ->
+                                        runCatching {
+                                            io.github.hoerire.free.config.SettingsBridge.decode(map)
+                                        }.getOrNull()
+                                    }
+                            if (pushed != null) {
+                                configuration.override(pushed)
+                            } else {
+                                configuration.forceReload()
+                            }
                             io.github.hoerire.free.log.ModuleLog.info(
                                 "SYSTEMUI_SETTINGS_RELOADED",
                             )

@@ -46,9 +46,9 @@ class MainActivity : ComponentActivity() {
             val appsLoading = appRepository.loading.collectAsState().value
             val update = updateChecker.state.collectAsState().value
             androidx.compose.runtime.LaunchedEffect(Unit) { repository.retryIfNeeded() }
-            // 选择列表是否列系统应用由设置决定；切换后按新口径重载一次。
-            androidx.compose.runtime.LaunchedEffect(state.settings.showSystemApps) {
-                appRepository.refresh(state.settings.showSystemApps)
+            // 应用列表固定包含全部已安装应用（含没有桌面图标的组件），不再按开关筛选。
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                appRepository.refresh()
             }
             FreeTheme {
                 FreeNavHost(
@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
                         repository::setHandleSwipeUpToMiniEnabled,
                     onPauseInLandscapeChange = repository::setPauseInLandscape,
                     onPauseInGameModeChange = repository::setPauseInGameMode,
+                    onPauseInKeyboardChange = repository::setPauseInKeyboard,
                     onVerboseLogChange = repository::setVerboseLogEnabled,
                     onFreeDragChange = repository::setFreeDragEnabled,
                     onDragLongPressChange = repository::setDragLongPressMs,
@@ -93,7 +94,6 @@ class MainActivity : ComponentActivity() {
                     onRequestScopes = repository::requestMissingScopes,
                     onPinnedTargetsChange = repository::setPinnedTargets,
                     onBlacklistChange = repository::setBlacklistPackages,
-                    onShowSystemAppsChange = repository::setShowSystemApps,
                     onZoomExcludedChange = repository::setZoomExcludedPackages,
                     updateFlow = updateChecker.state,
                     onCheckUpdate = { updateChecker.check(force = true) },

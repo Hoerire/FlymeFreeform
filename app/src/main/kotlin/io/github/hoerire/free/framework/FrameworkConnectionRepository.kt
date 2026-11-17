@@ -105,6 +105,10 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setPauseInGameMode(enabled: Boolean) =
         updateSettings { it.copy(pauseInGameMode = enabled) }
 
+    /** 屏蔽键盘：输入法弹出时不响应扇形手势。 */
+    fun setPauseInKeyboard(enabled: Boolean) =
+        updateSettings { it.copy(pauseInKeyboard = enabled) }
+
     fun setVerboseLogEnabled(enabled: Boolean) =
         updateSettings { it.copy(verboseLogEnabled = enabled) }
 
@@ -191,9 +195,6 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setFloatKeepAlive(enabled: Boolean) =
         updateSettings { it.copy(floatKeepAlive = enabled) }
 
-    /** 应用选择列表是否列出系统应用。 */
-    fun setShowSystemApps(enabled: Boolean) =
-        updateSettings { it.copy(showSystemApps = enabled) }
 
     fun setBlacklistPackages(packages: List<String>) =
         updateSettings { it.copy(blacklistPackages = ModulePreferences.decodePackages(ModulePreferences.encodePackages(packages))) }

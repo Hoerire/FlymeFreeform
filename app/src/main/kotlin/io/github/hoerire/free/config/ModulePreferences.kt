@@ -72,6 +72,9 @@ internal object ModulePreferences {
     const val KEY_HANDLE_SWIPE_UP_TO_MINI_ENABLED = "handle_swipe_up_to_mini_enabled"
     const val KEY_PAUSE_IN_LANDSCAPE = "pause_in_landscape"
     const val KEY_PAUSE_IN_GAME_MODE = "pause_in_game_mode"
+
+    /** 屏蔽键盘：输入法弹出时不响应扇形手势（默认关闭）。 */
+    const val KEY_PAUSE_IN_KEYBOARD = "pause_in_keyboard_v1"
     const val KEY_VERBOSE_LOG = "verbose_log_enabled"
     const val KEY_BLACKLIST_PACKAGES = "foreground_blacklist_v1"
 
@@ -113,7 +116,7 @@ internal object ModulePreferences {
     const val KEY_AUTO_CLOSE_WINDOW = "auto_close_window_v1"
     const val DEFAULT_AUTO_CLOSE_WINDOW = false
 
-    /** 长按静音：长按浮动窗口把该应用静音，再次长按恢复。 */
+    /** 长按静音：长按迷你窗把该应用静音，再次长按恢复；普通小窗不响应。 */
     const val KEY_LONG_PRESS_MUTE = "mini_long_press_v1"
     const val DEFAULT_LONG_PRESS_MUTE = false
 
@@ -189,6 +192,7 @@ internal object ModulePreferences {
     const val DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED = false
     const val DEFAULT_PAUSE_IN_LANDSCAPE = true
     const val DEFAULT_PAUSE_IN_GAME_MODE = true
+    const val DEFAULT_PAUSE_IN_KEYBOARD = false
     const val DEFAULT_VERBOSE_LOG = false
     /** 默认不处理背景：呼出扇形时既不压暗也不模糊。 */
     const val DEFAULT_BACKDROP_LEVEL = 0

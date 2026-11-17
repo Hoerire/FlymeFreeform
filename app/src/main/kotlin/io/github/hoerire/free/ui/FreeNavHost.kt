@@ -95,6 +95,7 @@ internal fun FreeNavHost(
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
+    onPauseInKeyboardChange: (Boolean) -> Unit,
     onVerboseLogChange: (Boolean) -> Unit,
     onFreeDragChange: (Boolean) -> Unit,
     onDragLongPressChange: (Int) -> Unit,
@@ -112,7 +113,6 @@ internal fun FreeNavHost(
     onFloatHandleMaxCountChange: (Int) -> Unit,
     onLongPressMuteChange: (Boolean) -> Unit,
     onZoomExcludedChange: (List<String>) -> Unit,
-    onShowSystemAppsChange: (Boolean) -> Unit,
     onRadialKeepOpenChange: (Boolean) -> Unit,
     onRadialSelectionRingChange: (Boolean) -> Unit,
     onRadialShimmerEnabledChange: (Boolean) -> Unit,
@@ -239,6 +239,7 @@ internal fun FreeNavHost(
                     onRadialKeepOpenChange = onRadialKeepOpenChange,
                     onPauseInLandscapeChange = onPauseInLandscapeChange,
                     onPauseInGameModeChange = onPauseInGameModeChange,
+                    onPauseInKeyboardChange = onPauseInKeyboardChange,
                     onNavigateToPinnedApps = navigateToPinnedApps,
                     onNavigateToRadialEffect = navigateToRadialEffect,
                     onNavigateToRadialSize = navigateToRadialSize,
@@ -328,7 +329,6 @@ internal fun FreeNavHost(
                     appsLoading = appsLoading,
                     onBack = popBackStack,
                     onZoomExcludedChange = onZoomExcludedChange,
-                    onShowSystemAppsChange = onShowSystemAppsChange,
                 )
             AppRoute.Blacklist ->
                 BlacklistScreen(
@@ -345,7 +345,6 @@ internal fun FreeNavHost(
                     appsLoading = appsLoading,
                     onBack = popBackStack,
                     onBlacklistChange = onBlacklistChange,
-                    onShowSystemAppsChange = onShowSystemAppsChange,
                 )
             AppRoute.PinnedApps ->
                 PinnedAppsScreen(

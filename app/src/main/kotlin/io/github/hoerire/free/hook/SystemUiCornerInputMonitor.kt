@@ -165,7 +165,32 @@ internal class SystemUiCornerInputMonitor(
                 CornerSide.Left -> settings.leftCornerEnabled
                 CornerSide.Right -> settings.rightCornerEnabled
             } &&
-            environmentState.isGestureAllowed(refreshKeyguard = true)
+            environmentState.isGestureAllowed(refreshKeyguard = true) &&
+            !keyboardBlocksGesture()
+
+    /** `InputMethodManager.getInputMethodWindowVisibleHeight()`；取不到方法时为 null。 */
+    private val imeHeightMethod: Method? by lazy {
+        runCatching {
+            android.view.inputmethod.InputMethodManager::class.java
+                .getMethod("getInputMethodWindowVisibleHeight")
+        }.getOrNull()
+    }
+
+    /**
+     * 屏蔽键盘：输入法弹出时不认领角区手势。
+     *
+     * 不认领的意义不只是「扇形不出来」——认领之后这里会 pilfer 抢流，打字时从底角起手
+     * 会把本该给输入法的触摸抢走。查询失败按「没弹出」处理，由 system_server 侧门禁兜底。
+     */
+    private fun keyboardBlocksGesture(): Boolean {
+        if (!settings.pauseInKeyboard) return false
+        val method = imeHeightMethod ?: return false
+        val manager =
+            runCatching {
+                context.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+            }.getOrNull() ?: return false
+        return runCatching { (method.invoke(manager) as? Int ?: 0) > 0 }.getOrDefault(false)
+    }
 
     private fun pilfer(view: View): Boolean =
         try {

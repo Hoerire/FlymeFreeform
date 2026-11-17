@@ -5,6 +5,7 @@ import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import io.github.hoerire.free.log.ModuleLog
 import io.github.libxposed.api.XposedInterface
@@ -50,6 +51,19 @@ internal class FloatKeepAliveHook(
     private val handler = Handler(Looper.getMainLooper())
     private val releasedTasks = ConcurrentHashMap<String, Boolean>()
 
+    /**
+     * 最近「用户点开浮标」的任务号 → 时刻。
+     *
+     * 展开浮标时系统会请求可见性，而这条请求和「浮标里的应用自己起新页面」走的是同一个
+     * setVisibleRequested(true)。以前一律按「非游戏拒绝抬可见」处理，结果展开的那一下被拒，
+     * 窗口停在 always_hidden + 浮标坐标上：屏幕上只剩任务快照（透明、比例不对）。
+     * 用户点开浮标的短时间内放行一次。
+     */
+    private val unfloatAt = ConcurrentHashMap<Int, Long>()
+
+    /** 最近一次「点开浮标」的时刻：拿不到任务号时按它整段放行。 */
+    private val unfloatAllAt = java.util.concurrent.atomic.AtomicLong(0)
+
     fun install(classLoader: ClassLoader) {
         serverLoader = classLoader
         val recordClass =
@@ -71,6 +85,7 @@ internal class FloatKeepAliveHook(
         installAdjustOptionsGuard(classLoader)
         installFloatEjectGuard(classLoader)
         installRotationGuard(classLoader)
+        installUnfloatObserver(classLoader)
         installHandleObserver(classLoader)
         installFloatHandleSync(classLoader)
         installHansFreezeGuard(classLoader)
@@ -161,9 +176,17 @@ internal class FloatKeepAliveHook(
                 val keep = shouldKeep(chain.thisObject)
                 val game = keep && isGameRecord(chain.thisObject)
                 if (keep && !game && visible == true) {
-                    // 非游戏（视频/短剧）：按上游策略拒绝抬成可见，换集就不会弹窗。
-                    logDenyRaised(chain.thisObject)
-                    chain.proceed(arrayOf<Any?>(false))
+                    val taskId = taskIdOfRecord(chain.thisObject)
+                    if (isUnfloating(taskId)) {
+                        // 用户刚点开浮标：这次可见性是「展开窗口」，必须放行，
+                        // 否则窗口停在 always_hidden + 浮标坐标，屏幕上只剩半透明的任务快照。
+                        ModuleLog.info("FLOAT_KEEP_ALIVE_UNFLOAT_ALLOW_task" + taskId)
+                        chain.proceed()
+                    } else {
+                        // 非游戏（视频/短剧）：按上游策略拒绝抬成可见，换集就不会弹窗。
+                        logDenyRaised(chain.thisObject)
+                        chain.proceed(arrayOf<Any?>(false))
+                    }
                 } else if (visible == false && shouldKeepVisible(chain.thisObject) && game) {
                     logSkip(chain.thisObject, "visible_requested")
                     chain.proceed(arrayOf<Any?>(true))
@@ -386,8 +409,15 @@ internal class FloatKeepAliveHook(
                     val visible = chain.getArg(0) as? Boolean
                     val keep = shouldKeep(chain.thisObject)
                     if (visible == true && keep && !isGameRecord(chain.thisObject)) {
-                        logDenyVisibility(chain.thisObject)
-                        chain.proceed(arrayOf<Any?>(false))
+                        val taskId = taskIdOfRecord(chain.thisObject)
+                        if (isUnfloating(taskId)) {
+                            // 用户刚点开浮标：这次可见性是「展开窗口」，必须放行。
+                            ModuleLog.info("FLOAT_KEEP_ALIVE_UNFLOAT_ALLOW_VIS_task" + taskId)
+                            chain.proceed()
+                        } else {
+                            logDenyVisibility(chain.thisObject)
+                            chain.proceed(arrayOf<Any?>(false))
+                        }
                     } else {
                         chain.proceed()
                     }
@@ -603,6 +633,7 @@ internal class FloatKeepAliveHook(
             .intercept { chain ->
                 val taskId = chain.getArg(0) as? Int ?: -1
                 val flag = chain.getArg(3) as? Int ?: -1
+                markUnfloating(taskId)
                 logHandleRemoved(taskId, flag, "public")
                 runCatching { removeFloatWhite(taskId) }
                 chain.proceed()
@@ -622,11 +653,72 @@ internal class FloatKeepAliveHook(
                 .intercept { chain ->
                     val taskId = chain.getArg(0) as? Int ?: -1
                     val flag = chain.getArg(2) as? Int ?: -1
+                    markUnfloating(taskId)
                     logHandleRemoved(taskId, flag, "inner")
                     runCatching { removeFloatWhite(taskId) }
                     chain.proceed()
                 }
         }
+    }
+
+    /**
+     * 用户点开浮标（startActivityByFloatInfo）：记下任务号，随后的可见性请求要放行。
+     *
+     * 系统把「点浮标展开成窗口」也走这个方法，展开依赖一次 setVisibleRequested(true)。
+     * 那次请求如果被 [installVisibleRequested] 的「非游戏拒绝抬可见」拦掉，窗口就永远停在
+     * always_hidden，屏幕上只剩任务快照（表现为透明小窗、比例不对）。
+     */
+    private fun installUnfloatObserver(classLoader: ClassLoader) {
+        val controller = runCatching { classLoader.loadClass(CONTROLLER_CLASS) }.getOrNull() ?: return
+        val methods = declaredMethodsNamed(controller, "startActivityByFloatInfo")
+        if (methods.isEmpty()) {
+            ModuleLog.warn("FLOAT_KEEP_ALIVE_NO_START_BY_FLOAT_INFO")
+            return
+        }
+        methods.forEachIndexed { index, method ->
+            module
+                .hook(method)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .setId("free.float_keep_alive.unfloat_" + index)
+                .intercept { chain ->
+                    if (configuration.snapshot.floatKeepAliveEffective) {
+                        // FloatHandleInfo 里不一定有 mTaskId（实测拿不到），所以这里整段放行：
+                        // 放行窗只覆盖「刚点开浮标」这几秒，短剧换集不受影响。
+                        val taskId = taskIdFromArgs(chain.args)
+                        markUnfloating(taskId)
+                        ModuleLog.info("FLOAT_KEEP_ALIVE_UNFLOAT_OPEN_task" + taskId)
+                    }
+                    chain.proceed()
+                }
+        }
+        ModuleLog.install("FLOAT_KEEP_ALIVE_UNFLOAT_HOOKED_" + methods.size)
+    }
+
+    /** 记一次「用户点开/摘掉浮标」的时刻（全局放行窗 + 任务号）。 */
+    private fun markUnfloating(taskId: Int) {
+        val now = SystemClock.uptimeMillis()
+        unfloatAllAt.set(now)
+        if (taskId > 0) unfloatAt[taskId] = now
+    }
+
+    /** 这个任务是不是刚刚被用户点开/摘掉浮标（短时放行窗内）。 */
+    private fun isUnfloating(taskId: Int): Boolean {
+        val now = SystemClock.uptimeMillis()
+        if (now - unfloatAllAt.get() <= UNFLOAT_PERMIT_MS) return true
+        if (taskId <= 0) return false
+        val at = unfloatAt[taskId] ?: return false
+        if (now - at > UNFLOAT_PERMIT_MS) {
+            unfloatAt.remove(taskId)
+            return false
+        }
+        return true
+    }
+
+    /** ActivityRecord → 任务号；取不到返回 -1。 */
+    private fun taskIdOfRecord(record: Any?): Int {
+        val target = record ?: return -1
+        val task = OemReflection.readField(target, "task") ?: OemReflection.readField(target, "mTask") ?: return -1
+        return (OemReflection.readField(task, "mTaskId") as? Int) ?: -1
     }
 
     /**
@@ -1729,6 +1821,9 @@ internal class FloatKeepAliveHook(
     private companion object {
         const val TAG = "Free"
         const val RECORD_CLASS = OemClasses.ACTIVITY_RECORD
+        /** 点开/摘掉浮标后多久内，展开引起的可见性请求一律放行。 */
+        const val UNFLOAT_PERMIT_MS = 3_000L
+
         const val CONTROLLER_CLASS = OemClasses.FLOAT_HANDLE_CONTROLLER
         const val TASK_CLASS = OemClasses.TASK
         const val TOKEN_CLASS = OemClasses.WINDOW_TOKEN

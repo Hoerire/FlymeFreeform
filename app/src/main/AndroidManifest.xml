@@ -7,6 +7,9 @@
     <uses-permission android:name="io.github.hoerire.free.permission.REQUEST_ENTRY_CATALOG" />
     <!-- 仅用于读取 GitHub 最新发行版；hook 侧不发起任何网络请求。 -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 应用列表要列出全部已安装应用（排除列表按包名匹配）：没有这条，非桌面应用
+         （如「耳机」com.oplus.melody）会被包可见性过滤掉，永远选不到。 -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <queries>
         <package android:name="com.coloros.smartsidebar" />

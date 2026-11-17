@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CenterFocusStrong
+import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.SportsEsports
@@ -46,6 +47,7 @@ internal fun RadialSettingsScreen(
     onRadialKeepOpenChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
+    onPauseInKeyboardChange: (Boolean) -> Unit,
     onNavigateToPinnedApps: () -> Unit,
     onNavigateToRadialEffect: () -> Unit,
     onNavigateToRadialSize: () -> Unit,
@@ -155,6 +157,14 @@ internal fun RadialSettingsScreen(
                     summary = stringResource(R.string.pause_in_game_mode_summary),
                     enabled = enabled,
                     startAction = { PreferenceIcon(Icons.Rounded.SportsEsports, enabled) },
+                )
+                SwitchPreference(
+                    checked = state.settings.pauseInKeyboard,
+                    onCheckedChange = onPauseInKeyboardChange,
+                    title = stringResource(R.string.pause_in_keyboard_title),
+                    summary = stringResource(R.string.pause_in_keyboard_summary),
+                    enabled = enabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.Keyboard, enabled) },
                 )
             }
         }

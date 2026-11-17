@@ -35,8 +35,19 @@ internal class SidebarEntryRepository(private val context: Context) {
         if (mutableState.value.status == SidebarCatalogStatus.Loading) request()
     }
 
+    /**
+     * 本轮流式读取的起始时刻，只用来给「正在读取」兜底。
+     *
+     * 页面可见期间会反复 refresh()（生命周期、重新组合都会触发），每次都会把 [attempt]
+     * 归零。只靠重试次数的话，侧边栏一直不响应时状态会永远停在 Loading，重试按钮又被禁用，
+     * 界面就卡死在「正在读取侧边栏目录」。所以另设一条按墙钟时间走的兜底线：
+     * 同一轮 Loading 超过 [MAX_LOADING_MS] 一律判定失败，界面切到可重试状态。
+     */
+    private var loadingSince = 0L
+    private val giveUp = Runnable { giveUpLoading() }
+
     fun refresh() {
-        cancel()
+        cancelInternal()
         attempt = 0
         request()
     }
@@ -46,7 +57,7 @@ internal class SidebarEntryRepository(private val context: Context) {
         val request = UUID.randomUUID().toString()
         id = request
         transfer = CatalogTransfer(SidebarEntryProtocol.MAX_ENTRIES, SelectableEntry::target)
-        mutableState.value = mutableState.value.copy(status = SidebarCatalogStatus.Loading)
+        enterLoading()
         handler.postDelayed(timeout, SidebarEntryProtocol.TIMEOUT_MS)
         try {
             context.sendBroadcast(Intent(SidebarEntryProtocol.CATALOG_ACTION).setPackage("android").apply {
@@ -57,7 +68,13 @@ internal class SidebarEntryRepository(private val context: Context) {
         } catch (_: RuntimeException) { fail() }
     }
 
+    /** 页面离开：连同兜底预算一起清掉，下次进入重新给足一整轮时间。 */
     fun cancel() {
+        cancelInternal()
+        resetLoadingBudget()
+    }
+
+    private fun cancelInternal() {
         id = null
         transfer?.cancel()
         transfer = null
@@ -66,6 +83,35 @@ internal class SidebarEntryRepository(private val context: Context) {
         if (mutableState.value.status == SidebarCatalogStatus.Loading) {
             mutableState.value = mutableState.value.copy(status = SidebarCatalogStatus.Idle)
         }
+    }
+
+    private fun enterLoading() {
+        if (loadingSince == 0L) {
+            loadingSince = SystemClock.uptimeMillis()
+            handler.removeCallbacks(giveUp)
+            handler.postDelayed(giveUp, MAX_LOADING_MS)
+        }
+        mutableState.value = mutableState.value.copy(status = SidebarCatalogStatus.Loading)
+    }
+
+    private fun resetLoadingBudget() {
+        loadingSince = 0L
+        handler.removeCallbacks(giveUp)
+    }
+
+    /** 兜底：同一轮 Loading 走完 [MAX_LOADING_MS] 还没结果，不再让界面干等。 */
+    private fun giveUpLoading() {
+        if (mutableState.value.status != SidebarCatalogStatus.Loading) {
+            resetLoadingBudget()
+            return
+        }
+        cancelInternal()
+        resetLoadingBudget()
+        if (mutableState.value.entries.isNotEmpty()) {
+            mutableState.value = mutableState.value.copy(status = SidebarCatalogStatus.Ready)
+            return
+        }
+        mutableState.value = mutableState.value.copy(status = SidebarCatalogStatus.Unavailable)
     }
 
     private fun receive(message: Message): Boolean {
@@ -81,7 +127,8 @@ internal class SidebarEntryRepository(private val context: Context) {
                 SidebarEntryProtocol.COMPLETE -> {
                     val entries = transfer?.complete(data.getInt(SidebarEntryProtocol.COUNT, -1))
                     if (entries == null) fail() else {
-                        cancel()
+                        cancelInternal()
+                        resetLoadingBudget()
                         mutableState.value = SidebarCatalogState(entries, SidebarCatalogStatus.Ready)
                     }
                 }
@@ -92,10 +139,11 @@ internal class SidebarEntryRepository(private val context: Context) {
     }
 
     private fun fail() {
-        cancel()
+        cancelInternal()
         // 重试用尽仍失败：如果之前成功读到过目录，就继续沿用那份结果，
         // 不要把界面切成「暂不可用」，否则固定位的工具/快捷项会变空格。
         if (mutableState.value.entries.isNotEmpty()) {
+            resetLoadingBudget()
             mutableState.value = mutableState.value.copy(
                 status = SidebarCatalogStatus.Ready,
                 entries = mutableState.value.entries,
@@ -106,15 +154,24 @@ internal class SidebarEntryRepository(private val context: Context) {
         // 「更多」面板一直不可用；这里退避重试，成功后自然恢复。
         if (attempt < MAX_ATTEMPTS) {
             attempt++
-            mutableState.value = mutableState.value.copy(status = SidebarCatalogStatus.Loading)
+            enterLoading()
             handler.postDelayed(retry, RETRY_DELAYS_MS[(attempt - 1).coerceIn(0, RETRY_DELAYS_MS.lastIndex)])
             return
         }
+        resetLoadingBudget()
         mutableState.value = mutableState.value.copy(status = SidebarCatalogStatus.Unavailable)
     }
 
     private companion object {
         const val MAX_ATTEMPTS = 3
         val RETRY_DELAYS_MS = longArrayOf(600L, 1_500L, 3_000L)
+
+        /**
+         * 一轮「正在读取」的最长墙钟时间。
+         *
+         * 三次 7 秒超时加上退避约 26 秒，这里留到 30 秒：只作为最后兜底，
+         * 正常失败会由系统侧的即时 FAILED 提前结束。
+         */
+        const val MAX_LOADING_MS = 30_000L
     }
 }

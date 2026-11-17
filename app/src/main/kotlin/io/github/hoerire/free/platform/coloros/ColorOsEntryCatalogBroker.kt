@@ -238,20 +238,26 @@ internal class ColorOsEntryCatalogBroker(
         onCatalog(emptyList())
     }
 
+    /**
+     * 一轮目录读取的出口：**每个等待中的请求都必须当场拿到结果**。
+     *
+     * 以前失败时先排重试再 return，回调（也就是给设置页回 FAILED 的那条链）被原样留在
+     * callbacks 里没被调用——设置页收不到任何回复，只能等自己的 7 秒超时，表现就是
+     * 「添加应用」卡在「正在读取侧边栏目录」。重试是后台自己下一轮的事，与眼下这批请求无关。
+     */
     private fun publish(entries: List<SelectableEntry>?) {
         refreshing = false
-        if (entries == null && retryCount < MAX_RETRIES) {
-            val delay = RETRY_DELAYS_MS[retryCount.coerceIn(0, RETRY_DELAYS_MS.lastIndex)]
-            retryCount++
-            log(Log.DEBUG, "ENTRY_CATALOG_RETRY_" + retryCount + "_in" + delay, null)
-            handler.postDelayed({ refresh() }, delay)
-            return
-        }
         if (entries != null) retryCount = 0
         if (entries != null) onCatalog(entries)
         val pending = callbacks.toList()
         callbacks.clear()
         pending.forEach { it(entries) }
+        if (entries == null && retryCount < MAX_RETRIES) {
+            val delay = RETRY_DELAYS_MS[retryCount.coerceIn(0, RETRY_DELAYS_MS.lastIndex)]
+            retryCount++
+            log(Log.DEBUG, "ENTRY_CATALOG_RETRY_" + retryCount + "_in" + delay, null)
+            handler.postDelayed({ refresh() }, delay)
+        }
     }
 
     private fun sendCatalog(reply: Messenger, id: String, deadline: Long, entries: List<SelectableEntry>?) {
@@ -264,7 +270,9 @@ internal class ColorOsEntryCatalogBroker(
                             reply.send(SidebarEntryProtocol.item(id, index, entry))
                         }
                     }
-                    if (SystemClock.uptimeMillis() < deadline) reply.send(SidebarEntryProtocol.message(
+                    // 最终结果不设 deadline 门槛：过期也照样发，让设置页立刻结束「正在读取」；
+                    // 已经换了请求的 App 会按 id 丢掉这条消息。
+                    reply.send(SidebarEntryProtocol.message(
                         if (entries == null) SidebarEntryProtocol.FAILED else SidebarEntryProtocol.COMPLETE, id,
                     ).apply { data.putInt(SidebarEntryProtocol.COUNT, entries?.size ?: 0) })
                 } catch (_: android.os.RemoteException) {

@@ -27,6 +27,8 @@ internal class SystemServerHookInstaller(
             module.log(priority, TAG, code, throwable)
         }
         OutsideTapCloseHookInstaller(module, configuration, environment).install(classLoader)
+        // 长按静音的回收：任务被划掉/被杀/被系统清理时，把该应用的音量放回去。
+        WindowMuteHook(module).install(classLoader)
         FloatKeepAliveHook(module, configuration).install(classLoader)
         // 触发延迟：把设置里的长按阈值写进系统设置，供应用侧的拖拽判定使用。
         LongPressTimeoutHook.install(configuration)

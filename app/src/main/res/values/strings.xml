@@ -130,7 +130,7 @@
     <string name="auto_close_window_title">自动收窗</string>
     <string name="auto_close_window_summary">超过数量限制时直接关闭旧窗口，不收成浮标</string>
     <string name="mini_long_press_title">长按静音</string>
-    <string name="mini_long_press_summary">长按窗口静音，再长按恢复</string>
+    <string name="mini_long_press_summary">长按迷你窗静音，再长按恢复</string>
     <string name="float_keep_alive_title">贴边挂机</string>
     <string name="float_keep_alive_summary">收成贴边浮标后保持应用继续运行</string>
     <string name="zoom_group_edge_title">贴边浮标</string>
@@ -140,8 +140,8 @@
     <string name="float_handle_max_title">贴边数量</string>
     <string name="float_handle_max_summary">同时保留的浮标个数，最多 10 个</string>
     <string name="zoom_max_windows_blocked_summary">已由「贴边互切」接管，开启期间固定为 1</string>
-    <string name="show_system_apps_title">系统应用</string>
-    <string name="show_system_apps_summary">在选择列表中显示系统应用</string>
+    <string name="show_system_apps_title">全部应用</string>
+    <string name="show_system_apps_summary">连没有桌面图标的应用（系统组件、预装应用）一起显示</string>
     <string name="handle_swipe_up_to_mini_title">快速上滑</string>
     <string name="handle_swipe_up_to_mini_summary">底部横条上滑，切为迷你浮窗</string>
 
@@ -185,6 +185,8 @@
     <string name="pause_in_landscape_summary">横屏时暂停呼出，竖屏自动恢复</string>
     <string name="pause_in_game_mode_title">游戏模式</string>
     <string name="pause_in_game_mode_summary">游戏模式下暂停呼出，退出后恢复</string>
+    <string name="pause_in_keyboard_title">屏蔽键盘</string>
+    <string name="pause_in_keyboard_summary">键盘弹出时暂停呼出扇形，收起后自动恢复</string>
     <string name="entry_group_tools">工具</string>
     <string name="entry_group_shortcuts">快捷入口</string>
     <string name="entry_group_cloned_apps">分身应用</string>

@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.ApplicationInfo
 import android.content.pm.LauncherApps
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -35,7 +34,6 @@ internal class LauncherAppRepository(private val context: Context) {
         )
     private val mutableApps = MutableStateFlow<List<SelectableEntry>>(emptyList())
     private val mutableLoading = MutableStateFlow(false)
-    private var includeSystemApps = false
 
     /** 上一轮结果：重新打开开关时先按缓存立即生效，再在后台补齐。 */
     private var cachedSystemEntries: List<SelectableEntry>? = null
@@ -64,20 +62,16 @@ internal class LauncherAppRepository(private val context: Context) {
     }
 
     /**
-     * 重新加载候选应用。
+     * 重新加载候选应用：桌面图标列表 + 其余全部已安装应用。
      *
-     * [includeSystemApps] 为真时并入系统应用：桌面图标列表（LauncherApps）只包含有启动图标的应用，
-     * 而「排除列表」「禁用浮窗」都按包名匹配，系统组件往往没有图标也就选不到。
-     * 这里额外扫描带系统标记的包，按包名去重，保留先出现的（带图标的那条）。
+     * 桌面图标列表（LauncherApps）只包含有启动图标的应用，而「排除列表」「禁用浮窗」都按
+     * 包名匹配——系统组件、预装组件往往没有图标，只扫桌面列表就永远选不到它们
+     * （例：「无线耳机」com.oplus.melody）。所以这里把剩余的已安装应用一并列出，
+     * 按包名去重，保留先出现的（带启动入口的那条）。
      */
-    fun refresh(includeSystemApps: Boolean = this.includeSystemApps) {
-        this.includeSystemApps = includeSystemApps
-        // 已有系统应用列表时先合成一版：切换开关应当立刻看到结果，
-        // 扫描带图标的全量应用要数秒，期间不能只让界面停在旧列表上。
-        val cached = cachedSystemEntries
-        if (includeSystemApps && cached != null) {
-            emit(cachedLauncherEntries, cached)
-        }
+    fun refresh() {
+        // 上一轮结果先顶上：首次扫描要重建数百个图标，期间不能只让界面停在空列表。
+        cachedSystemEntries?.let { emit(cachedLauncherEntries, it) }
         mutableLoading.value = true
         worker.execute {
             val launcherApps =
@@ -105,13 +99,11 @@ internal class LauncherAppRepository(private val context: Context) {
                     }
                     .toList()
             cachedLauncherEntries = launcherEntries
-            val systemEntries =
-                if (!includeSystemApps) {
-                    emptyList()
-                } else {
-                    systemAppEntries().also { cachedSystemEntries = it }
-                }
-            emit(launcherEntries, systemEntries)
+            // 桌面图标列表之外的应用（系统组件、预装组件、没有图标的包）一并列出。
+            val otherEntries =
+                systemAppEntries(launcherEntries.mapTo(HashSet()) { it.packageName })
+                    .also { cachedSystemEntries = it }
+            emit(launcherEntries, otherEntries)
             mutableLoading.value = false
         }
     }
@@ -129,21 +121,23 @@ internal class LauncherAppRepository(private val context: Context) {
     }
 
     /**
-     * 系统应用条目。
+     * 系统应用条目：桌面图标列表之外的所有已安装应用。
      *
      * 这里**不要求有启动入口**：跨端互联、消息同步这类系统组件本身没有桌面图标，
-     * 但会以调用方身份拉起界面；两个列表都按包名匹配，必须能选到它们。
+     * 但会以调用方身份拉起界面；排除列表按包名匹配，必须能选到它们。
      * 没有启动入口的条目只用于「按包名豁免」，不参与扇形可启动应用的挑选。
+     *
+     * 也**不按系统标记过滤**：ColorOS 有一批预装组件装在 /data/app 里，既没有
+     * `FLAG_SYSTEM`、也没有桌面图标（例：「无线耳机」`com.oplus.melody`），
+     * 只按系统标记扫会让它们在排除列表里彻底选不到。桌面图标列表里已有的包跳过，
+     * 避免重复加载图标。
      */
-    private fun systemAppEntries(): List<SelectableEntry> {
+    private fun systemAppEntries(known: Set<String>): List<SelectableEntry> {
         val manager = context.packageManager
         return manager
             .getInstalledApplications(0)
             .asSequence()
-            .filter { it.packageName != context.packageName }
-            .filter {
-                (it.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
-            }
+            .filter { it.packageName != context.packageName && it.packageName !in known }
             .mapNotNull { info ->
                 runCatching {
                     val component = manager.getLaunchIntentForPackage(info.packageName)?.component

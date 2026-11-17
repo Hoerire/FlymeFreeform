@@ -16,6 +16,7 @@ import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import io.github.hoerire.free.config.ModulePreferences
+import io.github.hoerire.free.config.SettingsBridge
 import io.github.hoerire.free.config.ModuleSettingsSnapshot
 import io.github.hoerire.free.config.PinnedTarget
 import io.github.hoerire.free.config.PinnedTargetCodec
@@ -124,9 +125,20 @@ internal class ColorOsFreeformCoordinator(
                 if (intent?.action != ModulePreferences.ACTION_PINNED_TARGETS_CHANGED ||
                     sentFromUid != moduleUid()
                 ) return
+                // 载荷里带的就是整份设置快照：直接用它覆盖内存快照，改动即时生效。
+                // 只 forceReload 远程偏好不够——那是模块应用刚写进去的值，system_server 的
+                // SharedPreferences 句柄 reload() 未必看得到，表现就是「设置改了要重启才生效」
+                // （「屏蔽键盘」这类新开关在重启前完全不生效就是这个原因）。
+                val pushed =
+                    runCatching { SettingsBridge.readMap(intent.extras) }.getOrNull()
+                        ?.let { map -> runCatching { SettingsBridge.decode(map) }.getOrNull() }
+                if (pushed != null) {
+                    configuration.override(pushed)
+                    return
+                }
+                // 旧格式兜底：载荷里没有整份快照时，重读偏好再叠上本次推送的固定项。
                 val encoded = intent.getStringExtra(ModulePreferences.EXTRA_PINNED_TARGETS) ?: return
                 val targets = PinnedTargetCodec.decodeList(encoded)
-                // 广播现在覆盖全部设置变更：先重读磁盘快照，再叠上本次推送的固定项。
                 configuration.forceReload()
                 configuration.override(
                     configuration.snapshot.copy(
@@ -191,6 +203,10 @@ internal class ColorOsFreeformCoordinator(
     private var lastOverlayFailureLogAt = -OVERLAY_FAILURE_LOG_INTERVAL_MS
     /** 模糊接口取不到只记一次：每次呼出都记会把日志刷满。 */
     private var blurUnavailableLogged = false
+    /** 输入法服务实例与解析状态：「屏蔽键盘」判定要用它的窗口可见标志。 */
+    private var inputMethodServiceCache: Any? = null
+    private var imeAccessCache: ColorOsDisplayContentImeAccess? = null
+    private var inputMethodResolved = false
 
     fun start() {
         // 识屏宿主被限制后台运行会让三条入口同时失效；开机纠正一次，之后省电策略再改也不会失效。
@@ -301,6 +317,10 @@ internal class ColorOsFreeformCoordinator(
             settings.pinsSaved != lastSettings.pinsSaved ||
                 settings.pinnedTargets != lastSettings.pinnedTargets
         lastSettings = settings
+        // 「屏蔽键盘」是否真的到了本进程：设置推送/落地的诊断（详细日志）。
+        trace("SYSTEM_SETTINGS_APPLIED_pkb" + settings.pauseInKeyboard)
+        // 长按静音被关掉（或模块整体停用）时把还静着的应用恢复回去，否则会永久没声音。
+        if (!settings.longPressMuteEffective) windowGestures.releaseAll()
         overlay?.setBackdropAlpha(ModulePreferences.backdropShadeAlpha(settings.backdropLevel))
         // monitor 只看"模块是否启用 + 角落是否开启"，不再看环境：
         // 环境判定本来就分两层（isInCornerZone 与 handlePointerEvent 都会拒），
@@ -645,7 +665,13 @@ internal class ColorOsFreeformCoordinator(
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             // 手势生命周期的第一行，无条件记；每根手指只有一行，热路径负担可以忽略。
             pilferLoggedThisGesture = false
-            trace("SYSTEM_GESTURE_DOWN_" + event.x.toInt() + "_" + event.y.toInt())
+            // 把「屏蔽键盘」的两个输入也打出来：设置值 + 当前 IME 可见性，
+            // 排查「开关开了但扇形照出」时一眼能看出是哪一环没到。
+            trace(
+                "SYSTEM_GESTURE_DOWN_" + event.x.toInt() + "_" + event.y.toInt() +
+                    "_kb" + lastSettings.pauseInKeyboard +
+                    "_ime" + isInputMethodVisible(),
+            )
             activeEnvironmentApproved = isGestureEnvironmentAllowed()
             if (!activeEnvironmentApproved) {
                 trace("SYSTEM_GESTURE_REJECTED_" + environmentRejectionReason())
@@ -910,6 +936,7 @@ internal class ColorOsFreeformCoordinator(
         return when {
             lastSettings.isBlacklisted(foreground) -> "BLACKLISTED_" + foreground
             isCriticalSystemUiForeground() -> "CRITICAL_FOREGROUND"
+            lastSettings.pauseInKeyboard && isInputMethodVisible() -> "KEYBOARD_SHOWN"
             else -> environmentState.gestureBlockReason() ?: "UNKNOWN"
         }
     }
@@ -1433,11 +1460,77 @@ internal class ColorOsFreeformCoordinator(
     private fun isGestureEnvironmentAllowed(): Boolean {
         if (!environmentState.isGestureAllowed(refreshKeyguard = true)) return false
         if (isCriticalSystemUiForeground()) return false
+        // 屏蔽键盘：输入法弹出时不接管手势，否则打字时从底角起手会误触扇形。
+        if (lastSettings.pauseInKeyboard && isInputMethodVisible()) return false
         // 排除列表命中时不接管手势：不是「呼出后再关闭」，而是保持系统原样。
         return !lastSettings.isBlacklisted(focusedWindowPackage())
     }
 
-    private fun isDynamicEnvironmentAllowed(): Boolean = environmentState.isGestureAllowed()
+    private fun isDynamicEnvironmentAllowed(): Boolean =
+        environmentState.isGestureAllowed() &&
+            !(lastSettings.pauseInKeyboard && isInputMethodVisible())
+
+    /** 输入法窗口此刻是否可见；状态拿不到时按「不可见」处理，避免误拦手势。 */
+    private fun isInputMethodVisible(): Boolean {
+        // 主判据：WMS 里那个 IME 窗口。窗外关闭（OutsideTapClose）用的就是这条链路，
+        // 在本机已验证可用；早期版本只读 IMMS 的 mImeWindowVis，取到 0 就当作没弹键盘，
+        // 结果「屏蔽键盘」永远不生效。
+        inputMethodWindowState()?.let { window ->
+            (OemReflection.callNoArg(window, "isVisible") as? Boolean)?.let { return it }
+        }
+        // 兜底：IMMS 的窗口可见标志 / 可见高度。
+        val service = inputMethodService() ?: return false
+        (OemReflection.readField(service, "mImeWindowVis") as? Int)?.let { return (it and IME_VISIBLE_BIT) != 0 }
+        val height =
+            OemReflection.call(service, "getInputMethodWindowVisibleHeight") as? Int
+                // 带 userId 的重载：系统进程按用户 0（主用户）查询；多用户不是本模块的目标场景。
+                ?: OemReflection.call(service, "getInputMethodWindowVisibleHeight", 0) as? Int
+                ?: return false
+        return height > 0
+    }
+
+    /** 顶层显示内容里的 IME 窗口（WindowState）；取不到返回 null。 */
+    private fun inputMethodWindowState(): Any? =
+        try {
+            val wms = readWindowManagerService()
+            val root = OemReflection.readField(wms, "mRoot") ?: return null
+            val display =
+                OemReflection.requireMethod(root.javaClass, "getTopFocusedDisplayContent", 0)
+                    .invoke(root) ?: return null
+            imeAccess().get(display)
+        } catch (_: ReflectiveOperationException) {
+            null
+        } catch (_: RuntimeException) {
+            null
+        }
+
+    /** DisplayContent → IME WindowState 的访问器（与窗外关闭共用同一份实现）。 */
+    private fun imeAccess(): ColorOsDisplayContentImeAccess {
+        imeAccessCache?.let { return it }
+        val access =
+            ColorOsDisplayContentImeAccess(
+                classLoader.loadClass(OemClasses.DISPLAY_CONTENT),
+                classLoader.loadClass(OemClasses.WINDOW_STATE),
+            )
+        imeAccessCache = access
+        return access
+    }
+
+    /**
+     * 系统进程里的输入法服务实例（不是 Binder 代理）：从 LocalServices 取真实对象，
+     * 这样能直接读它的窗口可见状态。
+     */
+    private fun inputMethodService(): Any? {
+        if (inputMethodResolved) return inputMethodServiceCache
+        inputMethodResolved = true
+        inputMethodServiceCache =
+            runCatching {
+                val type = classLoader.loadClass(INPUT_METHOD_SERVICE_CLASS)
+                val localServices = classLoader.loadClass(LOCAL_SERVICES_CLASS)
+                localServices.getMethod("getService", Class::class.java).invoke(null, type)
+            }.getOrNull()
+        return inputMethodServiceCache
+    }
 
     private fun isCriticalSystemUiForeground(): Boolean {
         focusedWindowPackage()?.let { packageName ->
@@ -1527,19 +1620,8 @@ internal class ColorOsFreeformCoordinator(
         return !isTaskVisible(task) && isFlexibleScenario(task)
     }
 
-    /** task.getWrapper().getExtImpl().getFlexibleZoomState() */
-    private fun flexZoomStateOf(task: Any): Int =
-        try {
-            val wrapper = OemReflection.requireMethod(task.javaClass, "getWrapper", 0).invoke(task) ?: return -1
-            val ext = OemReflection.requireMethod(wrapper.javaClass, "getExtImpl", 0).invoke(wrapper) ?: return -1
-            val method = OemReflection.requireMethod(ext.javaClass, "getFlexibleZoomState", 0)
-            method.isAccessible = true
-            method.invoke(ext) as? Int ?: -1
-        } catch (_: ReflectiveOperationException) {
-            -1
-        } catch (_: RuntimeException) {
-            -1
-        }
+    /** task.getWrapper().getExtImpl().getFlexibleZoomState()；判据与窗口手势共用一份。 */
+    private fun flexZoomStateOf(task: Any): Int = ColorOsFlexibleWindowState.zoomStateOf(task)
 
     /** 系统的判据：该任务是否属于浮动窗口场景（带标题的小窗、迷你窗、贴边挂起都算）。 */
     private fun isFlexibleScenario(task: Any): Boolean =
@@ -1586,23 +1668,29 @@ internal class ColorOsFreeformCoordinator(
             null
         }
 
+    /**
+     * 该任务是否已经收成贴边浮标（在浮标列表里）。浮标控制器不可用时返回 null。
+     *
+     * 浮标态下窗口不可见、也不在浮动窗形态里，但它是同一个窗口，长按静音要继续保持。
+     */
+    private fun isFloatingTask(taskId: Int): Boolean? {
+        val handleController = floatHandleController() ?: return null
+        val method = OemReflection.requireMethod(handleController.javaClass, "isInFloatingList", 1)
+        return try {
+            method.invoke(handleController, taskId) as? Boolean
+        } catch (_: ReflectiveOperationException) {
+            null
+        } catch (_: RuntimeException) {
+            null
+        }
+    }
+
     /** 该包当前贴在屏幕边缘的浮标任务 id；没有浮标时返回 null。 */
     private fun ballTaskIdOf(packageName: String): Int? {
-        val handleController = floatHandleController() ?: return null
-        val isInFloatingList =
-            OemReflection.requireMethod(handleController.javaClass, "isInFloatingList", 1)
         for (task in tasksOfFocusedDisplay().orEmpty()) {
             if (packageOfTask(task) != packageName) continue
             val id = taskIdOf(task)
-            val floating =
-                try {
-                    isInFloatingList.invoke(handleController, id) as? Boolean
-                } catch (_: ReflectiveOperationException) {
-                    null
-                } catch (_: RuntimeException) {
-                    null
-                }
-            if (floating == true) return id
+            if (isFloatingTask(id) == true) return id
         }
         return null
     }
@@ -1796,12 +1884,20 @@ internal class ColorOsFreeformCoordinator(
         const val FLOAT_HANDLE_CONTROLLER_CLASS =
             OemClasses.FLOAT_HANDLE_CONTROLLER
 
+        /** 系统输入法服务与 LocalServices：取真实实例读 IME 窗口可见状态。 */
+        const val INPUT_METHOD_SERVICE_CLASS =
+            "com.android.server.inputmethod.InputMethodManagerService"
+        const val LOCAL_SERVICES_CLASS = "com.android.server.LocalServices"
+
+        /** InputMethodManager.IME_VISIBLE：mImeWindowVis 的最低位。 */
+        const val IME_VISIBLE_BIT = 1
+
         /** 与 FloatHandleView.REASON_START_FREEFORM_ONSINGLE_TAPUP 一致。 */
         const val BALL_OPEN_REASON = "onSingleTapUp"
 
         /** getFlexibleZoomState()：2 = 迷你窗，8 = ready（贴边悬挂）。 */
-        const val MINI_ZOOM_STATE = 2
-        const val READY_ZOOM_STATE = 8
+        const val MINI_ZOOM_STATE = ColorOsFlexibleWindowState.MINI
+        const val READY_ZOOM_STATE = ColorOsFlexibleWindowState.READY
 
 
 
