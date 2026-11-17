@@ -97,11 +97,14 @@ internal object ModulePreferences {
     const val KEY_ZOOM_LAUNCH_CONTROL_CENTER = "zoom_launch_control_center_v2"
     const val KEY_ZOOM_LAUNCH_INTER_APP = "zoom_launch_inter_app_v2"
 
-    /** 带回传的跨应用跳转（登录、授权、流程页）。 */
-    const val KEY_ZOOM_LAUNCH_INTER_APP_RESULT = "zoom_launch_inter_app_result_v1"
-
-    /** 分享中转页：分享给另一个应用时以浮窗打开（模块另起 zoom 启动）。 */
-    const val KEY_ZOOM_LAUNCH_SHARE_RELAY = "zoom_launch_share_relay_v1"
+    /**
+     * 已退役的两个启动场景：登录授权（带回传的跨应用跳转）与应用分享（分享中转页）。
+     *
+     * 官方自己就会把这两类流程放进浮窗，模块再改写反而会打断回传链路；代码已删，
+     * 只保留键名，用来在升级后清掉残留值。
+     */
+    const val LEGACY_KEY_ZOOM_LAUNCH_INTER_APP_RESULT = "zoom_launch_inter_app_result_v1"
+    const val LEGACY_KEY_ZOOM_LAUNCH_SHARE_RELAY = "zoom_launch_share_relay_v1"
 
     /** 复制链接：复制链接弹窗与系统分发服务代发的 VIEW 启动。 */
     const val KEY_ZOOM_LAUNCH_CLIPBOARD = "zoom_launch_clipboard_v1"
@@ -138,6 +141,14 @@ internal object ModulePreferences {
 
 
     const val KEY_RADIAL_KEEP_OPEN = "radial_keep_open"
+
+    /**
+     * 扇形交互总开关（默认开）。
+     *
+     * 关掉后底角不再呼出扇形菜单，monitor 一并拆掉、手势原样交回系统；
+     * 已配置的应用、特效与尺寸全部保留，重新打开即可恢复。
+     */
+    const val KEY_RADIAL_INTERACTION_ENABLED = "radial_interaction_enabled_v1"
 
     /**
      * 选中光圈：滑选到某个条目时，在图标外沿画一圈白色高亮。
@@ -209,6 +220,8 @@ internal object ModulePreferences {
     const val MAX_FLOAT_HANDLE_MAX_COUNT = 10
     const val DEFAULT_ZOOM_ALLOW_ANY_APP = false
     const val DEFAULT_RADIAL_KEEP_OPEN = false
+    /** 扇形交互默认开启：不想要扇形菜单的用户在设置里关掉即可。 */
+    const val DEFAULT_RADIAL_INTERACTION_ENABLED = true
     /** 选中光圈默认关闭：默认只保留 20% 的选中放大，特效由用户自己开。 */
     const val DEFAULT_RADIAL_SELECTION_RING = false
     const val DEFAULT_RADIAL_SHIMMER_ENABLED = false

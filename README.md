@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/ROM-ColorOS-00A862" alt="面向 ColorOS" />
   <img src="https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android" alt="最低 Android 15" />
   <img src="https://img.shields.io/badge/libxposed-API_102-4285F4" alt="libxposed API 102" />
-  <img src="https://img.shields.io/badge/version-3.1.3-blue" alt="版本 3.1.3" />
+  <img src="https://img.shields.io/badge/version-3.1.4-blue" alt="版本 3.1.4" />
 </p>
 
 把魅族的 Flyme 小窗交互搬到 ColorOS：从屏幕底角斜向内上滑呼出扇形菜单，滑到目标松手，当即以自由浮窗打开。
@@ -48,7 +48,7 @@
 - **长按静音**：长按浮动窗口只静音该应用，再次长按恢复，其他应用不受影响
 - **解除限制**：原本不支持自由浮窗的应用也能打开
 - **快速上滑**：底部横条上滑切为迷你形态
-- **轻量打开**：按场景决定是否以小窗打开——通知中心、通知横幅、控制中心、应用跳转、登录授权、应用分享、复制链接
+- **轻量打开**：按场景决定是否以小窗打开——通知中心、通知横幅、控制中心、应用跳转、复制链接（登录授权与应用分享交给官方处理）
 - **禁用浮窗**：列表内的应用，别人拉起它、它拉起别人都不改写
 
 ### 贴边挂机
@@ -103,7 +103,7 @@
 ## 已知限制
 
 - 依赖厂商私有的自由浮窗与侧边栏接口，仅适用于 ColorOS 15、16 与 17
-- 带文件的应用分享、隐式 VIEW 且需要回传结果的启动、游戏内的第三方登录不做改写
+- 需要回传结果的跨应用启动（登录、授权、选图、分享回传）与分享流程交给官方处理，模块不改写
 - 自由传送取不到自绘界面与独立窗口里的网页
 
 ## 致谢

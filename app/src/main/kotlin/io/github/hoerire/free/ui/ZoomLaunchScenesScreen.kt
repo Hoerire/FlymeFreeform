@@ -2,12 +2,10 @@ package io.github.hoerire.free.ui
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.OpenInNew
-import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -34,8 +32,6 @@ internal fun ZoomLaunchScenesScreen(
     onZoomLaunchHeadsUpChange: (Boolean) -> Unit,
     onZoomLaunchControlCenterChange: (Boolean) -> Unit,
     onZoomLaunchInterAppChange: (Boolean) -> Unit,
-    onZoomLaunchInterAppResultChange: (Boolean) -> Unit,
-    onZoomLaunchShareRelayChange: (Boolean) -> Unit,
     onZoomLaunchClipboardChange: (Boolean) -> Unit,
 ) {
     val enabled = state.settingsEditable && state.settings.enabled
@@ -77,20 +73,6 @@ internal fun ZoomLaunchScenesScreen(
                     title = stringResource(R.string.zoom_launch_inter_app_title),
                     enabled = sub,
                     startAction = { PreferenceIcon(Icons.Rounded.OpenInNew, sub) },
-                )
-                SwitchPreference(
-                    checked = state.settings.zoomLaunchInterAppResult,
-                    onCheckedChange = onZoomLaunchInterAppResultChange,
-                    title = stringResource(R.string.zoom_launch_inter_app_result_title),
-                    enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.Login, sub) },
-                )
-                SwitchPreference(
-                    checked = state.settings.zoomLaunchShareRelay,
-                    onCheckedChange = onZoomLaunchShareRelayChange,
-                    title = stringResource(R.string.zoom_launch_share_relay_title),
-                    enabled = sub,
-                    startAction = { PreferenceIcon(Icons.Rounded.Share, sub) },
                 )
                 SwitchPreference(
                     checked = state.settings.zoomLaunchClipboard,

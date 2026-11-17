@@ -322,11 +322,14 @@ internal class ColorOsFreeformCoordinator(
         // 长按静音被关掉（或模块整体停用）时把还静着的应用恢复回去，否则会永久没声音。
         if (!settings.longPressMuteEffective) windowGestures.releaseAll()
         overlay?.setBackdropAlpha(ModulePreferences.backdropShadeAlpha(settings.backdropLevel))
-        // monitor 只看"模块是否启用 + 角落是否开启"，不再看环境：
+        // monitor 只看"模块是否启用 + 扇形交互是否开启 + 角落是否开启"，不再看环境：
         // 环境判定本来就分两层（isInCornerZone 与 handlePointerEvent 都会拒），
         // 若这里还按环境决定是否注销，改设置时一旦环境判定暂时为 false，
         // monitor 就被拆掉且再也没人重建，表现是"改完触发范围后扇形完全拉不出来"。
-        if (settings.enabled && (settings.leftCornerEnabled || settings.rightCornerEnabled)) {
+        // 「启用交互」关掉时按同一套流程拆掉 monitor：不再吃底角手势，直接把事件交回系统。
+        if (settings.enabled && settings.radialInteractionEnabled &&
+            (settings.leftCornerEnabled || settings.rightCornerEnabled)
+        ) {
             val resuming = !pointerRegistered
             if ((resuming || selectionChanged) && settings.pinnedTargets.any { it is PinnedTarget.Sidebar }) entryCatalog.refresh()
             registerPointerListener()
@@ -648,6 +651,14 @@ internal class ColorOsFreeformCoordinator(
         }
         lastPointerEventAt = now
         val settings = lastSettings
+        // 「启用交互」关掉后彻底不响应底角手势：正在进行的这次也立刻收掉。
+        if (!settings.radialInteractionEnabled) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                trace("SYSTEM_GESTURE_SKIPPED_RADIAL_OFF")
+            }
+            cancelActiveGesture()
+            return
+        }
         if (!pointerRegistered || !environmentState.isGestureAllowed()) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 trace("SYSTEM_GESTURE_SKIPPED_ENV_" + environmentRejectionReason())

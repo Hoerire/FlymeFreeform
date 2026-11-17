@@ -115,6 +115,10 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setRadialKeepOpen(enabled: Boolean) =
         updateSettings { it.copy(radialKeepOpen = enabled) }
 
+    /** 扇形交互总开关：关闭后底角不再呼出扇形菜单。 */
+    fun setRadialInteractionEnabled(enabled: Boolean) =
+        updateSettings { it.copy(radialInteractionEnabled = enabled) }
+
     /** 选中光圈：滑选条目时是否绘制白色高亮圈。 */
     fun setRadialSelectionRing(enabled: Boolean) =
         updateSettings { it.copy(radialSelectionRing = enabled) }
@@ -170,11 +174,7 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setZoomLaunchInterApp(enabled: Boolean) =
         updateSettings { it.copy(zoomLaunchInterApp = enabled) }
 
-    fun setZoomLaunchInterAppResult(enabled: Boolean) =
-        updateSettings { it.copy(zoomLaunchInterAppResult = enabled) }
 
-    fun setZoomLaunchShareRelay(enabled: Boolean) =
-        updateSettings { it.copy(zoomLaunchShareRelay = enabled) }
 
     fun setZoomLaunchClipboard(enabled: Boolean) =
         updateSettings { it.copy(zoomLaunchClipboard = enabled) }

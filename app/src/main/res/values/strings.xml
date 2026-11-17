@@ -78,6 +78,8 @@
     <string name="outside_tap_mode_single">轻击窗外</string>
     <string name="outside_tap_mode_double">双击窗外</string>
     <string name="outside_tap_mode_bottom">轻击横条</string>
+    <string name="radial_interaction_title">启用交互</string>
+    <string name="radial_interaction_summary">关闭后底角不再呼出扇形菜单，已配置的应用与特效保留</string>
     <string name="radial_keep_open_title">保持挂起</string>
     <string name="radial_keep_open_summary">松手保持扇形菜单，可以继续滑动点选应用</string>
     <string name="radial_selection_ring_title">选中光圈</string>
@@ -124,8 +126,6 @@
     <string name="zoom_launch_heads_up_title">通知横幅</string>
     <string name="zoom_launch_control_center_title">控制中心</string>
     <string name="zoom_launch_inter_app_title">应用跳转</string>
-    <string name="zoom_launch_inter_app_result_title">登录授权</string>
-    <string name="zoom_launch_share_relay_title">应用分享</string>
     <string name="zoom_launch_clipboard_title">复制链接</string>
     <string name="auto_close_window_title">自动收窗</string>
     <string name="auto_close_window_summary">超过数量限制时直接关闭旧窗口，不收成浮标</string>

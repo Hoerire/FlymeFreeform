@@ -152,11 +152,11 @@ internal class ActivityStarterZoomInjector(
             ModuleLog.debug(TAG) { "ZOOM_SKIP_PREEMPT_NO_TARGET_" + stage }
             return false
         }
-        // 分享动作（SEND/SEND_MULTIPLE/SENDTO）只有在目标是用户安装的第三方应用时，
-        // 才算「用户主动跳到另一个应用」；选择器、分享面板与系统落点一律放行。
         val hasResultToValue = request?.let { OemReflection.readField(it, "resultTo") } != null
-        val shareRelayHere = hasResultToValue && isShareRelay(intent, request, target, callingPackage)
-        if (intent.action in SHARE_FLOW_ACTIONS && !shareRelayHere) {
+        // 分享流程（SEND / SEND_MULTIPLE / SENDTO / CHOOSER）一律不抢占：官方自己会把
+        // 分享页放进浮窗，模块另起一次系统级启动会丢掉 content:// 的读授权，
+        // 目标应用读不到文件，分享直接失败。
+        if (intent.action in SHARE_FLOW_ACTIONS) {
             ModuleLog.debug(TAG) { "ZOOM_SKIP_SHARE_FLOW_PREEMPT_" + stage }
             return false
         }
@@ -170,22 +170,17 @@ internal class ActivityStarterZoomInjector(
             ModuleLog.debug(TAG) { "ZOOM_SKIP_EXCLUDED_CALLER_PREEMPT_" + callingPackage }
             return false
         }
-        // startActivityForResult 的跨应用启动（登录、授权、选图、分享回传）需要目标
-        // 把结果回传并自行 finish；改由 zoom 入口另起一次启动会打断回传链路，
-        // 表现为授权窗口不关闭、或直接提示用户取消。这类启动一律放行。
+        // 带 resultTo 的跨应用启动（登录、授权、选图、分享回传）一律不做改写：
+        // 官方自己就会把这类流程放进浮窗，模块另起一次启动反而会打断回传链路，
+        // 表现为授权窗不关闭、登录页白屏。
         //
-        // 例外只有一个：目标应用自己的「中转页」二次发起同一目标。Via 用
-        // mark.via/.Trampoline 接链接，它同样带 resultTo，但它的结果只是给自己用，
-        // 放行就等于必然退化成全屏（日志 reason:9）。判据限定得很窄：Activity 名含
-        // Trampoline、由目标自己发起、action 为 VIEW、距上次注入 3 秒内。
+        // 例外只有一个：目标应用自己的「中转页」二次发起同一目标（Via 用
+        // mark.via/.Trampoline 接链接）。它的结果只是给自己用，放行就等于必然退化成
+        // 全屏；判据限定得很窄：Activity 名含 Trampoline、由目标自己发起、action 为
+        // VIEW、距上次注入 3 秒内。
         val hasResultTo = hasResultToValue
         val trampolineRelay = hasResultTo && isTrampolineRelay(intent, target, callingPackage)
-        // 分享中转页（QQ 的 .activity.JumpActivity 这类）：结果回传本身即返回调用方，
-        // 但页面会并入发起方任务、窗口形态跟着任务变成全屏。用户开着「应用跳转」时
-        // 这里应当是小窗，因此也走抢占通道。系统会复用目标应用既有的任务，不会产生
-        // 第二条任务，所以不需要额外的回收动作。
-        val shareRelay = shareRelayHere
-        if (hasResultTo && !trampolineRelay && !shareRelay) {
+        if (hasResultTo && !trampolineRelay) {
             if (isLauncherIconLaunch(callingPackage, intent.action, hasResultTo, realCallingUid, requestRealUid)) return false
             ModuleLog.debug(TAG) { "ZOOM_SKIP_RESULT_TO_cp" + callingPackage +
                 "_tg" + target +
@@ -210,9 +205,6 @@ internal class ActivityStarterZoomInjector(
                 // 第一次注入的 options 会在第二次启动时被 adjustOptionsForFlexibleTask 以 reason:9 拒绝，
                 // 结果退化成全屏。判据是「目标自己发起 + 目标与前一次注入相同 + 3 秒内」。
                 settings.zoomLaunchInterAppEffective && target !in SKIP_TARGETS && trampolineRelay -> true
-                // 分享中转页：系统把它并入发起方任务后窗口形态必为全屏，注入参数无效，
-                // 只能由模块另起一次 zoom 启动。判据见 isShareRelay()。
-                settings.zoomLaunchShareRelayEffective && target !in SKIP_TARGETS && shareRelay -> true
                 // 控制中心必须先于「通知」判定：磁贴长按等入口同样携带 PendingIntent，
                 // 若先按 pi 判，这次启动就会落到「通知中心」开关下，两个开关互相串。
                 isControlCenterLaunch(intent) ->
@@ -251,9 +243,6 @@ internal class ActivityStarterZoomInjector(
             val started = startZoomWindow(intent, target)
             if (started) {
                 ModuleLog.debug(TAG) { "ZOOM_PREEMPTED_" + target }
-                if (shareRelay) {
-                    ModuleLog.debug(TAG) { "ZOOM_FORCED_SHARE_cp" + callingPackage + "_tg" + target }
-                }
             }
             started
         } finally {
@@ -329,38 +318,6 @@ internal class ActivityStarterZoomInjector(
                     ?.uid
             }.getOrNull()
         }.toSet()
-    }
-
-    /**
-     * 分享中转页：跨应用、带 resultTo、action 为 VIEW，且目标组件是分享入口。
-     *
-     * 只认类名里明确带 JumpActivity / ShareActivity / ShareEntry 的组件（例如 QQ 的
-     * `com.tencent.mobileqq/.activity.JumpActivity`）。微信的 `WXEntryActivity` 同时承担
-     * 登录授权，不在名单内——授权链断掉的后果比一次全屏严重。
-     */
-    private fun isShareRelay(
-        intent: Intent,
-        request: Any?,
-        target: String,
-        callingPackage: String?,
-    ): Boolean {
-        if (callingPackage == null || callingPackage == target) return false
-        if (callingPackage == LAUNCHER_PACKAGE || callingPackage == SYSTEM_UI_PACKAGE) return false
-        if (!isThirdPartyApplication(callingPackage) || !isThirdPartyApplication(target)) return false
-        // 分享动作（SEND / SEND_MULTIPLE / SENDTO）暂不强制小窗：这类 Intent 常带
-        // content:// 文件与 FLAG_GRANT_READ_URI_PERMISSION，模块另起一次系统级启动会丢掉
-        // 这次授权（授权是按发起方 uid 发的），目标应用读不到文件，分享直接失败。
-        // 只认不带文件传输的 VIEW 中转页。
-        if (intent.action != Intent.ACTION_VIEW) return false
-        if (intent.component?.className == null) {
-            val resolved =
-                (request?.let { OemReflection.readField(it, "resolveInfo") } as? android.content.pm.ResolveInfo)
-                    ?.activityInfo?.name
-            if (resolved == null) return false
-            return SHARE_RELAY_CLASS_HINTS.any { resolved.contains(it) }
-        }
-        val name = intent.component?.className ?: return false
-        return SHARE_RELAY_CLASS_HINTS.any { name.contains(it) }
     }
 
     /** 判定「目标应用自己的中转页二次发起同一目标」：判据尽量窄，避免误伤授权与回传链路。 */
@@ -496,7 +453,7 @@ internal class ActivityStarterZoomInjector(
             intent.component?.className?.contains("Trampoline", ignoreCase = true) == true
         if (reason == "notification") collapseShade()
         // 记录本次跨应用跳转，供发起方回到前台时关闭目标浮窗。
-        if ((reason == "inter_app" || reason == "inter_app_result") && callingPackage != null) {
+        if (reason == "inter_app" && callingPackage != null) {
             val destination = intent.component?.packageName ?: intent.getPackage()
             if (destination != null) interAppTracker?.record(callingPackage, destination)
         }
@@ -508,35 +465,12 @@ internal class ActivityStarterZoomInjector(
             systemContext()?.packageManager?.resolveActivity(intent, 0)?.activityInfo?.packageName
         }.getOrNull()
 
-    /**
-     * 是否为厂商自有组件。
-     *
-     * ColorOS 有一批装在 `/my_stock` 的预装应用（如手机管家的 lite 入口），
-     * 它们的 ApplicationInfo 不带 FLAG_SYSTEM，只看系统标记会被当成第三方应用。
-     */
-    private fun isVendorComponent(packageName: String): Boolean =
-        VENDOR_PREFIXES.any { packageName.startsWith(it) }
-
     /** 是否为非系统应用；无法判定时按系统应用处理，不改写。 */
     private fun isThirdPartyApplication(packageName: String): Boolean =
         runCatching {
             val info = systemContext()?.packageManager?.getApplicationInfo(packageName, 0)
             info != null && (info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0
         }.getOrDefault(false)
-
-    /**
-     * 是否为分享面板。
-     *
-     * 该界面由系统包承载，若只按包名排除会漏掉分享这一常用入口；
-     * 按组件精确匹配，避免整套系统界面被小窗化。
-     */
-    private fun isShareSheet(intent: Intent): Boolean {
-        val component = intent.component ?: return false
-        val name = component.className ?: return false
-        return SHARE_SHEET_COMPONENTS.any { (pkg, simpleName) ->
-            component.packageName == pkg && name.contains(simpleName)
-        }
-    }
 
     /** 目标包名：显式组件优先，其次系统解析结果，最后才是 Intent 自带的包名。 */
     private fun resolveTarget(intent: Intent, request: Any?): String? {
@@ -724,79 +658,14 @@ internal class ActivityStarterZoomInjector(
             return null
         }
 
-        // 带 resultTo 的跨应用 VIEW 启动一律交给抢占通道判定（shareRelay 分支）。
-        //
-        // 原因：注入发生在 execute 阶段，此时组件名还没解析出来（日志里 cn=-），无法判断
-        // 是不是分享中转页；而系统对这类启动会按「发起方任务」的形态处理，注入的参数被直接
-        // 丢弃。更糟的是同一发启动会在 executeRequest 被抢占通道再判一次，结果是两边都动手：
-        // 注入一次 + zoom 再启动一次（日志中同一启动先建窗 20656 再 PREEMPTED）。
-        // 这里先让行，由抢占通道在组件可见时统一决定是否小窗。
-        val viewResult = hasResultTo &&
-            intent.action == Intent.ACTION_VIEW &&
-            callingPackage != null &&
-            callingPackage != LAUNCHER_PACKAGE &&
-            callingPackage != SYSTEM_UI_PACKAGE &&
-            callingPackage != target &&
-            isThirdPartyApplication(callingPackage) &&
-            isThirdPartyApplication(target)
-        if (viewResult) {
-            val knownShare = isShareRelay(intent, null, target, callingPackage)
-            val componentUnknown = intent.component?.className == null
-            // 已经认出是分享入口：只归「应用分享」管。开关关闭也不回落到「登录授权」，
-            // 避免两个开关互相影响（关闭时抢占通道不强制，原样放行）。
-            if (knownShare) {
-                ModuleLog.debug(TAG) {
-                    "ZOOM_DEFER_SHARE_RELAY_cp" + callingPackage + "_tg" + target +
-                        "_on" + (if (configuration.snapshot.zoomLaunchShareRelayEffective) 1 else 0)
-                }
-                return null
-            }
-            // execute 阶段组件还没解析出来，认不出是不是分享入口：先让行，等
-            // executeRequest 组件可见后再判——是分享走「应用分享」，不是分享由本通道
-            // 按「登录授权」处理。否则要么误伤登录授权，要么同一次启动被注入两次。
-            if (componentUnknown) {
-                ModuleLog.debug(TAG) { "ZOOM_DEFER_VIEW_PENDING_cp" + callingPackage + "_tg" + target }
-                return null
-            }
+        // 带 resultTo 的跨应用启动（登录、授权、选图、分享回传）交给官方处理：
+        // 官方自己就会把这类流程放进浮窗，模块再补参数或另起一次启动都会打断回传链路。
+        // 桌面同样以 startActivityForResult 启动应用，但这批启动已在前置条件里排除。
+        if (hasResultTo) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_RESULT_TO_SYSTEM_cp" + callingPackage + "_tg" + target }
+            return null
         }
 
-        // 携带 resultTo 的跨应用启动：调用方在等待结果。
-        // 本方法只补 ActivityOptions，不另起一次启动，结果回传链路保持完整。
-        //
-        // 桌面同样以 startActivityForResult 启动应用，若不做区分会把每一次图标点击
-        // 都当成应用间跳转；系统界面自身的启动由后续分支处理。两者都不参与改写。
-        // 应用内部页面之间的跳转同样携带 resultTo，因此还要求目标与发起方不同包。
-        //
-        // 该判定先于 SKIP_TARGETS：分享面板由系统包承载，但属于用户主动发起的跳转，
-        // 按组件精确放行，其余系统组件不做改写。
-        // 目标必须已知：分享 / 选择器这类意图在 execute 阶段常常还没解析出目标，
-        // 这时写进 zoom 参数会落在一个"还不知道给谁"的 Intent 上，分享页会以小窗打开，
-        // 紧接着被收窗关掉，表现为点击无响应。
-        if (hasResultTo &&
-            target != null &&
-            callingPackage != null &&
-            callingPackage != LAUNCHER_PACKAGE &&
-            callingPackage != SYSTEM_UI_PACKAGE &&
-            callingPackage != target &&
-            // 发起方必须是用户安装的第三方应用：登录授权、分享回传都由它们发起。
-            // 厂商自有包（com.oplus.* / com.coloros.* 等）之间的 resultTo 启动是同一次
-            // 点击的入口链——例如桌面图标先拉起手机管家的 lite 版，再由 lite 拉起正式版；
-            // 这类包常常装在 /my_stock 且不带 FLAG_SYSTEM，只靠系统标记判断会漏。
-            !isVendorComponent(callingPackage) &&
-            isThirdPartyApplication(callingPackage) &&
-            (target !in SKIP_TARGETS || isShareSheet(intent))
-        ) {
-            if (!configuration.snapshot.zoomLaunchInterAppResultEffective) {
-                ModuleLog.debug(TAG) { "ZOOM_SKIP_INTER_APP_RESULT_OFF_tg" + target }
-                return null
-            }
-            return "inter_app_result"
-        }
-        if (hasResultTo && target != null && callingPackage != null &&
-            (isVendorComponent(callingPackage) || !isThirdPartyApplication(callingPackage))
-        ) {
-            ModuleLog.debug(TAG) { "ZOOM_SKIP_SYSTEM_RELAY_cp" + callingPackage + "_tg" + target }
-        }
         // 跨应用启动：发起方与目标均为第三方应用且不同包。
         //
         // 登录、分享、深链等场景的递交方式各不相同：有的携带 resultTo，有的经
@@ -1009,21 +878,13 @@ internal class ActivityStarterZoomInjector(
 
         const val SYSTEM_UI_PACKAGE = "com.android.systemui"
 
-        /** 分享中转页的组件类名特征：只认这些明确表示「分享入口」的页面。 */
-        val SHARE_RELAY_CLASS_HINTS = listOf("JumpActivity", "ShareActivity", "ShareEntry")
-
         /** 桌面进程：其发起的启动属于图标点击，不计入应用间跳转。 */
         const val LAUNCHER_PACKAGE = "com.android.launcher"
-
-        /** 厂商自有包名前缀：这类组件之间的启动属于系统内部链路。 */
-        val VENDOR_PREFIXES =
-            listOf("com.oplus.", "com.coloros.", "com.oppo.", "com.android.oplus.")
 
         /** ColorOS 17 上桌面还可能是 ohome，两套包名都要认。 */
         val LAUNCHER_PACKAGES = setOf(LAUNCHER_PACKAGE, "com.oplus.ohome")
 
-        /** 文件选择与文档选取类动作：始终全屏。 */
-        /** 分享流程相关动作：不参与小窗改写。 */
+        /** 分享流程相关动作：不参与小窗改写（含文件分享与选择器）。 */
         val SHARE_FLOW_ACTIONS =
             setOf(
                 "android.intent.action.SEND",
@@ -1032,6 +893,7 @@ internal class ActivityStarterZoomInjector(
                 "android.intent.action.CHOOSER",
             )
 
+        /** 文件选择与文档选取类动作：始终全屏。 */
         val PICKER_ACTIONS =
             setOf(
                 "android.intent.action.GET_CONTENT",
@@ -1039,18 +901,6 @@ internal class ActivityStarterZoomInjector(
                 "android.intent.action.OPEN_DOCUMENT_TREE",
                 "android.intent.action.CREATE_DOCUMENT",
                 "android.intent.action.PICK",
-            )
-
-        /**
-         * 分享面板的组件：包名与类名片段。
-         *
-         * 分享面板由系统包承载，但在 manifest 的排除名单内；作为用户主动发起的跳转，
-         * 此处按组件精确放行。文件选择与权限授权界面不改写，不在名单内。
-         */
-        val SHARE_SHEET_COMPONENTS =
-            listOf(
-                "android" to "com.android.internal.app.ResolverActivity",
-                "com.android.intentresolver" to "ChooserActivity",
             )
 
         /** system_server 代发启动时的发起包名。 */

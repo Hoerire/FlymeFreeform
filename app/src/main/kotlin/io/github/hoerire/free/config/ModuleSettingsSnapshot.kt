@@ -29,7 +29,7 @@ internal data class ModuleSettingsSnapshot(
     val floatHandleMaxCount: Int = ModulePreferences.DEFAULT_FLOAT_HANDLE_MAX_COUNT,
     /** 小窗扩展·解除应用准入：isSupportFlexibleWindow 一律放行。 */
     val zoomAllowAnyApp: Boolean = ModulePreferences.DEFAULT_ZOOM_ALLOW_ANY_APP,
-    // 小窗跳转按入口拆成四项，各自独立存盘、独立判定。
+    // 小窗跳转按入口拆成几项，各自独立存盘、独立判定。
     // 全部默认关闭：未写入时取 false，不继承旧版那个已被移除的单一开关。
 
     /** 通知中心：点通知以小窗打开。 */
@@ -43,12 +43,6 @@ internal data class ModuleSettingsSnapshot(
 
     /** 应用互跳：一个应用普通地拉起另一个应用（无结果回传要求）时改小窗。 */
     val zoomLaunchInterApp: Boolean = false,
-
-    /** 带回传的跳转：登录、授权、流程页等携带 resultTo 的跨应用启动。 */
-    val zoomLaunchInterAppResult: Boolean = false,
-
-    /** 分享跳转：分享给另一个应用时改小窗（走模块自己的 zoom 启动）。 */
-    val zoomLaunchShareRelay: Boolean = false,
 
     /** 复制链接：复制链接弹窗与系统分发服务代发的启动。 */
     val zoomLaunchClipboard: Boolean = false,
@@ -67,6 +61,8 @@ internal data class ModuleSettingsSnapshot(
     val floatKeepAlive: Boolean = ModulePreferences.DEFAULT_FLOAT_KEEP_ALIVE,
     /** 扇形呼出后未选择任何条目时保持显示，不自动收起。 */
     val radialKeepOpen: Boolean = ModulePreferences.DEFAULT_RADIAL_KEEP_OPEN,
+    /** 扇形交互总开关：关闭后底角不再呼出扇形菜单，其余配置保留。 */
+    val radialInteractionEnabled: Boolean = ModulePreferences.DEFAULT_RADIAL_INTERACTION_ENABLED,
     /** 选中光圈：滑选条目时在图标外沿显示白色高亮圈。 */
     val radialSelectionRing: Boolean = ModulePreferences.DEFAULT_RADIAL_SELECTION_RING,
     /** 流光特效：选中项外沿的动效（光圈、星头、轨迹），独立于选中光圈。 */
@@ -101,9 +97,6 @@ internal data class ModuleSettingsSnapshot(
     val zoomLaunchHeadsUpEffective: Boolean get() = zoomInteractionActive && zoomLaunchHeadsUp
     val zoomLaunchControlCenterEffective: Boolean get() = zoomInteractionActive && zoomLaunchControlCenter
     val zoomLaunchInterAppEffective: Boolean get() = zoomInteractionActive && zoomLaunchInterApp
-    val zoomLaunchInterAppResultEffective: Boolean
-        get() = zoomInteractionActive && zoomLaunchInterAppResult
-    val zoomLaunchShareRelayEffective: Boolean get() = zoomInteractionActive && zoomLaunchShareRelay
     val zoomLaunchClipboardEffective: Boolean
         get() = zoomInteractionActive && zoomLaunchClipboard
     val autoCloseWindowEffective: Boolean
@@ -155,20 +148,16 @@ internal data class ModuleSettingsSnapshot(
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_HEADS_UP, zoomLaunchHeadsUp)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_CONTROL_CENTER, zoomLaunchControlCenter)
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_INTER_APP, zoomLaunchInterApp)
-            .putBoolean(
-                ModulePreferences.KEY_ZOOM_LAUNCH_INTER_APP_RESULT,
-                zoomLaunchInterAppResult,
-            )
-            .putBoolean(
-                ModulePreferences.KEY_ZOOM_LAUNCH_SHARE_RELAY,
-                zoomLaunchShareRelay,
-            )
             .putBoolean(ModulePreferences.KEY_ZOOM_LAUNCH_CLIPBOARD, zoomLaunchClipboard)
+            // 「登录授权」「应用分享」两个场景已交给官方处理，残留键一并清掉。
+            .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_INTER_APP_RESULT)
+            .remove(ModulePreferences.LEGACY_KEY_ZOOM_LAUNCH_SHARE_RELAY)
             .putBoolean(ModulePreferences.KEY_AUTO_CLOSE_WINDOW, autoCloseWindow)
             .putBoolean(ModulePreferences.KEY_FLOAT_KEEP_ALIVE, floatKeepAlive)
             .putBoolean(ModulePreferences.KEY_LONG_PRESS_MUTE, longPressMuteEnabled)
             // 旧分项键不再写入，升级后一并清除，避免残留值干扰排查。
             .remove(ModulePreferences.LEGACY_KEY_ZOOM_INTERACTION_ENABLED)
+            .putBoolean(ModulePreferences.KEY_RADIAL_INTERACTION_ENABLED, radialInteractionEnabled)
             .putBoolean(ModulePreferences.KEY_RADIAL_KEEP_OPEN, radialKeepOpen)
             .putBoolean(ModulePreferences.KEY_RADIAL_SELECTION_RING, radialSelectionRing)
             .putBoolean(ModulePreferences.KEY_RADIAL_SHIMMER_ENABLED, radialShimmerEnabled)
@@ -284,9 +273,8 @@ internal data class ModuleSettingsSnapshot(
             // 老配置迁移（升级路径）：
             // 1. 总开关「轻量打开」为停用状态但仍有值且为关 —— 说明升级前用户把小窗能力整体关着，
             //    那么所有场景都按关处理；第一次保存设置时这个键会被清掉，之后不再干预。
-            // 2. 新拆出来的场景键（登录授权 / 复制链接）没存过时继承旧「应用跳转」
-            //    的值，避免升级后用户原本能小窗的场景突然变全屏。
-            // 3. 「应用分享」为新增能力，不继承旧值：其旧行为表现为全屏，直接打开会造成形态突变。
+            // 2. 新拆出来的场景键（复制链接）没存过时继承旧「应用跳转」的值，
+            //    避免升级后用户原本能小窗的场景突然变全屏。
             val legacyMaster =
                 runCatching {
                     if (!preferences.contains(ModulePreferences.LEGACY_KEY_ZOOM_INTERACTION_ENABLED)) {
@@ -310,9 +298,6 @@ internal data class ModuleSettingsSnapshot(
                 zoomLaunchHeadsUp = scene(ModulePreferences.KEY_ZOOM_LAUNCH_HEADS_UP),
                 zoomLaunchControlCenter = scene(ModulePreferences.KEY_ZOOM_LAUNCH_CONTROL_CENTER),
                 zoomLaunchInterApp = scene(ModulePreferences.KEY_ZOOM_LAUNCH_INTER_APP),
-                zoomLaunchInterAppResult =
-                    sceneInherit(ModulePreferences.KEY_ZOOM_LAUNCH_INTER_APP_RESULT),
-                zoomLaunchShareRelay = scene(ModulePreferences.KEY_ZOOM_LAUNCH_SHARE_RELAY),
                 zoomLaunchClipboard = sceneInherit(ModulePreferences.KEY_ZOOM_LAUNCH_CLIPBOARD),
                 leftCornerEnabled = if (bothCornersDisabled) true else leftEnabled,
                 rightCornerEnabled = if (bothCornersDisabled) true else rightEnabled,
@@ -416,6 +401,10 @@ internal data class ModuleSettingsSnapshot(
                 radialKeepOpen = preferences.getBoolean(
                     ModulePreferences.KEY_RADIAL_KEEP_OPEN,
                     ModulePreferences.DEFAULT_RADIAL_KEEP_OPEN,
+                ),
+                radialInteractionEnabled = preferences.getBoolean(
+                    ModulePreferences.KEY_RADIAL_INTERACTION_ENABLED,
+                    ModulePreferences.DEFAULT_RADIAL_INTERACTION_ENABLED,
                 ),
                 radialSelectionRing = preferences.getBoolean(
                     ModulePreferences.KEY_RADIAL_SELECTION_RING,

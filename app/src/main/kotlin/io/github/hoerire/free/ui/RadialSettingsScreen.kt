@@ -13,6 +13,7 @@ import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.SwipeRight
+import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +45,7 @@ internal fun RadialSettingsScreen(
     onCornerSidesChange: (Boolean, Boolean) -> Unit,
     onCornerTriggerRangeChange: (Int) -> Unit,
 
+    onRadialInteractionEnabledChange: (Boolean) -> Unit,
     onRadialKeepOpenChange: (Boolean) -> Unit,
     onPauseInLandscapeChange: (Boolean) -> Unit,
     onPauseInGameModeChange: (Boolean) -> Unit,
@@ -85,6 +87,15 @@ internal fun RadialSettingsScreen(
         // 整页只有一个卡片：八项都是同一层级的开关或入口，再分四段会让页面被标题切成碎片。
         item(key = "radialSettings") {
             SettingsGroup(modifier = Modifier.fillMaxWidth()) {
+                // 总开关放在最上面：不想要扇形菜单的直接关掉即可，下面的配置全部保留。
+                SwitchPreference(
+                    checked = state.settings.radialInteractionEnabled,
+                    onCheckedChange = onRadialInteractionEnabledChange,
+                    title = stringResource(R.string.radial_interaction_title),
+                    summary = stringResource(R.string.radial_interaction_summary),
+                    enabled = enabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.TouchApp, enabled) },
+                )
                 SwitchPreference(
                     checked = state.settings.radialKeepOpen,
                     onCheckedChange = onRadialKeepOpenChange,

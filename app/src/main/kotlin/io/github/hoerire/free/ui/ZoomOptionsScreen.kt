@@ -39,8 +39,6 @@ private fun enabledSceneCount(state: FrameworkConnectionState): Int {
         settings.zoomLaunchHeadsUp,
         settings.zoomLaunchControlCenter,
         settings.zoomLaunchInterApp,
-        settings.zoomLaunchInterAppResult,
-        settings.zoomLaunchShareRelay,
         settings.zoomLaunchClipboard,
     ).count { it }
 }
