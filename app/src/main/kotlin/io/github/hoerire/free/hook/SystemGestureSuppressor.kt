@@ -64,7 +64,7 @@ internal class SystemGestureSuppressor(
 
     private fun isInCorner(x: Float, y: Float): Boolean {
         val settings = configuration.snapshot
-        if (!settings.enabled) return false
+        if (!settings.cornerInteractionActive) return false
         if (!settings.leftCornerEnabled && !settings.rightCornerEnabled) return false
         val metrics = android.content.res.Resources.getSystem().displayMetrics
         return CornerTriggerRegion.detectSide(

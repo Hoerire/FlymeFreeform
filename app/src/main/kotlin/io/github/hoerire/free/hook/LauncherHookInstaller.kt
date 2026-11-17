@@ -206,13 +206,14 @@ internal class LauncherHookInstaller(
         event: MotionEvent,
     ): CornerGestureConfig? {
         if (event.actionMasked != MotionEvent.ACTION_DOWN) return null
+        // 无条件挂上设置通道：之前只在「模块未启用」时才注册广播接收器，
+        // 导致桌面进程开着模块时永远收不到后续设置推送 —— 关掉「启用交互」
+        // 它仍然拿着启动时的旧快照继续抢底角输入。方法内部有幂等保护，重复调用无代价。
+        installSettingsSync(owner)
         val settings = configuration.snapshot
-        if (!settings.enabled) {
-            // 桌面进程的配置来自 LSPosed 远程偏好，重装后可能为空；首次命中时向
-            // system_server 索取一次权威快照（白名单已含 com.android.launcher）。
-            installSettingsSync(owner)
-            return null
-        }
+        if (!settings.enabled) return null
+        // 「启用交互」关掉 = 整套底角手势关掉：桌面这边也不再接管上滑与扇形呼出。
+        if (!settings.cornerInteractionActive) return null
         if (!configuration.isAvailable) return null
         if (!event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)) return null
         if (event.pointerCount != 1 || event.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER) return null
@@ -261,7 +262,14 @@ internal class LauncherHookInstaller(
                 if (!environmentState.isGestureAllowed()) cancelClaim()
             }
             configuration.observe {
-                mainHandler.post { if (!environmentState.isGestureAllowed()) cancelClaim() }
+                mainHandler.post {
+                    // 环境不允许、或「启用交互」被关掉，都要立刻放弃已接管的那条流。
+                    if (!environmentState.isGestureAllowed() ||
+                        !configuration.snapshot.cornerInteractionActive
+                    ) {
+                        cancelClaim()
+                    }
+                }
             }
         }
         if (Looper.myLooper() == Looper.getMainLooper()) start() else mainHandler.post { start() }

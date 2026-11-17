@@ -83,6 +83,16 @@ internal data class ModuleSettingsSnapshot(
 ) {
 
     /**
+     * 底角手势是否参与：模块总开关 ×「启用交互」× 至少一侧角区开启。
+     *
+     * 关掉「启用交互」等价于把整套底角手势关掉 —— 扇形、抢流、防穿透、
+     * 桌面端上滑接管、系统手势抑制都不再介入，触摸原样交给系统。
+     */
+    val cornerInteractionActive: Boolean
+        get() = enabled && radialInteractionEnabled &&
+            (leftCornerEnabled || rightCornerEnabled)
+
+    /**
      * 小窗相关 hook 的总闸，语义等同 [enabled]。
      *
      * 下面每个 xxxEffective 都是「总闸 && 该项开关」，hook 一律只读这些派生值：

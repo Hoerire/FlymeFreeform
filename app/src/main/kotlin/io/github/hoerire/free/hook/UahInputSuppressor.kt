@@ -140,6 +140,8 @@ internal class UahInputSuppressor(
         if (event.pointerCount != 1) return false
         if (event.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER) return false
         val settings = configuration.snapshot
+        // 「启用交互」关掉时不再吞角区触摸，直接放行给下层。
+        if (!settings.cornerInteractionActive) return false
         val metrics = android.content.res.Resources.getSystem().displayMetrics
         val width = metrics.widthPixels.toFloat()
         val height = metrics.heightPixels.toFloat()

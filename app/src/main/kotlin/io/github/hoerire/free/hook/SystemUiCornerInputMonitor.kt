@@ -92,8 +92,8 @@ internal class SystemUiCornerInputMonitor(
         settings = snapshot
         pendingSettings = null
         val allowed = environmentState.isGestureAllowed(refreshKeyguard = true)
-        updateSide(CornerSide.Left, allowed && snapshot.leftCornerEnabled)
-        updateSide(CornerSide.Right, allowed && snapshot.rightCornerEnabled)
+        updateSide(CornerSide.Left, allowed && snapshot.cornerInteractionActive)
+        updateSide(CornerSide.Right, allowed && snapshot.cornerInteractionActive)
     }
 
     private fun updateSide(side: CornerSide, shouldExist: Boolean) {

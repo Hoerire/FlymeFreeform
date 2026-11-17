@@ -55,6 +55,8 @@ internal fun RadialSettingsScreen(
     onNavigateToRadialSize: () -> Unit,
 ) {
     val enabled = state.settingsEditable && state.settings.enabled
+    // 「启用交互」关掉时整页其余项一起灰掉：参数都还在，重新打开就能继续调。
+    val rowEnabled = enabled && state.settings.radialInteractionEnabled
     var cornerRangePreviewDp by remember { mutableStateOf<Int?>(null) }
     val left = state.settings.leftCornerEnabled
     val right = state.settings.rightCornerEnabled
@@ -84,7 +86,7 @@ internal fun RadialSettingsScreen(
         title = stringResource(R.string.radial_settings_title),
         onBack = onBack,
     ) {
-        // 整页只有一个卡片：八项都是同一层级的开关或入口，再分四段会让页面被标题切成碎片。
+        // 整页只有一个卡片：九项都是同一层级的开关或入口，再分四段会让页面被标题切成碎片。
         item(key = "radialSettings") {
             SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                 // 总开关放在最上面：不想要扇形菜单的直接关掉即可，下面的配置全部保留。
@@ -101,19 +103,19 @@ internal fun RadialSettingsScreen(
                     onCheckedChange = onRadialKeepOpenChange,
                     title = stringResource(R.string.radial_keep_open_title),
                     summary = stringResource(R.string.radial_keep_open_summary),
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.PushPin, enabled) },
+                    enabled = rowEnabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.PushPin, rowEnabled) },
                 )
                 ArrowPreference(
                     title = stringResource(R.string.radial_apps_title),
                     summary = appsSummary,
                     onClick = onNavigateToPinnedApps,
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.Apps, enabled) },
+                    enabled = rowEnabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.Apps, rowEnabled) },
                 )
                 ListChoicePreference(
                     title = stringResource(R.string.corner_trigger_side_title),
-                    icon = { PreferenceIcon(Icons.Rounded.SwipeRight, enabled) },
+                    icon = { PreferenceIcon(Icons.Rounded.SwipeRight, rowEnabled) },
                     selected = sideIndex,
                     values = sideItems.indices.toList(),
                     valueText = { sideItems[it] },
@@ -124,13 +126,13 @@ internal fun RadialSettingsScreen(
                             2 -> onCornerSidesChange(false, true)
                         }
                     },
-                    enabled = enabled,
+                    enabled = rowEnabled,
                 )
                 RemoteDpSliderPreference(
                     icon = Icons.Rounded.Straighten,
                     confirmedValue = state.settings.cornerTriggerRangeDp,
                     isUpdating = state.isUpdating,
-                    enabled = enabled,
+                    enabled = rowEnabled,
                     title = stringResource(R.string.corner_trigger_range_title),
                     summary = stringResource(R.string.corner_trigger_range_summary),
                     minDp = ModulePreferences.MIN_CORNER_TRIGGER_RANGE_DP,
@@ -143,39 +145,39 @@ internal fun RadialSettingsScreen(
                     title = stringResource(R.string.radial_effect_group_title),
                     summary = stringResource(R.string.radial_effect_entry_summary),
                     onClick = onNavigateToRadialEffect,
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.AutoAwesome, enabled) },
+                    enabled = rowEnabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.AutoAwesome, rowEnabled) },
                 )
                 ArrowPreference(
                     title = stringResource(R.string.radial_size_page_title),
                     summary = stringResource(R.string.radial_size_entry_summary),
                     onClick = onNavigateToRadialSize,
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.CenterFocusStrong, enabled) },
+                    enabled = rowEnabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.CenterFocusStrong, rowEnabled) },
                 )
                 SwitchPreference(
                     checked = state.settings.pauseInLandscape,
                     onCheckedChange = onPauseInLandscapeChange,
                     title = stringResource(R.string.pause_in_landscape_title),
                     summary = stringResource(R.string.pause_in_landscape_summary),
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.ScreenRotation, enabled) },
+                    enabled = rowEnabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.ScreenRotation, rowEnabled) },
                 )
                 SwitchPreference(
                     checked = state.settings.pauseInGameMode,
                     onCheckedChange = onPauseInGameModeChange,
                     title = stringResource(R.string.pause_in_game_mode_title),
                     summary = stringResource(R.string.pause_in_game_mode_summary),
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.SportsEsports, enabled) },
+                    enabled = rowEnabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.SportsEsports, rowEnabled) },
                 )
                 SwitchPreference(
                     checked = state.settings.pauseInKeyboard,
                     onCheckedChange = onPauseInKeyboardChange,
                     title = stringResource(R.string.pause_in_keyboard_title),
                     summary = stringResource(R.string.pause_in_keyboard_summary),
-                    enabled = enabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.Keyboard, enabled) },
+                    enabled = rowEnabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.Keyboard, rowEnabled) },
                 )
             }
         }

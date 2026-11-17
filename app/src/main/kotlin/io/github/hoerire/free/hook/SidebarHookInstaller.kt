@@ -57,8 +57,8 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .setId("free.sidebar.breeno_identify")
             .intercept { chain ->
-                // 总开关关闭时走侧边栏自己的启动逻辑，不接管。
-                if (!configuration.snapshot.enabled) return@intercept chain.proceed()
+                // 总开关关闭、或「启用交互」关闭时，都走侧边栏自己的启动逻辑，不接管。
+                if (!configuration.snapshot.cornerInteractionActive) return@intercept chain.proceed()
                 val sent = runCatching {
                     val service = chain.thisObject
                     val context = readContext(service)
@@ -125,6 +125,8 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
             handles += module.hook(bind).setId("free.allapps.bind")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
                     val original = chain.proceed()
+                    // 「启用交互」关闭：侧边栏按原厂逻辑走，完全不接管面板与目录。
+                    if (!configuration.snapshot.cornerInteractionActive) return@intercept original
                     val service = chain.thisObject as? Service
                     val intent = chain.getArg(0) as? Intent
                     // 第一次被本模块的 action 绑定时补齐设置通道：install() 时
@@ -199,12 +201,14 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
             handles += module.hook(adapter).setId("free.allapps.adapter")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
                     val original = chain.proceed()
+                    if (!configuration.snapshot.cornerInteractionActive) return@intercept original
                     endpoint?.onAdapterCreated(chain.thisObject, original)
                     original
                 }
             handles += module.hook(changeState).setId("free.allapps.native_state")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept { chain ->
                     val original = chain.proceed()
+                    if (!configuration.snapshot.cornerInteractionActive) return@intercept original
                     endpoint?.onNativeSidebarState((chain.getArg(0) as? Enum<*>)?.name)
                     original
                 }
@@ -363,6 +367,8 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
         // 侧边栏条目本身由系统以小窗打开，这里只处理「更多」面板里的工具条目，
         // 因此跟随小窗总闸即可，不再单独做一个开关。
         if (!configuration.snapshot.zoomInteractionActive) return
+        // 「启用交互」关闭 = 整个面板不再由模块接管，工具启动也不掺和。
+        if (!configuration.snapshot.cornerInteractionActive) return
         val target = intent.component?.packageName ?: intent.getPackage() ?: return
         if (!PanelToolLaunchBridge.apply(target, options)) return
         io.github.hoerire.free.log.ModuleLog.debug("FFLAUNCH") { "PANEL_TOOL_ZOOM_" + target }

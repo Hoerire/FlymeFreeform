@@ -47,8 +47,11 @@ internal class CornerInputPilferMonitor(
 
     fun start(context: Context) {
         environmentState.start(context)
-        environmentState.observe { settings = configuration.snapshot }
+        // 设置一变就换快照：关掉「启用交互」必须**立刻**停止抢流。
+        // 之前只在 environmentState 变化（锁屏/横竖屏/游戏模式）时才刷新，
+        // 结果开关关了、哨兵还拿着旧快照继续吞底角触摸。
         settings = configuration.snapshot
+        configuration.observe { next -> settings = next }
 
         val global =
             runCatching {
@@ -103,7 +106,8 @@ internal class CornerInputPilferMonitor(
             MotionEvent.ACTION_DOWN -> {
                 tracking = false
                 pilfered = false
-                if (!settings.enabled || event.pointerCount != 1) return
+                // 关掉「启用交互」等于整套路手势关掉：连抢流都不做，事件原样留给系统。
+                if (!settings.cornerInteractionActive || event.pointerCount != 1) return
                 if (event.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER) return
                 val side =
                     CornerTriggerRegion.detectSide(
@@ -122,6 +126,12 @@ internal class CornerInputPilferMonitor(
             }
 
             MotionEvent.ACTION_MOVE -> {
+                // 手势进行中被关掉「启用交互」也要立刻停手，不能再抢一次。
+                if (!settings.cornerInteractionActive) {
+                    tracking = false
+                    pilfered = false
+                    return
+                }
                 if (!tracking || pilfered) return
                 val dx = event.rawX - downX
                 val dy = event.rawY - downY
