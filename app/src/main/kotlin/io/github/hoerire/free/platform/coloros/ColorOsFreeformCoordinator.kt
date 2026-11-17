@@ -179,6 +179,9 @@ internal class ColorOsFreeformCoordinator(
     /** 最近任务校验的节流时间戳。 */
     private var lastRecentsCheckAt = 0L
 
+    /** 最近任务广播的节流时间戳：扇形呼出与面板打开都要给侧边栏送一份最新的。 */
+    private var lastRecentsBroadcastAt = 0L
+
     /** 本次 overlay 实际用的窗口类型；决定它压不压在输入法上面。 */
     private var overlayWindowType = OVERLAY_WINDOW_TYPE
     private val pointerQueueLock = Any()
@@ -775,6 +778,13 @@ internal class ColorOsFreeformCoordinator(
      * ColorOS 不把游戏写进 UsageStats，侧边栏只能看到「用过但不含游戏」的那一份；
      * system_server 这边 `getRecentTasks` 是完整的，用它补上游戏。
      */
+    private fun broadcastRecentsIfDue() {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastRecentsBroadcastAt < RECENTS_BROADCAST_INTERVAL_MS) return
+        lastRecentsBroadcastAt = now
+        syncRecentsToSidebar()
+    }
+
     private fun syncRecentsToSidebar() {
         val manager = runCatching { context.getSystemService(android.app.ActivityManager::class.java) }.getOrNull() ?: return
         val packages =
@@ -802,6 +812,8 @@ internal class ColorOsFreeformCoordinator(
     ) {
         entryLaunchGeneration++
         entryCatalog.cancelLaunch()
+        // 扇形先于「更多」面板出现；在这里就把最近任务推给侧边栏，第一次打开面板时才是最新的。
+        broadcastRecentsIfDue()
         removeOverlay()
         // 扇形呼出时收掉「更多」面板：面板是应用层之上的 overlay，留着会盖住扇形，
         // 也会盖住随后打开的小窗。这里只做这一件事，面板内部状态机不动。
@@ -1854,6 +1866,9 @@ internal class ColorOsFreeformCoordinator(
 
         /** 推给侧边栏的最近任务条数。 */
         const val RECENT_TASKS_LIMIT = 16
+
+        /** 最近任务广播的最小间隔（毫秒）。 */
+        const val RECENTS_BROADCAST_INTERVAL_MS = 1_500L
 
         /** 任务树下钻深度：DisplayContent 下还套着 5 层以上 DisplayArea。 */
         const val MAX_TASK_WALK_DEPTH = 12

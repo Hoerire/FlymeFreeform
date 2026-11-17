@@ -62,10 +62,14 @@ internal class FloatKeepAliveHook(
 
         installWithoutVisibility(recordClass)
         installVisibleRequested(recordClass)
+        installSetVisibilityGuard(recordClass)
         installStateGuard(recordClass)
         installStopGuard(recordClass)
         installPauseSkip(recordClass, classLoader)
         installPauseTimeout(recordClass)
+        installGameDetectHook(classLoader)
+        installAdjustOptionsGuard(classLoader)
+        installFloatEjectGuard(classLoader)
         installRotationGuard(classLoader)
         installHandleObserver(classLoader)
         installFloatHandleSync(classLoader)
@@ -133,7 +137,7 @@ internal class FloatKeepAliveHook(
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .setId("free.float_keep_alive.make_invisible")
             .intercept { chain ->
-                if (shouldKeepVisible(chain.thisObject)) {
+                if (shouldKeepVisible(chain.thisObject) && isGameRecord(chain.thisObject)) {
                     logSkip(chain.thisObject, "invisible")
                     null
                 } else {
@@ -154,7 +158,13 @@ internal class FloatKeepAliveHook(
             .setId("free.float_keep_alive.visible_requested")
             .intercept { chain ->
                 val visible = chain.getArg(0) as? Boolean
-                if (visible == false && shouldKeepVisible(chain.thisObject)) {
+                val keep = shouldKeep(chain.thisObject)
+                val game = keep && isGameRecord(chain.thisObject)
+                if (keep && !game && visible == true) {
+                    // 非游戏（视频/短剧）：按上游策略拒绝抬成可见，换集就不会弹窗。
+                    logDenyRaised(chain.thisObject)
+                    chain.proceed(arrayOf<Any?>(false))
+                } else if (visible == false && shouldKeepVisible(chain.thisObject) && game) {
                     logSkip(chain.thisObject, "visible_requested")
                     chain.proceed(arrayOf<Any?>(true))
                 } else {
@@ -168,6 +178,232 @@ internal class FloatKeepAliveHook(
                 }
             }
     }
+
+    // ==================== 分应用策略：非游戏拒绝可见，游戏保持旧逻辑 ====================
+
+    /**
+     * 判断包名是否游戏（按应用类别，不维护包名表）。
+     *
+     * 先问 ColorOS 自己的游戏识别（GameManagerServiceExtImpl.isGamePkg，云端包名表，
+     * 冷门游戏也覆盖）；问不到再退回 ApplicationInfo.category == CATEGORY_GAME。
+     */
+
+    /**
+     * 捕获 ColorOS 的游戏识别入口。
+     *
+     * GameManagerServiceExtImpl 没有公开的取实例方法，但系统会频繁调用它的
+     * isGamePkg(String)。这里挂一个观察钩子：第一次被调用时记住实例，
+     * 之后就能按需查询任意包名（结果同时缓存）。
+     */
+    private fun installGameDetectHook(classLoader: ClassLoader) {
+        val type = runCatching { classLoader.loadClass(GAME_MANAGER_EXT) }.getOrNull()
+        if (type == null) {
+            ModuleLog.warn("FLOAT_KEEP_ALIVE_NO_GAME_EXT")
+            return
+        }
+        val methods =
+            declaredMethodsNamed(type, "isGamePkg")
+                .filter { it.parameterCount == 1 && it.parameterTypes[0] == String::class.java }
+        if (methods.isEmpty()) {
+            ModuleLog.warn("FLOAT_KEEP_ALIVE_NO_IS_GAME_PKG")
+            return
+        }
+        methods.forEachIndexed { index, method ->
+            if (gameExtMethod == null) gameExtMethod = method
+            runCatching {
+                module
+                    .hook(method)
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .setId("free.game_detect_$index")
+                    .intercept { chain ->
+                        val result = chain.proceed()
+                        val instance = chain.thisObject
+                        if (instance != null) gameExtInstance = instance
+                        val pkg = chain.getArg(0) as? String
+                        if (pkg != null && result is Boolean) gameCache[pkg] = result
+                        result
+                    }
+            }
+        }
+        ModuleLog.install("FLOAT_KEEP_ALIVE_GAME_DETECT_HOOKED_" + methods.size)
+    }
+
+    private fun isGamePackage(pkg: String?): Boolean {
+        if (pkg.isNullOrEmpty()) return false
+        gameCache[pkg]?.let { return it }
+        var result = false
+        runCatching {
+            val method = gameExtMethod
+            val instance = gameExtInstance
+            if (method != null) {
+                method.isAccessible = true
+                val value = if (instance != null) method.invoke(instance, pkg) else method.invoke(null, pkg)
+                if (value is Boolean) result = value
+            }
+        }
+        if (!result) {
+            runCatching {
+                val pm = Class.forName("android.app.AppGlobals").getMethod("getPackageManager").invoke(null)
+                val info =
+                    pm.javaClass
+                        .getMethod(
+                            "getApplicationInfo",
+                            String::class.java,
+                            Int::class.javaPrimitiveType,
+                            Int::class.javaPrimitiveType,
+                        ).invoke(pm, pkg, 0, 0)
+                val category = info?.javaClass?.getField("category")?.getInt(info) ?: 0
+                if (category == CATEGORY_GAME) result = true
+            }
+        }
+        gameCache[pkg] = result
+        if (gameDetectLogged.putIfAbsent(pkg, true) == null) {
+            ModuleLog.info("FLOAT_KEEP_ALIVE_GAME_DETECT_" + pkg + "_" + result)
+        }
+        return result
+    }
+
+    private fun isGameRecord(record: Any?): Boolean =
+        isGamePackage(OemReflection.readField(record, "packageName") as? String)
+
+    private fun logDenyRaised(record: Any?) {
+        val task = OemReflection.readField(record, "task") ?: OemReflection.readField(record, "mTask")
+        val taskId = (task?.let { OemReflection.readField(it, "mTaskId") } as? Int) ?: return
+        if (denyRaisedLogged.putIfAbsent(taskId, true) != null) return
+        ModuleLog.info("FLOAT_KEEP_ALIVE_DENY_RAISED_task" + taskId)
+    }
+
+    private val denyRaisedLogged = ConcurrentHashMap<Int, Boolean>()
+
+    /**
+     * 认标记：哪一次启动是「浮标里的非游戏应用自己起了新页面」（短剧换集）。
+     * 只识别、不改原厂判定结果；产出是一个时间窗。
+     */
+    private fun installAdjustOptionsGuard(classLoader: ClassLoader) {
+        val flexibleClass = runCatching { classLoader.loadClass(FLEXIBLE_CONTROLLER_CLASS) }.getOrNull() ?: return
+        val methods =
+            declaredMethodsNamed(flexibleClass, "isAllowedToAdjustOptions")
+                .filter { it.returnType == Int::class.javaPrimitiveType }
+        if (methods.isEmpty()) {
+            ModuleLog.warn("FLOAT_KEEP_ALIVE_NO_ADJUST_OPTIONS")
+            return
+        }
+        methods.forEachIndexed { index, method ->
+            module
+                .hook(method)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .setId("free.float_keep_alive.adjust_options_$index")
+                .intercept { chain ->
+                    if (configuration.snapshot.floatKeepAliveEffective) {
+                        runCatching { noteFloatSelfStart(chain.args) }
+                    }
+                    chain.proceed()
+                }
+        }
+        ModuleLog.install("FLOAT_KEEP_ALIVE_ADJUST_OPTIONS_INSTALLED_" + methods.size)
+    }
+
+    private fun noteFloatSelfStart(args: List<Any?>) {
+        var sourceTaskId = -1
+        var sourcePackage: String? = null
+        var lastPackage: String? = null
+        var packageCount = 0
+        for (arg in args) {
+            val packageName = OemReflection.readField(arg, "packageName") as? String
+            if (packageName != null) {
+                lastPackage = packageName
+                packageCount++
+            }
+            val task = OemReflection.readField(arg, "task") ?: OemReflection.readField(arg, "mTask")
+            val taskId = (OemReflection.readField(task, "mTaskId") as? Int) ?: -1
+            if (taskId > 0 && isFloating(taskId)) {
+                sourceTaskId = taskId
+                if (packageName != null) sourcePackage = packageName
+            }
+        }
+        if (sourceTaskId <= 0 || sourcePackage == null || packageCount < 2) return
+        if (lastPackage != sourcePackage) return
+        if (isGamePackage(sourcePackage)) return
+        suppressFloatEjectAt = android.os.SystemClock.uptimeMillis() + FLOAT_EJECT_WINDOW_MS
+        if (floatSelfStartLogged.putIfAbsent(sourceTaskId.toString() + "/" + sourcePackage, true) == null) {
+            ModuleLog.info("FLOAT_KEEP_ALIVE_FLOAT_SELF_START_task" + sourceTaskId + "_pkg" + sourcePackage)
+        }
+    }
+
+    private val floatSelfStartLogged = ConcurrentHashMap<String, Boolean>()
+
+    /** 非游戏应用自己起新页面时，别让原厂把 task 移前台、摘浮标（换集弹窗根因）。 */
+    private fun installFloatEjectGuard(classLoader: ClassLoader) {
+        val controller = runCatching { classLoader.loadClass(CONTROLLER_CLASS) }.getOrNull() ?: return
+        val methods = declaredMethodsNamed(controller, "moveTaskToFront").filter { it.returnType == Void.TYPE }
+        if (methods.isEmpty()) {
+            ModuleLog.warn("FLOAT_KEEP_ALIVE_NO_MOVE_TASK_TO_FRONT")
+            return
+        }
+        methods.forEachIndexed { index, method ->
+            module
+                .hook(method)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .setId("free.float_keep_alive.eject_$index")
+                .intercept { chain ->
+                    val taskId = taskIdFromArgs(chain.args)
+                    if (taskId > 0 && isFloating(taskId) &&
+                        android.os.SystemClock.uptimeMillis() < suppressFloatEjectAt
+                    ) {
+                        if (ejectBlockedLogged.putIfAbsent(taskId, true) == null) {
+                            ModuleLog.info("FLOAT_KEEP_ALIVE_EJECT_BLOCKED_task" + taskId)
+                        }
+                        null
+                    } else {
+                        chain.proceed()
+                    }
+                }
+        }
+        ModuleLog.install("FLOAT_KEEP_ALIVE_EJECT_GUARD_INSTALLED_" + methods.size)
+    }
+
+    private val ejectBlockedLogged = ConcurrentHashMap<Int, Boolean>()
+
+
+    /**
+     * 另一条可见性通道：系统的解锁/应用切换流程会直接写 setVisibility(boolean)，
+     * 不经过 setVisibleRequested。非游戏浮标应用同样拒绝「可见」。
+     */
+    private fun installSetVisibilityGuard(recordClass: Class<*>) {
+        val methods =
+            declaredMethodsNamed(recordClass, "setVisibility")
+                .filter { it.parameterCount == 1 && it.parameterTypes[0] == Boolean::class.javaPrimitiveType }
+        if (methods.isEmpty()) {
+            ModuleLog.warn("FLOAT_KEEP_ALIVE_NO_SET_VISIBILITY")
+            return
+        }
+        methods.forEachIndexed { index, method ->
+            module
+                .hook(method)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .setId("free.float_keep_alive.set_visibility_$index")
+                .intercept { chain ->
+                    val visible = chain.getArg(0) as? Boolean
+                    val keep = shouldKeep(chain.thisObject)
+                    if (visible == true && keep && !isGameRecord(chain.thisObject)) {
+                        logDenyVisibility(chain.thisObject)
+                        chain.proceed(arrayOf<Any?>(false))
+                    } else {
+                        chain.proceed()
+                    }
+                }
+        }
+        ModuleLog.install("FLOAT_KEEP_ALIVE_SET_VISIBILITY_HOOKED_" + methods.size)
+    }
+
+    private fun logDenyVisibility(record: Any?) {
+        val task = OemReflection.readField(record, "task") ?: OemReflection.readField(record, "mTask")
+        val taskId = (task?.let { OemReflection.readField(it, "mTaskId") } as? Int) ?: return
+        if (denyVisibilityLogged.putIfAbsent(taskId, true) != null) return
+        ModuleLog.info("FLOAT_KEEP_ALIVE_DENY_VISIBILITY_task" + taskId)
+    }
+
+    private val denyVisibilityLogged = ConcurrentHashMap<Int, Boolean>()
 
     private fun installStateGuard(recordClass: Class<*>) {
         val stateClass =
@@ -512,7 +748,10 @@ internal class FloatKeepAliveHook(
             .intercept { chain ->
                 val showing = chain.getArg(1) as? Boolean
                 // 解锁和横竖屏一样，是一次整屏可见性重排：这时把守卫放下，窗口才不会被顶出来。
-                if (showing == false) beginUnlockGuard()
+                if (showing == false) {
+                    unlockSettledUntil = android.os.SystemClock.uptimeMillis() + UNLOCK_SETTLE_MS
+                    beginUnlockGuard()
+                }
                 val result = chain.proceed()
                 if (showing == false) {
                     scheduleUnlockGuardEnd()
@@ -600,7 +839,10 @@ internal class FloatKeepAliveHook(
                         name.contains("moveTaskToFront") ||
                         name.contains("resumeFocusedStacksTopActivities")
                 }
-                if (configuration.snapshot.floatKeepAliveEffective && isKeptFloat(taskId) && (isLockedOrOff(chain.thisObject) || fromAppStart)) {
+                val justUnlocked = android.os.SystemClock.uptimeMillis() < unlockSettledUntil
+                if (configuration.snapshot.floatKeepAliveEffective && isKeptFloat(taskId) &&
+                    (isLockedOrOff(chain.thisObject) || fromAppStart || justUnlocked)
+                ) {
                     logResetSkipped(taskId)
                     null
                 } else {
@@ -1242,6 +1484,20 @@ internal class FloatKeepAliveHook(
 
     private val hansFreezeCallLogged = ConcurrentHashMap<String, Boolean>()
 
+    /** GameManagerServiceExtImpl 的实例与方法：第一次被系统调用时捕获，之后用来查询。 */
+    private var gameExtInstance: Any? = null
+    private var gameExtMethod: Method? = null
+
+    /** 游戏判定缓存：包名 -> 是否游戏。 */
+    private val gameCache = ConcurrentHashMap<String, Boolean>()
+    private val gameDetectLogged = ConcurrentHashMap<String, Boolean>()
+
+    /** 浮标内起新页面后的窗口期：只对非游戏应用生效。 */
+    @Volatile private var suppressFloatEjectAt = 0L
+
+    /** 解锁后的过渡窗口：这段时间里不要把浮标任务 reset 成全屏。 */
+    @Volatile private var unlockSettledUntil = 0L
+
     private var keptPackagesCache: Set<String>? = null
     private var keptPackagesAt = 0L
 
@@ -1526,5 +1782,17 @@ internal class FloatKeepAliveHook(
 
         /** 窗口可见性回调里复用包名集合的时长（毫秒）。 */
         const val KEPT_PACKAGES_TTL_MS = 1_000L
+
+        /** 解锁后不把浮标任务转全屏的过渡时长（毫秒）。 */
+        const val UNLOCK_SETTLE_MS = 3_000L
+
+        /** 浮标内起新页面后，吃掉「移出浮标」的窗口期（毫秒）。 */
+        const val FLOAT_EJECT_WINDOW_MS = 2_500L
+
+        /** ColorOS 的游戏识别入口（云端包名表）。 */
+        const val GAME_MANAGER_EXT = "com.android.server.app.GameManagerServiceExtImpl"
+
+        /** ApplicationInfo.CATEGORY_GAME */
+        const val CATEGORY_GAME = 2
     }
 }
