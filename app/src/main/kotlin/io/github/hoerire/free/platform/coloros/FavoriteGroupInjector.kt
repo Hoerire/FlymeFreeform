@@ -1,5 +1,10 @@
 package io.github.hoerire.free.platform.coloros
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import io.github.hoerire.free.config.ModulePreferences
 import java.io.File
 
 /**
@@ -63,6 +68,11 @@ internal object FavoriteGroupInjector {
     /** 后台预计算结果：主线程只做“把这份列表原地写进去”，不查 XML/UsageStats。 */
     @Volatile
     private var prepared: List<Any?>? = null
+    /** system_server 推来的最近任务包名（含被 UsageStats 漏掉的游戏）。 */
+    @Volatile
+    private var sidebarRecents: List<String> = emptyList()
+    private var recentsReceiverRegistered = false
+
     @Volatile
     private var preparing = false
     @Volatile
@@ -77,6 +87,7 @@ internal object FavoriteGroupInjector {
         loader: ClassLoader? = null,
         force: Boolean = false,
     ) {
+        ensureRecentsReceiver(context)
         if (preparing) {
             d { "prepareAsync: busy, skip (force=" + force + ")" }
             return
@@ -226,6 +237,27 @@ internal object FavoriteGroupInjector {
      * 纯数据构造：只看用户设置 XML + 最近使用，不依赖当前列表内容。
      * 在后台线程调用，主线程只负责把结果原地写进 adapter 的列表。
      */
+    /** 侧边栏进程拿不到 getRecentTasks，由 system_server 推送补上。 */
+    private fun ensureRecentsReceiver(context: Context?) {
+        if (recentsReceiverRegistered) return
+        val ctx = context ?: appContext() ?: return
+        recentsReceiverRegistered = true
+        runCatching {
+            ctx.registerReceiver(
+                object : BroadcastReceiver() {
+                    override fun onReceive(receiverContext: Context?, intent: Intent?) {
+                        val packages = intent?.getStringArrayExtra(ModulePreferences.EXTRA_RECENT_PACKAGES) ?: return
+                        sidebarRecents = packages.toList()
+                        d { "recents sync size=" + packages.size + " " + packages.take(5) }
+                        prepareAsync(receiverContext ?: ctx, force = true)
+                    }
+                },
+                IntentFilter(ModulePreferences.ACTION_RECENTS_SYNC),
+                Context.RECEIVER_EXPORTED,
+            )
+        }
+    }
+
     private fun buildRows(loader: ClassLoader, context: android.content.Context?): List<Any?>? {
         val order = readOrder() ?: return null
         val picked = order.mapNotNull { buildAliasItem(loader, context, it) }.distinctBy { aliasOf(it) }
@@ -442,6 +474,8 @@ internal object FavoriteGroupInjector {
         val end = System.currentTimeMillis()
         // 用「切到前台」事件排真实先后；queryUsageStats 的 lastTimeUsed 是按桶聚合的，排序会变成近似字母序。
         val ordered = LinkedHashSet<String>()
+        // 先放 system_server 推来的最近任务：ColorOS 不把游戏写进 UsageStats，靠它补。
+        ordered.addAll(sidebarRecents)
         try {
             val events = manager.queryEvents(end - RECENT_WINDOW_MS, end)
             val event = android.app.usage.UsageEvents.Event()

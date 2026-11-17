@@ -766,6 +766,33 @@ internal class ColorOsFreeformCoordinator(
         if (now - lastRecentsCheckAt < RECENTS_CHECK_INTERVAL_MS) return
         lastRecentsCheckAt = now
         appCatalog.refresh(lastSettings, reloadApps = false, forceRecentOrder = true)
+        syncRecentsToSidebar()
+    }
+
+    /**
+     * 把最近任务包名推给侧边栏进程（「更多」面板的「最近」分组在那里拼）。
+     *
+     * ColorOS 不把游戏写进 UsageStats，侧边栏只能看到「用过但不含游戏」的那一份；
+     * system_server 这边 `getRecentTasks` 是完整的，用它补上游戏。
+     */
+    private fun syncRecentsToSidebar() {
+        val manager = runCatching { context.getSystemService(android.app.ActivityManager::class.java) }.getOrNull() ?: return
+        val packages =
+            runCatching {
+                @Suppress("DEPRECATION")
+                manager.getRecentTasks(RECENT_TASKS_LIMIT, android.app.ActivityManager.RECENT_WITH_EXCLUDED)
+                    .mapNotNull { task -> task.baseIntent?.component?.packageName ?: task.origActivity?.packageName }
+                    .filterNot { pkg -> pkg == ModulePreferences.SIDEBAR_PACKAGE || pkg == context.packageName }
+                    .distinct()
+            }.getOrDefault(emptyList())
+        if (packages.isEmpty()) return
+        runCatching {
+            context.sendBroadcast(
+                Intent(ModulePreferences.ACTION_RECENTS_SYNC)
+                    .setPackage(ModulePreferences.SIDEBAR_PACKAGE)
+                    .putExtra(ModulePreferences.EXTRA_RECENT_PACKAGES, packages.toTypedArray()),
+            )
+        }
     }
 
     private fun showOverlay(
@@ -1824,6 +1851,9 @@ internal class ColorOsFreeformCoordinator(
 
         /** 最近任务校验的最小间隔。 */
         const val RECENTS_CHECK_INTERVAL_MS = 2_000L
+
+        /** 推给侧边栏的最近任务条数。 */
+        const val RECENT_TASKS_LIMIT = 16
 
         /** 任务树下钻深度：DisplayContent 下还套着 5 层以上 DisplayArea。 */
         const val MAX_TASK_WALK_DEPTH = 12

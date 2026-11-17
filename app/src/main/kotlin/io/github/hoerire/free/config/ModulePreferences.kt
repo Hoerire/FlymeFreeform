@@ -30,6 +30,19 @@ internal object ModulePreferences {
 
     /** system_server → 模块应用：权威快照（推送的回执与查询的答复共用）。 */
     const val ACTION_SETTINGS_SNAPSHOT = "io.github.hoerire.free.action.SETTINGS_SNAPSHOT"
+
+    /**
+     * system_server → 侧边栏进程：最近任务包名（新的在前）。
+     *
+     * 侧边栏进程是普通应用 uid，拿不到 `getRecentTasks`；而 ColorOS 不把游戏写进
+     * UsageStats（王者荣耀 7 天内 0 条 ACTIVITY_RESUMED），「最近」分组就会漏掉它。
+     * 由 system_server 把最近任务顺序推过去，侧边栏只做合并。
+     */
+    const val ACTION_RECENTS_SYNC = "io.github.hoerire.free.action.RECENTS_SYNC"
+    const val EXTRA_RECENT_PACKAGES = "recent_packages"
+
+    /** 侧边栏应用：接收上面的最近任务推送。 */
+    const val SIDEBAR_PACKAGE = "com.coloros.smartsidebar"
     const val EXTRA_PINNED_TARGETS = "pinned_targets"
     const val EXTRA_PINS_SAVED = "pins_saved"
     const val EXTRA_MODULE_ENABLED = "module_enabled"
@@ -105,7 +118,7 @@ internal object ModulePreferences {
     const val DEFAULT_LONG_PRESS_MUTE = false
 
 
-    /** 贴边保活：收成贴边浮标后保持应用继续运行，不停止任务。 */
+    /** 贴边挂机：收成贴边浮标后保持应用继续运行，不停止任务。 */
     const val KEY_FLOAT_KEEP_ALIVE = "float_keep_alive_v1"
     const val DEFAULT_FLOAT_KEEP_ALIVE = false
 

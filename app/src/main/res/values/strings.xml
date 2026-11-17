@@ -131,10 +131,10 @@
     <string name="auto_close_window_summary">超过数量限制时直接关闭旧窗口，不收成浮标</string>
     <string name="mini_long_press_title">长按静音</string>
     <string name="mini_long_press_summary">长按窗口静音，再长按恢复</string>
-    <string name="float_keep_alive_title">贴边保活</string>
+    <string name="float_keep_alive_title">贴边挂机</string>
     <string name="float_keep_alive_summary">收成贴边浮标后保持应用继续运行</string>
     <string name="zoom_group_edge_title">贴边浮标</string>
-  <string name="zoom_edge_entry_summary">贴边保活 · 浮标数量</string>
+  <string name="zoom_edge_entry_summary">贴边挂机 · 浮标数量</string>
     <string name="float_handle_switch_title">贴边互切</string>
     <string name="float_handle_switch_summary">点开另一个浮标时，前一个继续收成浮标</string>
     <string name="float_handle_max_title">贴边数量</string>

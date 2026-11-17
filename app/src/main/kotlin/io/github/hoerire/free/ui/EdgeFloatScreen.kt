@@ -14,7 +14,7 @@ import io.github.hoerire.free.ui.component.SettingsGroup
 import io.github.hoerire.free.ui.component.SwitchPreference
 
 /**
- * 贴边浮标二级页：贴边保活与浮标数量。
+ * 贴边浮标二级页：贴边挂机与浮标数量。
  *
  * 入口行的 summary 只列条目名，不复述这里的说明文字。
  */

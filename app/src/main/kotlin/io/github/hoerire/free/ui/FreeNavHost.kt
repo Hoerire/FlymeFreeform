@@ -58,7 +58,7 @@ internal sealed interface AppRoute {
     /** 手势交互二级页：快速上滑 / 长按静音 / 关闭方式。 */
     object ZoomGesture : AppRoute
 
-    /** 贴边浮标二级页：贴边保活 / 浮标数量。 */
+    /** 贴边浮标二级页：贴边挂机 / 浮标数量。 */
     object ZoomEdgeFloat : AppRoute
 
     object About : AppRoute

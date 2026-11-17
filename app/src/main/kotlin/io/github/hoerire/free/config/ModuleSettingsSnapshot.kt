@@ -61,7 +61,7 @@ internal data class ModuleSettingsSnapshot(
     val autoCloseWindow: Boolean = ModulePreferences.DEFAULT_AUTO_CLOSE_WINDOW,
     /** 长按迷你窗：长按放大、再长按还原。 */
     val longPressMuteEnabled: Boolean = ModulePreferences.DEFAULT_LONG_PRESS_MUTE,
-    /** 贴边保活：收成贴边浮标后保持应用继续运行。 */
+    /** 贴边挂机：收成贴边浮标后保持应用继续运行。 */
     val floatKeepAlive: Boolean = ModulePreferences.DEFAULT_FLOAT_KEEP_ALIVE,
     /** 应用选择列表是否列出系统应用（本机生效，不影响 Hook 判定）。 */
     val showSystemApps: Boolean = ModulePreferences.DEFAULT_SHOW_SYSTEM_APPS,

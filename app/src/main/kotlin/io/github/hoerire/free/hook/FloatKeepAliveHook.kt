@@ -15,7 +15,7 @@ import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 「贴边保活」：小窗收成贴边浮标后，不把它的任务停掉。
+ * 「贴边挂机」：小窗收成贴边浮标后，不把它的任务停掉。
  *
  * 原厂把窗口收成浮标时会把任务移回后台（`Task.moveTaskToBack`），可见性遍历随后让
  * ActivityRecord 走 `makeInvisible()`，状态落到 STOPPED；进程变成 cached，稍后即被冻结
@@ -34,6 +34,13 @@ internal class FloatKeepAliveHook(
     private var isInFloatingListMethod: Method? = null
     private val loggedTasks = ConcurrentHashMap<Int, Boolean>()
 
+    /** system_server 的 ClassLoader：Hans 白名单等反射调用靠它取类。 */
+    private var serverLoader: ClassLoader? = null
+    private var hansInstanceMethod: Method? = null
+    private var hansAddMethod: Method? = null
+    private var hansRemoveMethod: Method? = null
+    private var hansResolved = false
+
     /** 横竖屏切换期间为 true：这时可见性一律放行，避免浮标里的窗口被重新显示出来。 */
     private val rotationGuard = java.util.concurrent.atomic.AtomicBoolean(false)
 
@@ -44,12 +51,14 @@ internal class FloatKeepAliveHook(
     private val releasedTasks = ConcurrentHashMap<String, Boolean>()
 
     fun install(classLoader: ClassLoader) {
+        serverLoader = classLoader
         val recordClass =
             runCatching { classLoader.loadClass(RECORD_CLASS) }.getOrElse {
                 ModuleLog.warn("FLOAT_KEEP_ALIVE_RECORD_UNAVAILABLE", it)
                 return
             }
         resolveController(classLoader)
+        resolveHans()
 
         installWithoutVisibility(recordClass)
         installVisibleRequested(recordClass)
@@ -59,6 +68,9 @@ internal class FloatKeepAliveHook(
         installPauseTimeout(recordClass)
         installRotationGuard(classLoader)
         installHandleObserver(classLoader)
+        installFloatHandleSync(classLoader)
+        installHansFreezeGuard(classLoader)
+        installLowLevelFreezeGuard(classLoader)
         installKeyguardSnapshot(classLoader)
 
     /**
@@ -221,36 +233,54 @@ internal class FloatKeepAliveHook(
      * 暂停请求不发给客户端：服务端照常进入 PAUSING，再由这里补一次 activityPaused
      * 让 AMS 完成暂停并继续恢复下一个应用；客户端收不到 onPause，画面与逻辑继续跑。
      */
+    /**
+     * 暂停请求不发给客户端：服务端照常进入 PAUSING，再由这里补一次 activityPaused
+     * 让 AMS 完成暂停并继续恢复下一个应用；客户端收不到 onPause，画面与逻辑继续跑。
+     *
+     * 注意：只挂「一个固定签名」会漏。08:35:20 的事件是
+     * `wm_pause_activity … pauseInRecentsAnim`，走的不是常规那条重载，
+     * 首次贴边时 pause 就从这个口子漏过去，游戏当场停（第二次贴边已暂停，才显得正常）。
+     * 这里按方法名把 TaskFragment 上所有带 ActivityRecord 参数的重载全挂上。
+     */
     private fun installPauseSkip(recordClass: Class<*>, classLoader: ClassLoader) {
         val fragmentClass =
-            runCatching { classLoader.loadClass(TASK_FRAGMENT_CLASS) }.getOrNull() ?: return
-        val method =
-            OemReflection.findMethod(
-                fragmentClass,
-                "schedulePauseActivity",
-                recordClass,
-                Boolean::class.javaPrimitiveType!!,
-                Boolean::class.javaPrimitiveType!!,
-                Boolean::class.javaPrimitiveType!!,
-                String::class.java,
-            ) ?: run {
-                ModuleLog.warn("FLOAT_KEEP_ALIVE_NO_SCHEDULE_PAUSE")
+            runCatching { classLoader.loadClass(TASK_FRAGMENT_CLASS) }.getOrNull() ?: run {
+                ModuleLog.warn("FLOAT_KEEP_ALIVE_NO_TASK_FRAGMENT")
                 return
             }
-        module
-            .hook(method)
-            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .setId("free.float_keep_alive.schedule_pause")
-            .intercept { chain ->
-                val record = chain.getArg(0)
-                if (shouldKeep(record) && scheduleFakePause(record)) {
-                    logSkip(record, "pause")
-                    markPausing(chain.thisObject, record)
-                    null
-                } else {
-                    chain.proceed()
+        val methods =
+            declaredMethodsNamed(fragmentClass, "schedulePauseActivity")
+                .filter { method -> method.parameterTypes.any { it == recordClass } }
+        if (methods.isEmpty()) {
+            ModuleLog.warn("FLOAT_KEEP_ALIVE_NO_SCHEDULE_PAUSE")
+            return
+        }
+        methods.forEachIndexed { index, method ->
+            module
+                .hook(method)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .setId("free.float_keep_alive.schedule_pause_$index")
+                .intercept { chain ->
+                    val record = chain.args.firstOrNull { recordClass.isInstance(it) }
+                    if (record != null && shouldKeep(record) && scheduleFakePause(record)) {
+                        logPausePath(method)
+                        logSkip(record, "pause")
+                        markPausing(chain.thisObject, record)
+                        null
+                    } else {
+                        chain.proceed()
+                    }
                 }
-            }
+        }
+        ModuleLog.install("FLOAT_KEEP_ALIVE_PAUSE_HOOKED_" + methods.size)
+    }
+
+    private val pausePathLogged = ConcurrentHashMap<String, Boolean>()
+
+    private fun logPausePath(method: Method) {
+        val signature = method.parameterTypes.joinToString(",") { it.simpleName }
+        if (pausePathLogged.putIfAbsent(signature, true) != null) return
+        ModuleLog.info("FLOAT_KEEP_ALIVE_PAUSE_PATH_" + signature)
     }
 
     private fun installPauseTimeout(recordClass: Class<*>) {
@@ -338,6 +368,7 @@ internal class FloatKeepAliveHook(
                 val taskId = chain.getArg(0) as? Int ?: -1
                 val flag = chain.getArg(3) as? Int ?: -1
                 logHandleRemoved(taskId, flag, "public")
+                runCatching { removeFloatWhite(taskId) }
                 chain.proceed()
             }
         // 内部入口：public 的那条只是转手，真正清场走这里。
@@ -356,9 +387,103 @@ internal class FloatKeepAliveHook(
                     val taskId = chain.getArg(0) as? Int ?: -1
                     val flag = chain.getArg(2) as? Int ?: -1
                     logHandleRemoved(taskId, flag, "inner")
+                    runCatching { removeFloatWhite(taskId) }
                     chain.proceed()
                 }
         }
+    }
+
+    /**
+     * 贴边动作本身同步白名单。
+     *
+     * 实测（07:06:58）`sweepExemptions` 会因为一次 `resetFlexibleTaskToFullScreen` 把包当成
+     * 「已离开浮标」撤掉白名单，而重新贴边时没有任何 ActivityRecord 钩子被触发，
+     * `shouldKeep` 不会重跑 —— 结果下次息屏 Hans 照冻（07:12:57）。
+     * 所以白名单在 `addFloatHandle*` 上补挂、在 `removeFloatHandle*` 上撤掉，不依赖状态变化。
+     */
+    private fun installFloatHandleSync(classLoader: ClassLoader) {
+        val controller = runCatching { classLoader.loadClass(CONTROLLER_CLASS) }.getOrNull() ?: return
+        val methods =
+            declaredMethodsNamed(controller, "addFloatHandle") +
+                declaredMethodsNamed(controller, "addFloatHandleImmediately")
+        methods.distinctBy { it.parameterTypes.joinToString(",") { type -> type.name } }
+            .forEachIndexed { index, method ->
+                module
+                    .hook(method)
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .setId("free.float_keep_alive.float_added_$index")
+                    .intercept { chain ->
+                        if (configuration.snapshot.floatKeepAliveEffective) {
+                            runCatching { onFloatHandleAdded(chain.args) }
+                        }
+                        chain.proceed()
+                    }
+            }
+        ModuleLog.install("FLOAT_KEEP_ALIVE_FLOAT_ADD_HOOKED_" + methods.size)
+    }
+
+    private fun onFloatHandleAdded(args: List<Any?>) {
+        val taskId = taskIdFromArgs(args)
+        if (taskId <= 0) return
+        val record = rotationRecords[taskId]?.get()
+        var pkg = OemReflection.readField(record, "packageName") as? String
+        if (pkg.isNullOrEmpty()) {
+            for (arg in args) {
+                val candidate = OemReflection.readField(arg, "packageName") as? String
+                if (!candidate.isNullOrEmpty()) {
+                    pkg = candidate
+                    break
+                }
+            }
+        }
+        if (pkg.isNullOrEmpty()) return
+        hansCustomWhite(pkg, true)
+        if (exemptedPackages.putIfAbsent(pkg, 0) == null) {
+            val target = pkg
+            exemptExecutor.execute {
+                runCatching { deviceIdleCall("addPowerSaveWhitelistApp", target) }
+            }
+            scheduleExemptSweep()
+        }
+    }
+
+    /** 浮标被摘时撤白名单；同包还有别的浮标任务就保留。 */
+    private fun removeFloatWhite(taskId: Int) {
+        val record = rotationRecords[taskId]?.get() ?: return
+        val pkg = OemReflection.readField(record, "packageName") as? String ?: return
+        val stillFloating =
+            rotationRecords.any { (otherId, reference) ->
+                otherId != taskId &&
+                    reference.get()?.let { OemReflection.readField(it, "packageName") == pkg } == true &&
+                    isFloating(otherId)
+            }
+        if (stillFloating) return
+        hansCustomWhite(pkg, false)
+        exemptedPackages.remove(pkg)
+        exemptExecutor.execute { runCatching { deviceIdleCall("removePowerSaveWhitelistApp", pkg) } }
+    }
+
+    private fun taskIdFromArgs(args: List<Any?>): Int {
+        for (arg in args) {
+            val taskId = OemReflection.readField(arg, "mTaskId") as? Int ?: continue
+            if (taskId > 0) return taskId
+        }
+        return -1
+    }
+
+    /** 按方法名取全部重载（沿继承链），同参数列表只保留最派生的那一个。 */
+    private fun declaredMethodsNamed(type: Class<*>, name: String): List<Method> {
+        val found = ArrayList<Method>(4)
+        var current: Class<*>? = type
+        while (current != null) {
+            for (method in current.declaredMethods) {
+                if (method.name != name) continue
+                runCatching { method.isAccessible = true }
+                found.add(method)
+            }
+            current = current.superclass
+        }
+        return found
     }
 
     private fun logHandleRemoved(taskId: Int, flag: Int, source: String) {
@@ -680,13 +805,43 @@ internal class FloatKeepAliveHook(
                 if (!configuration.snapshot.floatKeepAliveEffective) return@intercept chain.proceed()
                 val visible = chain.getArg(0) as? Boolean
                 val target = chain.thisObject
-                if (visible == false && target?.javaClass?.name == RECORD_CLASS && shouldKeep(target)) {
-                    logClientKeep(target)
-                    chain.proceed(arrayOf<Any?>(true))
-                } else {
-                    chain.proceed()
+                if (visible == false && target != null) {
+                    val keep =
+                        (target.javaClass.name == RECORD_CLASS && shouldKeep(target)) ||
+                            tokenBelongsToKeptFloat(target)
+                    if (keep) {
+                        logClientKeep(target)
+                        return@intercept chain.proceed(arrayOf<Any?>(true))
+                    }
                 }
+                chain.proceed()
             }
+    }
+
+    /** 窗口级 token（不是 ActivityRecord）是否属于保活浮标里的应用：看它下面窗口的包名。 */
+    private fun tokenBelongsToKeptFloat(token: Any?): Boolean {
+        val packages = keptFloatPackagesCached()
+        if (packages.isEmpty()) return false
+        val direct = OemReflection.readField(token, "packageName") as? String
+        if (direct != null) return direct in packages
+        val windows = OemReflection.readField(token, "mWindows") as? List<*> ?: return false
+        for (window in windows) {
+            val attrs = OemReflection.readField(window, "mAttrs") ?: continue
+            val packageName = OemReflection.readField(attrs, "packageName") as? String ?: continue
+            if (packageName in packages) return true
+        }
+        return false
+    }
+
+    /** 浮标应用包名缓存：窗口可见性回调很频繁，不能每次都遍历任务做 binder 查询。 */
+    private fun keptFloatPackagesCached(): Set<String> {
+        val now = android.os.SystemClock.uptimeMillis()
+        val cached = keptPackagesCache
+        if (cached != null && now - keptPackagesAt < KEPT_PACKAGES_TTL_MS) return cached
+        val packages = keptFloatPackages().toHashSet()
+        keptPackagesCache = packages
+        keptPackagesAt = now
+        return packages
     }
 
     private fun logClientKeep(record: Any?) {
@@ -816,6 +971,8 @@ internal class FloatKeepAliveHook(
         exemptExecutor.execute {
             val ok = runCatching { deviceIdleCall("addPowerSaveWhitelistApp", pkg) }.getOrDefault(false)
             if (ok) ModuleLog.info("FLOAT_KEEP_ALIVE_EXEMPT_" + pkg) else ModuleLog.warn("FLOAT_KEEP_ALIVE_EXEMPT_FAILED_" + pkg)
+            // ColorOS 自己的 Hans 冻结不看 doze 白名单，另挂它那套自定义白名单（息屏 LcdOff 时用）。
+            hansCustomWhite(pkg, true)
         }
         scheduleExemptSweep()
     }
@@ -842,6 +999,7 @@ internal class FloatKeepAliveHook(
             exemptedPackages.remove(pkg)
             val ok = runCatching { deviceIdleCall("removePowerSaveWhitelistApp", pkg) }.getOrDefault(false)
             if (ok) ModuleLog.info("FLOAT_KEEP_ALIVE_EXEMPT_OFF_" + pkg) else ModuleLog.warn("FLOAT_KEEP_ALIVE_EXEMPT_OFF_FAILED_" + pkg)
+            hansCustomWhite(pkg, false)
         }
         if (exemptedPackages.isNotEmpty()) scheduleExemptSweep()
     }
@@ -867,6 +1025,228 @@ internal class FloatKeepAliveHook(
                 ?: return null
         deviceIdleControllerCache = iface
         return iface
+    }
+
+    /**
+     * ColorOS 自己的 Hans（`OplusHansManager`）冻结不看 doze 白名单。
+     *
+     * 实测：贴边后息屏，Hans 直接 `freeze uid: … scene: LcdOff`，应用「一息屏就停」。
+     * 贴边期间把它挂进 Hans 自己的「自定义白名单」，离开浮标即撤。
+     * 找不到这类（非 OPlus ROM）就静默跳过，不影响原有保活。
+     */
+    private fun hansCustomWhite(pkg: String, add: Boolean) {
+        resolveHans()
+        val method = (if (add) hansAddMethod else hansRemoveMethod) ?: return
+        val getInstance = hansInstanceMethod ?: return
+        val instance = runCatching { getInstance.invoke(null) }.getOrNull() ?: return
+        val value = if (method.parameterTypes[0].isArray) arrayOf(pkg) else arrayListOf(pkg)
+        runCatching { method.invoke(instance, value) }
+            .onSuccess { ModuleLog.info("FLOAT_KEEP_ALIVE_HANS_WHITE_" + (if (add) "+" else "-") + pkg) }
+            .onFailure { ModuleLog.warn("FLOAT_KEEP_ALIVE_HANS_WHITE_FAILED_" + pkg, it) }
+    }
+
+    private fun resolveHans() {
+        if (hansResolved) return
+        hansResolved = true
+        val loader = serverLoader ?: return
+        runCatching {
+            val type = Class.forName(HANS_MANAGER_CLASS, false, loader)
+            hansInstanceMethod = type.getDeclaredMethod("getInstance").apply { isAccessible = true }
+            hansAddMethod = findHansWhiteMethod(type, "addCustomizeWhiteApp")
+            hansRemoveMethod = findHansWhiteMethod(type, "removeCustomizeWhiteApp")
+        }
+        if (hansAddMethod != null && hansRemoveMethod != null) {
+            ModuleLog.install("FLOAT_KEEP_ALIVE_HANS_API_READY")
+        } else {
+            ModuleLog.warn("FLOAT_KEEP_ALIVE_HANS_API_MISSING")
+        }
+    }
+
+    /** 签名随 ROM 版本变化：按名字找单参重载，参数是集合或 String[] 都接受。 */
+    private fun findHansWhiteMethod(type: Class<*>, name: String): Method? {
+        val candidates =
+            (type.methods.asList() + type.declaredMethods.asList())
+                .filter { it.name == name && it.parameterCount == 1 }
+        val method =
+            candidates.firstOrNull { it.parameterTypes[0].isAssignableFrom(ArrayList::class.java) }
+                ?: candidates.firstOrNull {
+                    it.parameterTypes[0].isArray && it.parameterTypes[0].componentType == String::class.java
+                }
+        return method?.apply { isAccessible = true }
+    }
+
+
+    /**
+     * 直接挡 Hans 冻结（白名单那条在 ColorOS 17 上实测无效）。
+     *
+     * 07:31:32 的日志：贴边 + 息屏后 Hans 仍然 `freeze uid: 10401 … scene: LcdOff`，
+     * 尽管自定义白名单已挂上、`secure no_frozen` 也加过。这里把 Hans 管理器里所有
+     * `freeze*` 方法挂一遍，参数里出现保活浮标应用的 uid/pid 就跳过这一次冻结。
+     */
+
+    /**
+     * 兜底：直接拦住真正执行冻结的底层入口。
+     *
+     * Hans 那层判断（白名单 / wakelock 豁免）在这台机器上都没命中，但冻结最终要落到
+     * `Process.setProcessFrozen` 或 `CachedAppOptimizer.freezeProcess`。这里按 pid/uid
+     * 识别保活应用，命中就跳过这一次冻结。
+     */
+    private fun installLowLevelFreezeGuard(classLoader: ClassLoader) {
+        var hooked = 0
+        for (className in LOW_FREEZE_CLASSES) {
+            val type = runCatching { classLoader.loadClass(className) }.getOrNull() ?: continue
+            for (method in type.declaredMethods) {
+                val name = method.name.lowercase()
+                if (!name.contains("freezeprocess") &&
+                    !name.contains("setprocessfrozen") &&
+                    !name.contains("freezeapp")
+                ) {
+                    continue
+                }
+                if (method.returnType != Void.TYPE && method.returnType != Boolean::class.javaPrimitiveType) continue
+                runCatching { method.isAccessible = true }
+                runCatching {
+                    module
+                        .hook(method)
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .setId("free.low_freeze_" + className.hashCode() + "_" + method.name.hashCode())
+                        .intercept { chain ->
+                            val kept = keptFloatIdentities()
+                            val hit =
+                                chain.args.any { arg ->
+                                    when (arg) {
+                                        is Int -> arg in kept
+                                        is IntArray -> arg.any { it in kept }
+                                        else -> false
+                                    }
+                                }
+                            if (hit) {
+                                ModuleLog.info("FLOAT_KEEP_ALIVE_LOW_FREEZE_SKIPPED_" + method.name)
+                                if (method.returnType == Boolean::class.javaPrimitiveType) false else null
+                            } else {
+                                chain.proceed()
+                            }
+                        }
+                }
+                hooked++
+            }
+        }
+        ModuleLog.install("FLOAT_KEEP_ALIVE_LOW_FREEZE_HOOKED_" + hooked)
+    }
+
+    private fun installHansFreezeGuard(classLoader: ClassLoader) {
+        val outer = runCatching { classLoader.loadClass(HANS_MANAGER_CLASS) }.getOrNull() ?: return
+        val types = ArrayList<Class<*>>(4)
+        types.add(outer)
+        runCatching { outer.declaredClasses.forEach { types.add(it) } }
+        val methods = ArrayList<Method>(32)
+        val names = ArrayList<String>(32)
+        for (type in types) {
+            for (method in type.declaredMethods) {
+                val name = method.name.lowercase()
+                if (!name.contains("freeze") || name.contains("unfreeze")) continue
+                runCatching { method.isAccessible = true }
+                methods.add(method)
+                names.add(method.name + "(" + method.parameterTypes.joinToString(",") { it.simpleName } + ")")
+            }
+        }
+        if (methods.isEmpty()) {
+            ModuleLog.warn("FLOAT_KEEP_ALIVE_NO_HANS_FREEZE")
+            return
+        }
+        ModuleLog.info("FLOAT_KEEP_ALIVE_HANS_FREEZE_METHODS_" + names.take(40).joinToString("|"))
+        methods.forEachIndexed { index, method ->
+            module
+                .hook(method)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .setId("free.hans.freeze_$index")
+                .intercept { chain ->
+                    runCatching { logHansFreezeCall(method.name, chain.args) }
+                    val kept = keptFloatIdentities()
+                    val packages = keptFloatPackages().toSet()
+                    val hit = chain.args.any { arg -> argContains(arg, kept, packages) }
+                    if (hit) {
+                        ModuleLog.info("FLOAT_KEEP_ALIVE_HANS_FREEZE_HIT_" + method.name)
+                        if (method.returnType == Void.TYPE) {
+                            logHansFreezeSkipped(method.name)
+                            null
+                        } else {
+                            chain.proceed()
+                        }
+                    } else {
+                        chain.proceed()
+                    }
+                }
+        }
+        ModuleLog.install("FLOAT_KEEP_ALIVE_HANS_FREEZE_HOOKED_" + methods.size)
+        // Hans 自己的「持有 wakelock 就免冻」判断：保活应用一律当免冻处理。
+        val exempt =
+            types.flatMap { it.declaredMethods.asList() }.filter {
+                it.name.contains("isExemptFreezeImAppByWakelock") &&
+                    it.returnType == Boolean::class.javaPrimitiveType &&
+                    it.parameterCount >= 1
+            }
+        exempt.forEach { method ->
+            module
+                .hook(method)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .setId("free.hans.exempt_" + method.name.hashCode())
+                .intercept { chain ->
+                    val uid = chain.getArg(0) as? Int ?: -1
+                    if (uid in keptFloatIdentities()) true else chain.proceed()
+                }
+        }
+    }
+
+    /** 冻结参数里可能直接是 uid/pid，也可能是它们的数组或集合；递归找一遍。 */
+    private fun argContains(arg: Any?, kept: Set<Int>, packages: Set<String>): Boolean =
+        when (arg) {
+            null -> false
+            is Int -> arg in kept
+            is IntArray -> arg.any { it in kept }
+            is Array<*> -> arg.any { argContains(it, kept, packages) }
+            is Iterable<*> -> arg.any { argContains(it, kept, packages) }
+            is String -> arg in packages
+            else -> false
+        }
+
+    /** 保活浮标应用的 uid 与主进程 pid（Hans 的冻结参数可能是任意一种）。 */
+    private fun keptFloatIdentities(): Set<Int> {
+        val out = HashSet<Int>(4)
+        rotationRecords.forEach { (taskId, reference) ->
+            if (!isFloating(taskId)) return@forEach
+            val record = reference.get() ?: return@forEach
+            (OemReflection.callNoArg(record, "getUid") as? Int)?.let { out.add(it) }
+            val app = OemReflection.readField(record, "app")
+            (OemReflection.readField(app, "pid") as? Int)?.let { out.add(it) }
+        }
+        return out
+    }
+
+    /** 首次被调用时打一行（方法名 + 参数摘要），用来确认真正的冻结入口。 */
+    private fun logHansFreezeCall(methodName: String, args: List<Any?>) {
+        if (hansFreezeCallLogged.putIfAbsent(methodName, true) != null) return
+        val summary = args.joinToString(",") { arg ->
+            when (arg) {
+                is Int -> arg.toString()
+                is IntArray -> arg.take(6).joinToString(";")
+                is Array<*> -> "array" + arg.size
+                is Iterable<*> -> "list" + arg.count()
+                is String -> arg
+                null -> "null"
+                else -> arg.javaClass.simpleName
+            }
+        }
+        ModuleLog.info("FLOAT_KEEP_ALIVE_HANS_FREEZE_CALL_" + methodName + "_" + summary)
+    }
+
+    private val hansFreezeCallLogged = ConcurrentHashMap<String, Boolean>()
+
+    private var keptPackagesCache: Set<String>? = null
+    private var keptPackagesAt = 0L
+
+    private fun logHansFreezeSkipped(methodName: String) {
+        ModuleLog.info("FLOAT_KEEP_ALIVE_HANS_FREEZE_SKIPPED_" + methodName)
     }
 
     private fun logResetSkipped(taskId: Int) {
@@ -1048,7 +1428,9 @@ internal class FloatKeepAliveHook(
      * 锁屏上就能看到一小块迷你窗；放开可见性则只留浮标，暂停/停止照样拦着。
      */
     private fun shouldKeepVisible(record: Any?): Boolean =
-        shouldKeep(record) && !isDisplayLockedOrOff(record) && !rotationGuard.get() && !unlockGuard.get()
+        // 贴边挂机：锁屏/息屏期间也必须保持可见，否则应用会自己停音频；
+        // 窗口由系统压在锁屏之下，用户看不到，不会把浮标画到锁屏上。
+        shouldKeep(record) && !rotationGuard.get() && !unlockGuard.get()
 
     private fun isDisplayLockedOrOff(record: Any?): Boolean {
         val display = OemReflection.callNoArg(record, "getDisplayContent") ?: return false
@@ -1135,5 +1517,14 @@ internal class FloatKeepAliveHook(
 
         /** 复查白名单豁免的时间间隔（毫秒）。 */
         const val EXEMPT_SWEEP_MS = 60_000L
+
+        /** ColorOS 的 Hans 冻结管理器：贴边期间要挂它的自定义白名单，息屏才不会被冻。 */
+        const val HANS_MANAGER_CLASS = "com.android.server.am.OplusHansManager"
+
+        /** 真正执行冻结的底层类。 */
+        val LOW_FREEZE_CLASSES = listOf("android.os.Process", "com.android.server.am.CachedAppOptimizer")
+
+        /** 窗口可见性回调里复用包名集合的时长（毫秒）。 */
+        const val KEPT_PACKAGES_TTL_MS = 1_000L
     }
 }
