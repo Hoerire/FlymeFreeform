@@ -104,7 +104,12 @@ internal class FlexibleWindowLimitHook(
                             // OutsideTapCloseHookInstaller 的 determineFlexibleTaskToExit 闸门里
                             // 按真实浮动窗口条数拦掉；真超限时再把被踢对象换成台账最旧的窗口。
                             // 模块不再自行关窗：自行关闭脱离系统 transition，做不到同帧。
-                            val override = settings.zoomMaxWindowCountEffective
+                            // 迷你窗不占「小窗数量」额度：上限 = 设置值 + 迷你窗数。
+                            // 只有 17 的语义是"浮动窗口上限"，16 是"总可见窗口上限"，
+                            // 那边不叠加，避免把全屏任务也算进额度。
+                            val override =
+                                settings.zoomMaxWindowCountEffective +
+                                    if (android.os.Build.VERSION.SDK_INT >= 37) miniWindowCount() else 0
                             if (maxWinNumReported.compareAndSet(false, true)) {
                                 ModuleLog.info("ZOOM_LIMIT_MAXNUM_FIRST_" + shortName(target.name) + "." +
                                         method.name + "/" + method.parameterCount +
@@ -246,6 +251,9 @@ internal class FlexibleWindowLimitHook(
 
     /** 每个进程只报一次，避免每次裁决都刷日志。 */
     private val maxWinNumReported = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /** 控制器实例：从 updateTaskMaxNum 的钩子里记下来，供统计迷你窗数量用。 */
+    @Volatile private var controllerRef: Any? = null
     private val cacheReported = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /**
@@ -283,18 +291,47 @@ internal class FlexibleWindowLimitHook(
 
     private fun applyCachedLimit(target: Any?, value: Int) {
         if (target == null) return
+        controllerRef = target
+        val capped = value + miniWindowCount()
         val fields =
             limitFields.getOrPut(target.javaClass) { collectLimitFields(target.javaClass) }
         for (field in fields) {
             val current = runCatching { field.getInt(target) }.getOrNull() ?: continue
-            if (current == value) continue
-            if (runCatching { field.setInt(target, value) }.isSuccess) {
+            if (current == capped) continue
+            if (runCatching { field.setInt(target, capped) }.isSuccess) {
                 io.github.hoerire.free.log.ModuleLog.debug(TAG) {
-                    "ZOOM_LIMIT_CACHE_PATCHED_" + field.name + "_" + current + "_TO_" + value
+                    "ZOOM_LIMIT_CACHE_PATCHED_" + field.name + "_" + current + "_TO_" + capped
                 }
             }
         }
     }
+
+    /**
+     * 迷你窗数量：它们不占「小窗数量」额度。
+     *
+     * 需要的是「1 个小窗 + 若干迷你窗」共存：迷你窗是收起态，不该挤掉正常小窗的额度。
+     * 因此上限 = 设置值 + 迷你窗数 —— 系统自己的溢出裁决拿到的就是这个数，
+     * 纯迷你场景不会触发驱逐，正常小窗的数量仍按设置值限制。
+     *
+     * **必须实时统计，不能缓存**：迷你窗转回普通小窗的那一刻，如果还按"它仍算迷你"
+     * 给出上限 设置值+1，系统就判不超限、不收窗，结果是新旧两个普通小窗同时存在，
+     * 新的那个还被旧的盖住。这里每次调用都重新数（系统只在启动/切换时问，开销可忽略）。
+     */
+    private fun miniWindowCount(): Int =
+        runCatching {
+            val controller = controllerRef ?: return 0
+            val method =
+                io.github.hoerire.free.hook.OemReflection.requireMethod(
+                    controller.javaClass,
+                    "getAllFlexibleTask",
+                    1,
+                )
+            val tasks = method.invoke(controller, 0) as? List<*> ?: return 0
+            val mini = io.github.hoerire.free.platform.coloros.ColorOsFlexibleWindowState.MINI
+            tasks.count {
+                io.github.hoerire.free.platform.coloros.ColorOsFlexibleWindowState.zoomStateOf(it) == mini
+            }
+        }.getOrDefault(0)
 
     /** 找出控制器里缓存上限的整数字段（ColorOS 17 上名为 maxFlexibleTaskNum）。 */
     private fun collectLimitFields(start: Class<*>): List<java.lang.reflect.Field> {

@@ -1020,15 +1020,34 @@ internal class ColorOsFreeformCoordinator(
             return
         }
         target as PinnedTarget.App
+        // 一次窗口树快照：就地切换、还原迷你/浮标、最终启动判定都复用这份，
+        // 不再每点一次连做 4 遍 WindowContainer 全树遍历。
+        val startedAt = SystemClock.uptimeMillis()
+        val tasks = taskSnapshot()
+        // 「前台全屏 → 小窗」就地切换：走系统的 switchFocusedTaskToZoom，不启动 Activity、
+        // 不建新任务、不出起始窗口，只是同一个窗口改形态。重新拉起要走 ActivityStarter
+        // 加 OPEN 转场（实测到转场结束约 700 ms），差别就在这里。
+        if (switchFocusedFullscreenToZoom(tasks, target.packageName)) {
+            debug("SYSTEM_SWITCH_TO_ZOOM_" + target.packageName + "_" + (SystemClock.uptimeMillis() - startedAt))
+            return
+        }
+        val form = windowFormOf(tasks, target.packageName)
+        // 目标已经是一个可见的小窗：扇形再点它 → 切成迷你窗
+        // （等于在小窗底部横条上快速上滑）。以前这里什么都不做，表现为"点了没反应"。
+        if (form == WindowForm.VisibleWindow) {
+            val zoomTask = visibleOrdinaryZoomTaskOf(tasks, target.packageName)
+            if (zoomTask != null && switchTaskToMini(zoomTask)) {
+                debug("SYSTEM_ZOOM_TO_MINI_" + target.packageName)
+                return
+            }
+        }
         debug("SYSTEM_LAUNCH_APP_" + target.packageName + "_LEFT_" + overlayAtLeft)
         // 迷你/贴边的任务是"缩小的"浮动窗口，直接重启会被系统复用、把原比例带回来。
         // 那种情况强制新建任务（MULTIPLE_TASK），得到标准尺寸；旧的那个交由系统按上限收掉。
         // 诊断（详细日志）：把这次决策看到的真实状态打出来——每个该包的任务
         // 编号、是否可见、是否浮动场景、系统 zoomState，以及最终判定。
         runCatching {
-            val candidates = tasksOfFocusedDisplay()
-                ?.filter { packageOfTask(it) == target.packageName }
-                ?: emptyList()
+            val candidates = tasks?.filter { packageOfTask(it) == target.packageName } ?: emptyList()
             val detail = candidates.joinToString(" | ") { task ->
                 "id" + taskIdOf(task) +
                     "_vis" + isTaskVisible(task) +
@@ -1037,9 +1056,9 @@ internal class ColorOsFreeformCoordinator(
             }
             debug("SYSTEM_FORM_" + target.packageName + "_n" + candidates.size + "_" + detail)
         }
-        val restorable = restorableWindowsOf(target.packageName)
+        val restorable = restorableWindowsOf(tasks, target.packageName)
         debug(
-            "SYSTEM_DECISION_" + target.packageName + "_form" + windowFormOf(target.packageName) +
+            "SYSTEM_DECISION_" + target.packageName + "_form" + form +
                 "_restorable" + restorable.size,
         )
         // 迷你窗/浮标都不该"新建任务"（每点一次多一个任务，日志中出现过累积到 25 个的情况）。
@@ -1061,14 +1080,18 @@ internal class ColorOsFreeformCoordinator(
         // 由它把任务从浮标展开成小窗（SurfaceControl 动画 + startActivityFromRecents）。
         // 这里直接调同一个入口：走"提到前台"对浮标无效——保活让这个任务在 AMS 里
         // 仍然是"已恢复/聚焦"状态，系统会判定无需处理，表现就是点了没有任何反应。
-        val ballTaskId = ballTaskIdOf(target.packageName)
+        val ballTaskId = ballTaskIdOf(tasks, target.packageName)
         if (ballTaskId != null && openBallTask(ballTaskId)) {
             debug("SYSTEM_LAUNCH_BALL_OPENED_" + target.packageName + "_" + ballTaskId)
             return
         }
+        // 后台任务不走 startActivityFromRecents：这台 ROM 上它只把任务提到前台，
+        // 完全忽略 extra_window_mode 那套小窗参数（实测 2026-11-18：全部变成全屏）。
+        // 后台任务仍走 launcher.launch → startZoomWindow。
         val launchResult = launcher.launch(
             android.content.ComponentName(target.packageName, target.className),
             atLeft = overlayAtLeft,
+            knownForm = form,
         )
         when (val result = launchResult) {
             FreeformLaunchResult.Started -> debug("SYSTEM_LAUNCH_APP_OK_" + target.packageName)
@@ -1207,11 +1230,10 @@ internal class ColorOsFreeformCoordinator(
     /**
      * 菜单之外的一次按下：关闭菜单。
      *
-     * 主窗口不可触摸之后，点空白不再由窗口接住，只能靠 monitor 的副本"看到"。
-     * 只有一个区域例外：
-     * - 菜单区域（下方一块）：由 [CornerTouchRegionView] 处理点选与空白关闭，这里不重复；
-     * - 其余全部关闭，**包括底部手势区**：从底部上滑是"离开当前界面"，
-     *   挂起的扇形必须一起收起，否则它会留在窗口栈里、回到桌面后重新显示出来。
+     * 现在整屏都由 [CornerTouchRegionView] 接住（底部手势条除外），这条路径只兜底
+     * 手势条那一条边：monitor 看到按下就先把挂起的扇形收起来。
+     * 从底部上滑是"离开当前界面"，挂起的扇形必须一起收起，否则它会留在窗口栈里、
+     * 回到桌面后重新显示出来。
      */
     private fun handleOutsideTouch(x: Float, y: Float) {
         if (overlay == null) return
@@ -1234,11 +1256,11 @@ internal class ColorOsFreeformCoordinator(
     }
 
     /**
-     * 挂上只覆盖菜单区域的触摸窗口。
+     * 挂上"接住触摸"的窗口：覆盖整屏，底部让出手势条。
      *
-     * 主窗口 FLAG_NOT_TOUCHABLE 之后没有人接点选，这里补一块。它和主窗口同层
-     * （同一个 overlayWindowType），所以压在应用之上；尺寸只有屏幕下方一半，
-     * 底部再让出手势条，因此不会碰到系统上滑。
+     * 扇形激活之后屏幕上的触摸一律先由模块接住：落在扇形上选格，落在扇形之外则是
+     * 「点空白关闭」。之前这块只盖下半屏，点上半屏会直接落到下面的应用（点进按钮、
+     * 拖动列表），表现为"划着划着划到下层应用"。
      */
     private fun attachTouchRegion() {
         detachTouchRegion()
@@ -1249,7 +1271,8 @@ internal class ColorOsFreeformCoordinator(
             CornerTouchRegionView(context) { event, offsetY ->
                 handleTouchRegionEvent(event, offsetY)
             }
-        view.screenOffsetY = (metrics.heightPixels - params.height).coerceAtLeast(0)
+        // 窗口贴顶摆放，屏幕坐标偏移为 0。
+        view.screenOffsetY = 0
         try {
             windowManager.addView(view, params)
             touchRegion = view
@@ -1306,18 +1329,6 @@ internal class ColorOsFreeformCoordinator(
     }
 
     /**
-     * 主窗口只负责「画」，一律不接收触摸。
-     *
-     * 触摸由另建的 [CornerTouchRegionView]（只覆盖菜单区域的小窗口）捕获，
-     * 点选交给 [CornerRadialOverlayView.updateGesture]，外部点击交给 gesture monitor。
-     * 以避免全屏可触摸窗口拦截底部手势——
-     * 这也是 v744 的做法：它的角区窗口带 FLAG_NOT_TOUCHABLE，事件全走 monitor。
-     *
-     * 不使用 FLAG_DIM_BEHIND：它会让系统对下层窗口做调暗合成，每次呼出都会让
-     * 屏幕内容左右抖一下。遮罩改回由 Compose 画（窗口本身 NOT_TOUCHABLE，不影响触摸）。
-     * windowAnimations 也显式置 0，避免系统给新窗口套上默认的进入动画。
-     */
-    /**
      * 内建「更多」面板的窗口参数。
      *
      * 与扇形主窗口的唯一区别是**可触摸**。回退到内建面板时系统侧边栏未接收输入事件，
@@ -1346,6 +1357,13 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
+    /**
+     * 扇形主窗口的参数：只负责「画」，一律不接收触摸。
+     *
+     * 触摸由另建的 [CornerTouchRegionView] 接住——它覆盖整屏（底部手势条除外），
+     * 所以扇形打开期间点击/滑动不会落到下层应用；扇形之外按下即关闭。
+     * 主窗口自身带 FLAG_NOT_TOUCHABLE，因此不会把系统的窗口内触摸判据全部吃掉。
+     */
     private fun createOverlayParams(
         type: Int = overlayWindowType,
         blurRadiusPx: Int = 0,
@@ -1600,8 +1618,13 @@ internal class ColorOsFreeformCoordinator(
      * 只有"后台的普通全屏任务"才走正常的小窗启动。
      */
 
-    private fun windowFormOf(packageName: String): WindowForm {
-        val tasks = tasksOfFocusedDisplay() ?: return WindowForm.None
+    /** 窗口树快照：一次手势只取一份，后续所有判定复用，避免每点一次遍历 4 遍。 */
+    private fun taskSnapshot(): List<Any>? = tasksOfFocusedDisplay()
+
+    private fun windowFormOf(packageName: String): WindowForm = windowFormOf(taskSnapshot(), packageName)
+
+    private fun windowFormOf(tasks: List<Any>?, packageName: String): WindowForm {
+        if (tasks == null) return WindowForm.None
         val mine = tasks.filter { packageOfTask(it) == packageName }
         if (mine.isEmpty()) return WindowForm.None
         // 迷你窗（zoomState 2）和贴边悬挂（8）必须排在可见判定之前：
@@ -1668,6 +1691,110 @@ internal class ColorOsFreeformCoordinator(
             false
         }
 
+    /** 系统小窗服务实例；模块跑在 system_server 内，直接读控制器的现成字段。 */
+    private fun flexibleWindowService(): Any? =
+        OemReflection.readField(controller, "mFlexibleWindowManagerService")
+
+    /**
+     * 「前台全屏 → 小窗」就地切换：`FlexibleWindowManagerService#switchFocusedTaskToZoom(Task)`。
+     *
+     * 与 [ColorOsFreeformLauncher] 走的 `OplusZoomWindowManager.startZoomWindow` 区别在于：
+     * 后者是一次**启动**（ActivityStarter、新建任务、起始窗口、OPEN 转场，实测到转场结束约
+     * 700 ms）；前者只是把已经在前台的全屏任务改成小窗形态，同一个窗口和 Surface 直接变形，
+     * 所以点下去几乎立刻可见。
+     *
+     * 只在「目标包的全屏任务此刻就是焦点任务」时使用 —— 该方法的语义就是切换*聚焦*任务；
+     * 可见小窗、迷你窗、贴边浮标、后台任务一律交回原有分支，保证行为可预期。
+     * 方法不存在（ColorOS 15/16）或任一条件不满足时返回 false，调用方照常走原路径。
+     */
+    private fun switchFocusedFullscreenToZoom(tasks: List<Any>?, packageName: String): Boolean {
+        val service = flexibleWindowService() ?: return false
+        // 系统正在播同一次切换动画时不插队：插了会被它自己判成状态冲突而丢弃。
+        if (isAnimatingSwitchToZoom(service)) return false
+        val task = findFocusedFullscreenTaskOf(tasks, packageName) ?: return false
+        return try {
+            val method = OemReflection.requireMethod(service.javaClass, "switchFocusedTaskToZoom", 1)
+            method.isAccessible = true
+            method.invoke(service, task)
+            true
+        } catch (_: NoSuchMethodException) {
+            false
+        } catch (_: ReflectiveOperationException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
+    }
+
+    /**
+     * 该包此刻「焦点 + 可见 + 铺满整屏」的任务；不满足任一条件返回 null。
+     *
+     * 全屏判据分两种：
+     *   - `getFlexibleZoomState() == 0`：从没进过小窗的普通全屏任务；
+     *   - `== 1` 但 bounds 铺满屏幕：进过小窗、之后最大化或重新以全屏拉起的任务 ——
+     *     ROM 不会把这个字段清回 0，只按字段判会让这类应用永远切不动。
+     * 迷你窗(2)、贴边(8) 与其它取值一律不接，交回原有分支。
+     */
+    private fun findFocusedFullscreenTaskOf(tasks: List<Any>?, packageName: String): Any? {
+        if (tasks == null) return null
+        return tasks.firstOrNull { task ->
+            if (packageOfTask(task) != packageName) return@firstOrNull false
+            if (!isTaskFocused(task) || !isTaskVisible(task)) return@firstOrNull false
+            when (flexZoomStateOf(task)) {
+                ColorOsFlexibleWindowState.FULLSCREEN -> !isFlexibleScenario(task)
+                ColorOsFlexibleWindowState.ORDINARY -> fillsScreen(task)
+                else -> false
+            }
+        }
+    }
+
+    /** 该任务的 bounds 是否铺满整屏（容许状态栏/导航条带来的少量差异）。 */
+    private fun fillsScreen(task: Any): Boolean {
+        val bounds = OemReflection.callNoArg(task, "getBounds") as? android.graphics.Rect ?: return false
+        val screen = displaySizePx() ?: return false
+        return bounds.width() >= screen.width() * FULLSCREEN_SIZE_RATIO &&
+            bounds.height() >= screen.height() * FULLSCREEN_SIZE_RATIO
+    }
+
+    /** 默认显示屏的物理尺寸；取不到返回 null。 */
+    private fun displaySizePx(): android.graphics.Rect? =
+        try {
+            val display = context.getSystemService(android.hardware.display.DisplayManager::class.java)
+                ?.getDisplay(Display.DEFAULT_DISPLAY) ?: return null
+            val mode = display.mode ?: return null
+            android.graphics.Rect(0, 0, mode.physicalWidth, mode.physicalHeight)
+        } catch (_: RuntimeException) {
+            null
+        }
+
+    /** 系统正在播「切到小窗」的动画；方法缺失按「没有」处理。 */
+    private fun isAnimatingSwitchToZoom(service: Any): Boolean =
+        try {
+            val method = OemReflection.requireMethod(service.javaClass, "isAnimatingSwitchToZoom", 0)
+            method.isAccessible = true
+            method.invoke(service) as? Boolean ?: false
+        } catch (_: NoSuchMethodException) {
+            false
+        } catch (_: ReflectiveOperationException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
+
+    /** 该任务此刻是不是焦点任务（Task#isFocused 是包内方法，要放开可访问性）。 */
+    private fun isTaskFocused(task: Any): Boolean =
+        try {
+            val method = OemReflection.requireMethod(task.javaClass, "isFocused", 0)
+            method.isAccessible = true
+            method.invoke(task) as? Boolean ?: false
+        } catch (_: NoSuchMethodException) {
+            false
+        } catch (_: ReflectiveOperationException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
+
     /** 系统浮标控制器实例；拿不到就当作没有贴边浮标。 */
     private fun floatHandleController(): Any? =
         try {
@@ -1697,8 +1824,8 @@ internal class ColorOsFreeformCoordinator(
     }
 
     /** 该包当前贴在屏幕边缘的浮标任务 id；没有浮标时返回 null。 */
-    private fun ballTaskIdOf(packageName: String): Int? {
-        for (task in tasksOfFocusedDisplay().orEmpty()) {
+    private fun ballTaskIdOf(tasks: List<Any>?, packageName: String): Int? {
+        for (task in tasks.orEmpty()) {
             if (packageOfTask(task) != packageName) continue
             val id = taskIdOf(task)
             if (isFloatingTask(id) == true) return id
@@ -1755,6 +1882,25 @@ internal class ColorOsFreeformCoordinator(
      * 这里复刻它：同一个方法、同一个目标状态（1 = 普通浮动窗）。
      */
     private fun switchTaskToDefault(task: Any): Boolean =
+        switchTaskState(task, DEFAULT_SWITCH_STATE, RESTORE_REASON)
+
+    /**
+     * 把已经在屏幕上的小窗切成迷你窗。
+     *
+     * 用户看到的那条路径是"在小窗底部的横条上快速上滑"，内部同样是
+     * `switchState(task, 状态, 原因)`；这里传 2（小窗的迷你态，与
+     * `getFlexibleZoomState()` 的 MINI=2 一致）。
+     */
+    private fun switchTaskToMini(task: Any): Boolean =
+        switchTaskState(task, MINI_SWITCH_STATE, MINI_REASON)
+
+    /**
+     * 在系统全局锁内调用 `FlexibleTaskController#switchState(task, state, reason)`。
+     *
+     * 系统自己是从 `FlexibleTaskCaptionView` 的点击回调里、持锁状态下调这个方法；
+     * 不持锁直接调会撞上窗口状态机，表现为切换被丢弃或状态错乱。
+     */
+    private fun switchTaskState(task: Any, state: Int, reason: String): Boolean =
         try {
             val method = OemReflection.requireMethod(controller.javaClass, "switchState", 3)
             method.isAccessible = true
@@ -1763,9 +1909,9 @@ internal class ColorOsFreeformCoordinator(
                 atms?.javaClass?.getMethod("getGlobalLock")?.invoke(atms)
             }.getOrNull()
             val action = Runnable {
-                runCatching { method.invoke(controller, task, 1, RESTORE_REASON) }
+                runCatching { method.invoke(controller, task, state, reason) }
                     .onFailure {
-                        logger(Log.WARN, "SYSTEM_RESTORE_FAILED_" + it.javaClass.simpleName, it)
+                        logger(Log.WARN, "SYSTEM_SWITCH_STATE_FAILED_" + it.javaClass.simpleName, it)
                     }
             }
             if (lock != null) synchronized(lock) { action.run() } else action.run()
@@ -1776,9 +1922,19 @@ internal class ColorOsFreeformCoordinator(
             false
         }
 
+    /** 该包里处于"可见普通小窗"形态的任务；不是小窗时返回 null。 */
+    private fun visibleOrdinaryZoomTaskOf(tasks: List<Any>?, packageName: String): Any? {
+        if (tasks == null) return null
+        return tasks.firstOrNull { task ->
+            packageOfTask(task) == packageName &&
+                isTaskVisible(task) &&
+                flexZoomStateOf(task) == ColorOsFlexibleWindowState.ORDINARY
+        }
+    }
+
     /** 该包里处于迷你窗(2)或浮标 ready(8)状态、点一下就恢复为小窗的任务。 */
-    private fun restorableWindowsOf(packageName: String): List<Any> {
-        val tasks = tasksOfFocusedDisplay() ?: return emptyList()
+    private fun restorableWindowsOf(tasks: List<Any>?, packageName: String): List<Any> {
+        if (tasks == null) return emptyList()
         return tasks.filter { task ->
             if (packageOfTask(task) != packageName) return@filter false
             val state = flexZoomStateOf(task)
@@ -1888,6 +2044,13 @@ internal class ColorOsFreeformCoordinator(
         /** 恢复原因串：与系统点击用的 "onSingleTapConfirmed" 区分，便于在系统日志里识别。 */
         const val RESTORE_REASON = "freeFanRestore"
 
+        /** switchState 的目标状态：1 = 普通小窗，2 = 迷你窗。 */
+        const val DEFAULT_SWITCH_STATE = 1
+        const val MINI_SWITCH_STATE = 2
+
+        /** 扇形点已开的小窗 → 切成迷你窗时用的原因串。 */
+        const val MINI_REASON = "freeFanMini"
+
         /** 系统"关掉浮动窗口、任务退回后台"的退场策略类。 */
         const val EXIT_TO_BACK_STRATEGY_CLASS =
             OemClasses.EXIT_FLEXIBLE_TASK_TO_BACK_STRATEGY
@@ -1909,6 +2072,14 @@ internal class ColorOsFreeformCoordinator(
         /** getFlexibleZoomState()：2 = 迷你窗，8 = ready（贴边悬挂）。 */
         const val MINI_ZOOM_STATE = ColorOsFlexibleWindowState.MINI
         const val READY_ZOOM_STATE = ColorOsFlexibleWindowState.READY
+
+        /**
+         * 判定任务「铺满整屏」的阈值。
+         *
+         * 小窗的最大尺寸约屏宽 100%、屏高 80%（实测 Rect(126,329,1398,2590)），
+         * 与真正的全屏（1272×2800）在高度上差得很明显，90% 足够区分两侧。
+         */
+        const val FULLSCREEN_SIZE_RATIO = 0.9f
 
 
 

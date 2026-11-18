@@ -12,11 +12,11 @@ import android.view.WindowManager
  * 只用来"接住"触摸的透明窗口。
  *
  * 主窗口 [CornerRadialOverlayView] 现在是 FLAG_NOT_TOUCHABLE，只负责画；点选必须有人接，
- * 于是单独开这一个窗口，尺寸＝菜单区域（屏幕下方一块，底部再让出手势条）。
+ * 于是单独开这一个窗口：**覆盖整屏，只让出底部手势条**。扇形激活后整屏都属于模块——
+ * 落在扇形上选格，落在扇形之外关闭扇形，都不会再穿透到下层应用。
  *
  * 不用 touchableRegion 裁主窗口的原因：两个成员都是 @hide，反射赋值不生效
- * （final 字段 + 系统侧不重算），与其赌它，不如让窗口本身就只有菜单那么大——
- * 窗口之外不属于模块，底部手势不会被拦截。
+ * （final 字段 + 系统侧不重算），所以直接用窗口尺寸来表达可触摸范围。
  *
  * 这个 View 不绘制任何东西，只把触摸坐标转成屏幕坐标回调出去。
  */
@@ -33,20 +33,25 @@ internal class CornerTouchRegionView(
     }
 
     companion object {
-        /** 菜单区域占屏幕高度的比例；扇形整体落在这块之内。 */
+        /** 菜单整体落在屏幕下方这一块之内；只用于几何计算，与触摸窗口大小无关。 */
         const val HEIGHT_FRACTION = 0.5f
 
-        /** 创建这个触摸窗口的布局参数：只覆盖下方一块，底部让出手势条。 */
+        /**
+         * 创建这个触摸窗口的布局参数：从屏幕顶部一直到手势条上沿。
+         *
+         * 扇形一旦激活就等于进入模态：屏幕上的触摸先由模块接住，
+         *   - 落在扇形上 → 选格；
+         *   - 落在扇形之外 → 关闭扇形（见 [ColorOsFreeformCoordinator.handleTouchRegionEvent]），
+         *     **不再落到下层应用**（之前只盖下半屏，点上半屏会把点击/tap 送给应用）。
+         * 底部手势条仍然让给系统，从底部上滑回桌面/进多任务照常可用。
+         */
         fun layoutParams(
             context: Context,
             type: Int,
             gestureInsetPx: Int,
         ): WindowManager.LayoutParams {
             val metrics = context.resources.displayMetrics
-            val height =
-                (metrics.heightPixels * HEIGHT_FRACTION).toInt()
-                    .coerceAtLeast(1)
-                    .coerceAtMost((metrics.heightPixels - gestureInsetPx).coerceAtLeast(1))
+            val height = (metrics.heightPixels - gestureInsetPx).coerceAtLeast(1)
             return WindowManager.LayoutParams(
                 metrics.widthPixels,
                 height,
@@ -57,7 +62,7 @@ internal class CornerTouchRegionView(
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSPARENT,
             ).apply {
-                gravity = Gravity.BOTTOM
+                gravity = Gravity.TOP
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
                 setFitInsetsTypes(0)

@@ -479,15 +479,18 @@ internal class OutsideTapCloseHookInstaller(
     private fun reorderOldestLast(tasks: MutableList<Any?>) {
         // 最近活跃的排前面，最久没被激活的排最后 → 系统从尾部踢，被移除的即最旧窗口。
         //
-        // 两条例外必须挡在排序之前：
-        //   1. 刚打开的那个窗口永远排最前——limit=1 时它本该顶替旧窗，绝不能被踢；
-        //   2. 拿不到活跃时间（字段缺失，或任务刚建好还是 0）的按"最新"处理，
+        // 三条例外必须挡在排序之前：
+        //   1. **迷你窗永远排最前**：收窗只收普通小窗，迷你窗是收起态，不该被额度裁决踢掉
+        //      （额度那边也已经把迷你窗排除在「小窗数量」之外，见 FlexibleWindowLimitHook）；
+        //   2. 刚打开的那个窗口永远排最前——limit=1 时它本该顶替旧窗，绝不能被踢；
+        //   3. 拿不到活跃时间（字段缺失，或任务刚建好还是 0）的按"最新"处理，
         //      否则新窗口会被当成最旧的那个。
         // 不要用"上一次 addFlexibleTask 记录"来做保护：系统的驱逐发生在 addFlexibleTask
         // 之前（日志显示早约 20ms），此时记录里仍是上一个窗口，反而会把新窗推到尾部被判驱逐。
         // 只按活跃时间排：取不到活跃时间的（刚建好还是 0）按"最新"处理，自然排在最前。
         val sorted = tasks.sortedWith(
-            compareByDescending<Any?> { activeKeyOf(it) }
+            compareByDescending<Any?> { if (isMiniZoomTask(it)) 1 else 0 }
+                .thenByDescending<Any?> { activeKeyOf(it) }
                 .thenByDescending<Any?> { taskIdOf(it) },
         )
         if (sorted.indices.all { sorted[it] === tasks[it] }) return
@@ -496,6 +499,12 @@ internal class OutsideTapCloseHookInstaller(
             ModuleLog.debug { "ZOOM_VICTIM_ORDER_OLDEST_LAST" }
         }
     }
+
+    /** 迷你窗：收窗时的受保护对象（形态判据与窗口手势共用一份）。 */
+    private fun isMiniZoomTask(task: Any?): Boolean =
+        task != null &&
+            io.github.hoerire.free.platform.coloros.ColorOsFlexibleWindowState.zoomStateOf(task) ==
+            io.github.hoerire.free.platform.coloros.ColorOsFlexibleWindowState.MINI
 
 
     /** 退场策略里的任务号；取不到返回 -1（事件侧会忽略）。 */

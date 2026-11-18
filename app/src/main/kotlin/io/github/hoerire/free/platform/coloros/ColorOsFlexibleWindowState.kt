@@ -18,6 +18,9 @@ import io.github.hoerire.free.hook.OemReflection
  */
 internal object ColorOsFlexibleWindowState {
 
+    /** 全屏任务：没有进入任何浮动形态。 */
+    const val FULLSCREEN = 0
+
     /** 普通小窗（带标题的标准浮动窗）。 */
     const val ORDINARY = 1
 

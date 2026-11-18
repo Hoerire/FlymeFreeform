@@ -54,8 +54,11 @@ internal class ColorOsFreeformLauncher(
         requested: ComponentName,
         atLeft: Boolean = true,
         forceNewTask: Boolean = false,
+        /** 协调器已经算过的窗口状态：传入就不再自己扫一遍窗口树。 */
+        knownForm: WindowForm? = null,
     ): FreeformLaunchResult {
-        when (FanLaunchPolicy.decide(existingForm(requested.packageName), RomFlavor.isColorOs17OrNewer)) {
+        val form = knownForm ?: existingForm(requested.packageName)
+        when (FanLaunchPolicy.decide(form, RomFlavor.isColorOs17OrNewer)) {
             FanLaunchAction.FrontExisting -> {
                 debug("SYSTEM_LAUNCH_FRONT_EXISTING_" + requested.packageName)
                 frontExisting(requested.packageName)

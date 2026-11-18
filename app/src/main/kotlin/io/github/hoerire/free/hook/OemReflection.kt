@@ -49,28 +49,52 @@ internal object OemReflection {
         return null
     }
 
+    /**
+     * 方法查找缓存：键是「类名#方法名/参数」。
+     *
+     * 扇形每次松手都要打好几次反射（isFocused、getBounds、可见性、包名……），每次都要
+     * 走声明方法扫描加父类链。只缓存**命中**结果：找不到时仍然每次重查，避免把"类尚未
+     * 加载"的瞬时失败永久固定下来。
+     */
+    private val methodCache = java.util.concurrent.ConcurrentHashMap<String, Method>()
+
     fun findMethod(type: Class<*>, name: String, vararg parameterTypes: Class<*>): Method? {
+        val key = type.name + "#" + name + "/" + parameterTypes.joinToString(",") { it.name }
+        methodCache[key]?.let { return it }
         var current: Class<*>? = type
         while (current != null) {
             runCatching { current!!.getDeclaredMethod(name, *parameterTypes) }
                 .getOrNull()
-                ?.let { return it.apply { isAccessible = true } }
+                ?.let {
+                    val found = it.apply { isAccessible = true }
+                    methodCache[key] = found
+                    return found
+                }
             current = current.superclass
         }
         // 部分厂商类把访问器声明在接口上，只查 declared 方法会漏掉。
-        return runCatching { type.getMethod(name, *parameterTypes) }
+        val fromInterface = runCatching { type.getMethod(name, *parameterTypes) }
             .getOrNull()
             ?.apply { isAccessible = true }
+            ?: return null
+        methodCache[key] = fromInterface
+        return fromInterface
     }
 
     fun findMethodByArity(type: Class<*>, name: String, parameterCount: Int): Method? {
+        val key = type.name + "#" + name + "/" + parameterCount + "params"
+        methodCache[key]?.let { return it }
         var current: Class<*>? = type
         while (current != null) {
             runCatching {
                 current!!.declaredMethods.firstOrNull {
                     it.name == name && it.parameterCount == parameterCount
                 }
-            }.getOrNull()?.let { return it.apply { isAccessible = true } }
+            }.getOrNull()?.let {
+                val found = it.apply { isAccessible = true }
+                methodCache[key] = found
+                return found
+            }
             current = current.superclass
         }
         return null

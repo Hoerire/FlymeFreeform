@@ -1,7 +1,9 @@
 package io.github.hoerire.free.hook
 
 import android.content.Context
+import android.hardware.display.DisplayManager
 import android.os.HandlerThread
+import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Display
 import android.view.InputChannel
@@ -11,6 +13,7 @@ import android.view.InputEventReceiver
 import android.view.MotionEvent
 import io.github.libxposed.api.XposedModule
 import io.github.hoerire.free.config.ModuleSettingsSnapshot
+import io.github.hoerire.free.gesture.CornerSide
 import io.github.hoerire.free.gesture.CornerTriggerRegion
 
 /**
@@ -44,8 +47,17 @@ internal class CornerInputPilferMonitor(
     private var downY = 0f
     private var tracking = false
     private var pilfered = false
+    /** 这一条流从哪一侧角区起手；方向判定用它。 */
+    private var side: CornerSide? = null
+
+    /** start() 传入的 SystemUI Context：取它对的实际显示参数（不能用 Resources.getSystem()）。 */
+    private var appContext: Context? = null
+    private var lastSkipLogAt = 0L
+    /** 本条手势的显示参数，DOWN 时取一次。 */
+    private var gestureMetrics: DisplayMetrics? = null
 
     fun start(context: Context) {
+        appContext = context.applicationContext ?: context
         environmentState.start(context)
         // 设置一变就换快照：关掉「启用交互」必须**立刻**停止抢流。
         // 之前只在 environmentState 变化（锁屏/横竖屏/游戏模式）时才刷新，
@@ -98,18 +110,60 @@ internal class CornerInputPilferMonitor(
         module.log(Log.INFO, TAG, "CORNER_MONITOR_STARTED")
     }
 
+    /** 诊断：这次 DOWN 为什么没被接管。限频，避免每次触摸刷一行。 */
+    private fun skip(reason: String) {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastSkipLogAt < SKIP_LOG_INTERVAL_MS) return
+        lastSkipLogAt = now
+        module.log(Log.INFO, TAG, "CORNER_TRACK_SKIP_" + reason)
+    }
+
+    /**
+     * 本机显示的尺寸与密度。
+     *
+     * 角区判定全部用 dp × density 换算，因此不能假定某一块屏幕的分辨率：
+     *   - 优先取默认显示屏的真实尺寸（含状态栏/导航条）；
+     *   - 取不到退回本进程资源，再退回系统资源。
+     * `Resources.getSystem()` 是系统默认配置，与实际显示可能不一致（分辨率、密度都可能
+     * 是另一套），单独拿它算半径会把 DOWN 判成"不在角区"，表现为抢不到流、选格时漏到下层。
+     */
+    private fun displayMetrics(): DisplayMetrics {
+        val fallback =
+            appContext?.resources?.displayMetrics ?: android.content.res.Resources.getSystem().displayMetrics
+        val manager = appContext?.getSystemService(DisplayManager::class.java) ?: return fallback
+        val display =
+            runCatching { manager.getDisplay(Display.DEFAULT_DISPLAY) }.getOrNull()
+                ?: return fallback
+        val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        return runCatching { display.getRealMetrics(metrics); metrics }.getOrDefault(fallback)
+    }
+
     private fun handle(event: MotionEvent) {
         if (!event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)) return
-        val metrics = android.content.res.Resources.getSystem().displayMetrics
+        // 每条手势只在 DOWN 取一次显示参数：别让 getRealMetrics 跟着每个 MOVE 走。
+        val metrics =
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                displayMetrics().also { gestureMetrics = it }
+            } else {
+                gestureMetrics ?: displayMetrics()
+            }
         val radius = CornerTriggerRegion.radiusPx(settings.cornerTriggerRangeDp, metrics.density)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 tracking = false
                 pilfered = false
+                side = null
                 // 关掉「启用交互」等于整套路手势关掉：连抢流都不做，事件原样留给系统。
-                if (!settings.cornerInteractionActive || event.pointerCount != 1) return
-                if (event.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER) return
-                val side =
+                if (!settings.cornerInteractionActive || event.pointerCount != 1) {
+                    skip("inactive")
+                    return
+                }
+                if (event.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER) {
+                    skip("tool")
+                    return
+                }
+                val detected =
                     CornerTriggerRegion.detectSide(
                         x = event.rawX,
                         y = event.rawY,
@@ -118,11 +172,26 @@ internal class CornerInputPilferMonitor(
                         radius = radius,
                         leftEnabled = settings.leftCornerEnabled,
                         rightEnabled = settings.rightCornerEnabled,
-                    ) ?: return
-                if (!environmentState.isGestureAllowed(refreshKeyguard = true)) return
+                    ) ?: run {
+                        skip("region")
+                        return
+                    }
+                if (!environmentState.isGestureAllowed(refreshKeyguard = true)) {
+                    skip("env")
+                    return
+                }
+                side = detected
                 downX = event.rawX
                 downY = event.rawY
                 tracking = true
+                module.log(
+                    Log.INFO,
+                    TAG,
+                    "CORNER_TRACK_DOWN_" + detected.name + "_" +
+                        event.rawX.toInt() + "_" + event.rawY.toInt() +
+                        "_r" + radius.toInt() +
+                        "_w" + metrics.widthPixels + "_h" + metrics.heightPixels,
+                )
             }
 
             MotionEvent.ACTION_MOVE -> {
@@ -135,11 +204,26 @@ internal class CornerInputPilferMonitor(
                 if (!tracking || pilfered) return
                 val dx = event.rawX - downX
                 val dy = event.rawY - downY
+                // 纯垂直上滑是系统手势（回桌面 / 最近任务），不能抢：
+                // 判据与 CornerGestureEngine 的 VERTICAL_UPWARD_RATIO 一致。
+                val activeSide = side
+                if (activeSide != null) {
+                    val inward = if (activeSide == CornerSide.Left) dx else -dx
+                    val upward = -dy
+                    if (upward > inward * VERTICAL_UPWARD_RATIO) {
+                        tracking = false
+                        module.log(Log.INFO, TAG, "CORNER_PILFER_SKIP_VERTICAL")
+                        return
+                    }
+                }
                 val slop = PILFER_SLOP_DP * metrics.density
                 if (dx * dx + dy * dy >= slop * slop) {
                     pilfered = true
                     val monitorRef = monitor ?: return
                     runCatching { pilferMethod?.invoke(monitorRef) }
+                        .onSuccess {
+                            module.log(Log.INFO, TAG, "CORNER_PILFER_OK_" + (side?.name ?: "?"))
+                        }
                         .onFailure {
                             module.log(Log.WARN, TAG, "CORNER_MONITOR_PILFER_FAILED", it)
                         }
@@ -157,7 +241,19 @@ internal class CornerInputPilferMonitor(
         const val TAG = "Free"
         const val MONITOR_NAME = "Free-corner-pilfer"
 
-        /** 与原先窗口方案一致：位移到 3dp 就抢流，点按（更小抖动）一律放行。 */
-        const val PILFER_SLOP_DP = 3f
+        /**
+         * 位移到这个量就抢流。
+         *
+         * 原来取 3dp，实测仍会"有概率滑到下层应用"：抢流要过一轮 InputDispatcher 才生效，
+         * 手指快的时候这几帧已经让应用越过自己的 touchSlop（约 8dp）开始滚动。
+         * 1.5dp 把这段窗口压掉一半；点按（几乎不位移）仍然放行。
+         */
+        const val PILFER_SLOP_DP = 1.5f
+
+        /** 与 CornerGestureEngine 一致：向上位移超过向内位移这么多倍，判为系统上滑。 */
+        const val VERTICAL_UPWARD_RATIO = 3f
+
+        /** DOWN 被跳过的诊断日志限频。 */
+        const val SKIP_LOG_INTERVAL_MS = 2_000L
     }
 }

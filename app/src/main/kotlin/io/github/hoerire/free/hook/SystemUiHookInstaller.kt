@@ -41,7 +41,7 @@ internal class SystemUiHookInstaller(
                         NotifBundleHook(module, configuration).install(classLoader)
                         installSettingsObserver(context)
                         // 角区抢流：InputMonitor 收事件不消费、不占屏幕，点击不再被吃；
-                        // 位移到 3dp 才 pilfer，保住“滑动不穿透到下层应用”。
+                        // 位移到 1.5dp 就 pilfer，保住"滑动不穿透到下层应用"。
                         runCatching {
                             CornerInputPilferMonitor(module, configuration).start(context)
                         }.onSuccess {
