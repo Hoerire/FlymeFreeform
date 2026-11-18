@@ -23,6 +23,6 @@ DexKit 2.3.0 在侧边栏包 ClassLoader 就绪后启动一次后台解析：
 
 ## 验证
 
-本地 APK 回归使用 `SidebarDexQueryTest`：`FLYMEFREEFORM_TEST_SIDEBAR_FIXTURES` 指向 TSV，每行包含 APK 绝对路径和已人工核对的 `key=descriptor` 文件路径；`FLYMEFREEFORM_TEST_DEXKIT_LIBRARY` 指向同版本的桌面 native 库。未提供时跳过该项，更换样本时需重新执行测试。
+本地 APK 回归使用 `SidebarDexQueryTest`：`FREE_TEST_SIDEBAR_FIXTURES` 指向 TSV，每行包含 APK 绝对路径和已人工核对的 `key=descriptor` 文件路径；`FREE_TEST_DEXKIT_LIBRARY` 指向同版本的桌面 native 库。未提供时跳过该项，更换样本时需重新执行测试。
 
 本地回归样本包含侧边栏 16.14.0、16.14.6、17.9.2，以及用户提供的 17.9.8 和当前设备提取的 17.9.8，共五个 APK。验证范围是字节码、资源与签名的静态核对及本地查询回归；查询通过不代表所有后续版本兼容。新模块尚未完成真机面板打开、搜索、点击、关闭与旋转等交互验证。

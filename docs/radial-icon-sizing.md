@@ -41,4 +41,4 @@
 
 纯逻辑测试覆盖基准尺寸、分辨率和密度换算、横竖屏、1～7 个条目、左右安全区、空间不足、白圈间距、入退场曲线和旧键失效。构建与测试不能替代 ColorOS 真机上的最终视觉、圆形边缘及滑选验证。
 
-FlymeFreeform 是面向 ColorOS 的非官方独立实现，与魅族、Flyme、OPPO、ColorOS 及其关联方无关。
+Free 是面向 ColorOS 的非官方独立实现，与魅族、Flyme、OPPO、ColorOS 及其关联方无关。

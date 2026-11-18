@@ -21,6 +21,6 @@
 
 `LauncherSymbolCacheTest` 验证内容变更、规则变更、损坏缓存和原子替换。可选的 `LauncherDexQueryTest` 使用本地宿主 APK、同版本桌面 native 库和人工核对的符号结果，验证实际查询唯一性；未提供环境变量时跳过该项。
 
-该测试的环境变量为 `FLYMEFREEFORM_TEST_LAUNCHER_APK`、`FLYMEFREEFORM_TEST_DEXKIT_LIBRARY` 与 `FLYMEFREEFORM_TEST_LAUNCHER_SYMBOLS`（输入方法、监视器字段、包装类、抢占方法，逗号分隔）。更换输入文件运行时应强制重新执行测试任务，避免 Gradle 复用旧结果。
+该测试的环境变量为 `FREE_TEST_LAUNCHER_APK`、`FREE_TEST_DEXKIT_LIBRARY` 与 `FREE_TEST_LAUNCHER_SYMBOLS`（输入方法、监视器字段、包装类、抢占方法，逗号分隔）。更换输入文件运行时应强制重新执行测试任务，避免 Gradle 复用旧结果。
 
 APK 静态解析与构建通过不代表 Hook 已在桌面进程生效。安装后的冷启动、缓存命中、首次 DOWN、取消、多指、导航竞争及停用恢复仍需真机验证。

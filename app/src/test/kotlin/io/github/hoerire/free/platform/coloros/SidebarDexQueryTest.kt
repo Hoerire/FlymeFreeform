@@ -10,8 +10,8 @@ import java.io.InterruptedIOException
 
 class SidebarDexQueryTest {
     @Test fun resolvesInspectedSidebarApks() {
-        val fixtures = System.getenv("FLYMEFREEFORM_TEST_SIDEBAR_FIXTURES")
-        val native = System.getenv("FLYMEFREEFORM_TEST_DEXKIT_LIBRARY")
+        val fixtures = System.getenv("FREE_TEST_SIDEBAR_FIXTURES")
+        val native = System.getenv("FREE_TEST_DEXKIT_LIBRARY")
         assumeNotNull(fixtures, native)
         System.load(native!!)
         // 每行 APK 路径和已人工核对的 key=descriptor 文件，使用制表符分隔。
@@ -30,8 +30,8 @@ class SidebarDexQueryTest {
     }
 
     @Test fun interruptedQueryDoesNotReturnPartialCapabilities() {
-        val fixtures = System.getenv("FLYMEFREEFORM_TEST_SIDEBAR_FIXTURES")
-        val native = System.getenv("FLYMEFREEFORM_TEST_DEXKIT_LIBRARY")
+        val fixtures = System.getenv("FREE_TEST_SIDEBAR_FIXTURES")
+        val native = System.getenv("FREE_TEST_DEXKIT_LIBRARY")
         assumeNotNull(fixtures, native)
         System.load(native!!)
         val apk = File(fixtures!!).readLines().first { it.isNotBlank() }.substringBefore('\t')
