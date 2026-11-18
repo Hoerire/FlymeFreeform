@@ -8,14 +8,14 @@
   <img src="https://img.shields.io/badge/ROM-ColorOS-00A862" alt="面向 ColorOS" />
   <img src="https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android" alt="最低 Android 15" />
   <img src="https://img.shields.io/badge/libxposed-API_102-4285F4" alt="libxposed API 102" />
-  <img src="https://img.shields.io/badge/version-3.1.6-blue" alt="版本 3.1.6" />
+  <img src="https://img.shields.io/badge/version-3.1.7-blue" alt="版本 3.1.7" />
 </p>
 
 把魅族的 Flyme 小窗交互搬到 ColorOS：从屏幕底角斜向内上滑呼出扇形菜单，滑到目标松手，当即以自由浮窗打开。
 
 这是一个 LSPosed 模块，在不改动系统分区的前提下增强 ColorOS 的自由浮窗：扇形菜单、通知与横幅小窗、侧边栏目录、更多面板、内容传送门都走系统自己的窗口与管理链路，设置改完即时生效。
 
-当前版本 **3.1.6**，改动记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **3.1.7**，改动记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 预览
 
@@ -109,6 +109,7 @@
 ## 已知限制
 
 - 依赖厂商私有的自由浮窗与侧边栏接口：主力支持 ColorOS 17；ColorOS 15 / 16 保留兼容，但新功能（如迷你窗不占额度、扇形窗口分流）不保证生效
+- ColorOS 15 / 16 的角区手势走系统指针旁听（不抢流）：扇形可正常呼出，但触发范围内的左滑会穿透到下层应用
 - 需要回传结果的跨应用启动（登录、授权、选图、分享回传）与分享流程交给官方处理，模块不改写
 - 自由传送取不到自绘界面与独立窗口里的网页
 - 迷你窗恢复成普通小窗时不会自动收掉已有小窗（系统的数量裁决只在新增窗口时触发），此时两个普通小窗会叠在一起

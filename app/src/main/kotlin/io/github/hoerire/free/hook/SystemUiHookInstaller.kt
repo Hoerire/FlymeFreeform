@@ -8,6 +8,7 @@ import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.hoerire.free.config.ModulePreferences
 import io.github.hoerire.free.platform.coloros.ColorOsSystemUiApplicationTarget
+import io.github.hoerire.free.platform.coloros.RomFlavor
 import java.util.concurrent.atomic.AtomicBoolean
 
 @SuppressLint("PrivateApi")
@@ -40,16 +41,28 @@ internal class SystemUiHookInstaller(
                         // 通知点击小窗：改 Bundle（含剥离 remote 转场），让窗口不被横幅压住。
                         NotifBundleHook(module, configuration).install(classLoader)
                         installSettingsObserver(context)
-                        // 角区抢流：InputMonitor 收事件不消费、不占屏幕，点击不再被吃；
-                        // 位移到 1.5dp 就 pilfer，保住"滑动不穿透到下层应用"。
-                        runCatching {
-                            CornerInputPilferMonitor(module, configuration).start(context)
-                        }.onSuccess {
-                            io.github.hoerire.free.log.ModuleLog.info(
-                                "SYSTEMUI_CORNER_SPY_STARTED",
+                        // 角区抢流（SystemUI 侧 InputMonitor + pilferPointers）**只在 ColorOS 17+ 启用**。
+                        //
+                        // 这条通道是 3.1.3 引入的（3.1.2 没有它），之后低版系统陆续出现 SystemUI
+                        // 崩溃循环；而 17 上的角区抢流已经改由 system_server 内建 monitor 承担
+                        // （本通道在 17 上整场收不到事件，实测 0 条 CORNER_TRACK）。所以低版直接不启动它：
+                        // 角区手势退回 WMS 旁观者（= 3.1.2 行为：扇形可用、左滑穿透存在）——
+                        // 宁可保留这个旧缺陷，也不能让低版用户的系统界面崩。
+                        if (RomFlavor.isColorOs17OrNewer) {
+                            runCatching {
+                                CornerInputPilferMonitor(module, configuration).start(context)
+                            }.onSuccess {
+                                io.github.hoerire.free.log.ModuleLog.info(
+                                    "SYSTEMUI_CORNER_SPY_STARTED",
+                                )
+                            }.onFailure {
+                                ModuleLog.warn("SYSTEMUI_CORNER_SPY_FAILED", it)
+                            }
+                        } else {
+                            ModuleLog.info(
+                                "SYSTEMUI_CORNER_SPY_SKIPPED_LEGACY_ROM_" +
+                                    android.os.Build.VERSION.SDK_INT,
                             )
-                        }.onFailure {
-                            ModuleLog.warn("SYSTEMUI_CORNER_SPY_FAILED", it)
                         }
                     }
                     result
