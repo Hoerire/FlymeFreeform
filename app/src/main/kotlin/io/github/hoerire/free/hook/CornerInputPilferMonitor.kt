@@ -119,7 +119,7 @@ internal class CornerInputPilferMonitor(
     }
 
     /**
-     * 本机显示的尺寸与密度。
+     * 当前显示的尺寸与密度。
      *
      * 角区判定全部用 dp × density 换算，因此不能假定某一块屏幕的分辨率：
      *   - 优先取默认显示屏的真实尺寸（含状态栏/导航条）；

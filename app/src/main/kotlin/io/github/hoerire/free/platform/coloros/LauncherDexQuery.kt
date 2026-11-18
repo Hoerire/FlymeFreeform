@@ -21,7 +21,7 @@ internal object LauncherDexQuery {
 
     fun find(bridge: DexKitBridge): Symbols {
         // 先按上游的固定类名找；找不到再按行为特征反查（ColorOS 17 的 OplusLauncher 被 R8 混淆，
-        // 本机对应类是 Lq97;，类内仍保留 OplusBaseTouchInteractionService#onOverviewToggle 这样的日志字符串）。
+        // 当前 ROM 上对应类是 Lq97;，类内仍保留 OplusBaseTouchInteractionService#onOverviewToggle 这样的日志字符串）。
         var serviceName = SERVICE_CLASS
         val service = bridge.getClassData(SERVICE_CLASS) ?: run {
             val probe = bridge.findMethod {

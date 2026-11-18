@@ -78,7 +78,7 @@ internal class OutsideTapCloseHookInstaller(
                     },
                 )
             ColorOsOutsideTapAccess.settingsProvider = { configuration.snapshot }
-            // 底部关闭：hook caption 自己的触摸分发（与 oupao.wiz 同一 hook 点）。
+            // 底部关闭：hook caption 自己的触摸分发（系统自己的关闭也走这个点）。
             runCatching {
                 val dispatch =
                     captionClass.requiredMethod(
@@ -372,7 +372,7 @@ internal class OutsideTapCloseHookInstaller(
             ModuleLog.warn("ZOOM_VICTIM_ORDER_NO_METHOD")
         }
         // 另一条限制驱动入口（非 panoramic 的焦点重算走这里）。
-        // 本机尚未观察到调用，但入口存在，排序必须一致，否则某些模式下会改由系统挑最新的。
+        // 尚未观察到调用，但入口存在，排序必须一致，否则某些模式下会改由系统挑最新的。
         // 只排序、不拦截：判定与时机完全不动。
         listOfNotNull(
             methodInHierarchy(controllerClass, "determineFlexibleTaskToExit", 5),
@@ -922,7 +922,7 @@ internal class OutsideTapCloseHookInstaller(
         /**
          * 「底部关闭」：处理 FlexibleCaptionView 的触摸分发。
          *
-         * hook 点与 com.oupao.wiz 一致（它挂的也是 caption 自己的 dispatchTouchEvent）。
+         * hook 点是 caption 自己的 dispatchTouchEvent —— 系统自己的关闭逻辑也从这里进。
          * 不能改挂 android.view.View#onTouchEvent：那是所有控件共用的方法，
          * 等于给整机每个 View 的触摸分发插一层，会拖垮 system_server。
          */
@@ -949,7 +949,7 @@ internal class OutsideTapCloseHookInstaller(
                     val active = handleTapTask
                     handleTapTask = null
                     if (active !== task) return
-                    // 与 oupao 一致：抬手超过 400ms 视为长按，不做点击处理。
+                    // 抬手超过 400ms 视为长按，不做点击处理。
                     if (event.eventTime - handleDownAt > TAP_MAX_DURATION_MS) return
                     val bounds = visibleTaskBounds(controller, task) ?: return
                     if (bounds.isEmpty) return
@@ -974,7 +974,7 @@ internal class OutsideTapCloseHookInstaller(
         /**
          * 点是否落在小窗底部的小白条带内。
          *
-         * 参数取自 oupao.wiz 的 inStrip：底部 32dp 高、水平两侧各让出 15%
+         * 参数对齐系统底部条：底部 32dp 高、水平两侧各让出 15%
          * 再各放宽 6dp，避免窗口下沿左右角被误判成横条。
          */
         private fun inStrip(x: Float, y: Float, bounds: Rect, controller: Any): Boolean {
@@ -997,7 +997,7 @@ internal class OutsideTapCloseHookInstaller(
         }
 
         /**
-         * 关闭小窗，按 com.oupao.wiz 的链路（它已验证稳定）：
+         * 关闭小窗，按系统自己的链路（已验证稳定）：
          *
          * 1. 去重：同一窗口短时间内只关一次；
          * 2. handleCloseEventForLightOpenIfNeed(caption)：先让"轻量打开"状态结清；
@@ -1272,7 +1272,7 @@ internal class OutsideTapCloseHookInstaller(
         const val FLEXIBLE_CAPTION_VIEW_CLASS = OemClasses.FLEXIBLE_CAPTION_VIEW
         const val ORDINARY_ZOOM_STATE = 1
 
-        /** 底部小白条的高度（dp）与水平余量，取自 oupao.wiz 的 inStrip。 */
+        /** 底部小白条的高度（dp）与水平余量，与系统底部条的命中区一致。 */
         const val STRIP_HEIGHT_DP = 32f
         const val STRIP_SLACK_DP = 6f
 

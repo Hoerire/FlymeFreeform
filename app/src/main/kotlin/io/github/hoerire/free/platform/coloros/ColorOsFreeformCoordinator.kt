@@ -1086,7 +1086,7 @@ internal class ColorOsFreeformCoordinator(
             return
         }
         // 后台任务不走 startActivityFromRecents：这台 ROM 上它只把任务提到前台，
-        // 完全忽略 extra_window_mode 那套小窗参数（实测 2026-11-18：全部变成全屏）。
+        // 完全忽略 extra_window_mode 那套小窗参数（实测：只会变成全屏）。
         // 后台任务仍走 launcher.launch → startZoomWindow。
         val launchResult = launcher.launch(
             android.content.ComponentName(target.packageName, target.className),
@@ -1502,7 +1502,7 @@ internal class ColorOsFreeformCoordinator(
     /** 输入法窗口此刻是否可见；状态拿不到时按「不可见」处理，避免误拦手势。 */
     private fun isInputMethodVisible(): Boolean {
         // 主判据：WMS 里那个 IME 窗口。窗外关闭（OutsideTapClose）用的就是这条链路，
-        // 在本机已验证可用；早期版本只读 IMMS 的 mImeWindowVis，取到 0 就当作没弹键盘，
+        // 已验证可用；早期版本只读 IMMS 的 mImeWindowVis，取到 0 就当作没弹键盘，
         // 结果「屏蔽键盘」永远不生效。
         inputMethodWindowState()?.let { window ->
             (OemReflection.callNoArg(window, "isVisible") as? Boolean)?.let { return it }
@@ -2076,7 +2076,7 @@ internal class ColorOsFreeformCoordinator(
         /**
          * 判定任务「铺满整屏」的阈值。
          *
-         * 小窗的最大尺寸约屏宽 100%、屏高 80%（实测 Rect(126,329,1398,2590)），
+         * 小窗的最大尺寸约屏宽 100%、屏高 80%，
          * 与真正的全屏（1272×2800）在高度上差得很明显，90% 足够区分两侧。
          */
         const val FULLSCREEN_SIZE_RATIO = 0.9f

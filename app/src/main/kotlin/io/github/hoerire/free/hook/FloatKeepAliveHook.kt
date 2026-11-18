@@ -503,7 +503,7 @@ internal class FloatKeepAliveHook(
      * 暂停请求不发给客户端：服务端照常进入 PAUSING，再由这里补一次 activityPaused
      * 让 AMS 完成暂停并继续恢复下一个应用；客户端收不到 onPause，画面与逻辑继续跑。
      *
-     * 注意：只挂「一个固定签名」会漏。08:35:20 的事件是
+     * 注意：只挂「一个固定签名」会漏。实测出现过这样的一个事件：
      * `wm_pause_activity … pauseInRecentsAnim`，走的不是常规那条重载，
      * 首次贴边时 pause 就从这个口子漏过去，游戏当场停（第二次贴边已暂停，才显得正常）。
      * 这里按方法名把 TaskFragment 上所有带 ActivityRecord 参数的重载全挂上。
@@ -724,9 +724,9 @@ internal class FloatKeepAliveHook(
     /**
      * 贴边动作本身同步白名单。
      *
-     * 实测（07:06:58）`sweepExemptions` 会因为一次 `resetFlexibleTaskToFullScreen` 把包当成
+     * 实测 `sweepExemptions` 会因为一次 `resetFlexibleTaskToFullScreen` 把包当成
      * 「已离开浮标」撤掉白名单，而重新贴边时没有任何 ActivityRecord 钩子被触发，
-     * `shouldKeep` 不会重跑 —— 结果下次息屏 Hans 照冻（07:12:57）。
+     * `shouldKeep` 不会重跑 —— 结果下次息屏 Hans 照冻。
      * 所以白名单在 `addFloatHandle*` 上补挂、在 `removeFloatHandle*` 上撤掉，不依赖状态变化。
      */
     private fun installFloatHandleSync(classLoader: ClassLoader) {
@@ -1241,7 +1241,7 @@ internal class FloatKeepAliveHook(
     /**
      * 对保活中的浮标应用回答「没有锁屏」。
      *
-     * 反编译红果确认了它换集的判断点：
+     * 按客户端行为确认了它换集的判断点：
      * `com.dragon.read.video.o.b()` 里 `if (!KeyguardManager.isKeyguardLocked()) { 继续播放 }`，
      * 锁屏时整段跳过，所以换集不连播。`KeyguardManager.isKeyguardLocked()` 的服务端就是
      * `WindowManagerService.isKeyguardLocked()`（转给 `mPolicy.isKeyguardLocked()`）。
@@ -1413,7 +1413,7 @@ internal class FloatKeepAliveHook(
     /**
      * 直接挡 Hans 冻结（白名单那条在 ColorOS 17 上实测无效）。
      *
-     * 07:31:32 的日志：贴边 + 息屏后 Hans 仍然 `freeze uid: 10401 … scene: LcdOff`，
+     * 实测日志：贴边 + 息屏后 Hans 仍然 `freeze uid: 10401 … scene: LcdOff`，
      * 尽管自定义白名单已挂上、`secure no_frozen` 也加过。这里把 Hans 管理器里所有
      * `freeze*` 方法挂一遍，参数里出现保活浮标应用的 uid/pid 就跳过这一次冻结。
      */

@@ -20,7 +20,7 @@ import io.github.hoerire.free.hook.OemClasses
  * 三个类需同时放行，任一遗漏仍会按原厂黑名单拦截。
  *
  * ColorOS 17 另有一处缓存：FlexibleTaskController 在构造时把上限读进整数字段
- * （字段名 maxFlexibleTaskNum，本机取值为 2），之后超限裁决直接用这个字段，不再回头问 getMaxWinNum。
+ * （字段名 maxFlexibleTaskNum，出厂值 2），之后超限裁决直接用这个字段，不再回头问 getMaxWinNum。
  * 模块注入发生在服务构造之后，改返回值已经晚了，所以还要在裁决入口把字段改掉，
  * 见 installCachedLimitSync。
  */

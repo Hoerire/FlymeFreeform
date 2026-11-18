@@ -21,7 +21,7 @@ internal object RadialIconGeometry {
     private const val ITEM_MIN_GAP_DP = 5f
 
     /**
-     * 命中半径的兜底倍数（设置页没给值时才用）：2.5 倍图标直径，本机约 350px。
+     * 命中半径的兜底倍数（设置页没给值时才用）：2.5 倍图标直径。
      * 不做弧线收边，只要离某个图标最近且在命中半径内就选中，手指偏出弧线也能接着选。
      */
     private const val SELECTION_ENTER_FACTOR = 2.5f
