@@ -23,6 +23,7 @@ import io.github.hoerire.free.config.PinnedTargetCodec
 import io.github.hoerire.free.gesture.AdaptiveCornerGestureConfig
 import io.github.hoerire.free.gesture.CornerGestureConfig
 import io.github.hoerire.free.gesture.CornerGestureEngine
+import io.github.hoerire.free.gesture.CornerSide
 import io.github.hoerire.free.gesture.CornerTriggerRegion
 import io.github.hoerire.free.gesture.GestureAction
 import io.github.hoerire.free.gesture.GesturePhase
@@ -373,11 +374,33 @@ internal class ColorOsFreeformCoordinator(
     private fun registerPointerListener() {
         if (pointerRegistered) return
         val generation = pointerGeneration
-        // 2.2 / 上游方案：system_server 只做旁观（WMS PointerEventListener），不再用
-        // InputMonitor.pilfer 抢流。角区触摸由 SystemUI 的受信任 SPY 热区吞下并在激活时
-        // 按自己的 input token 抢流；在本进程再抢一次会偶发"重发 DOWN + CANCEL"导致断流，
-        // 现场表现就是扇形有时扒不出来。
+        // 首选：system_server 内的 InputMonitor（收到全部事件副本、不消费），并在确认
+        // 是角区滑动的那一帧 pilferPointers 抢流。没有这一步，扇形弹出的同时下层应用
+        // 仍在收 MOVE，触发范围内左滑就会穿透（2026-11-18 现场日志：整场 0 次
+        // SYSTEM_PILFER_AT / MONITOR_SESSION_END，SystemUI 侧 monitor 通道也没收到事件，
+        // 抢流环节整个缺失）。抢流后应用收到 CANCEL，事件继续投递给本进程的 monitor
+        // 通道，扇形照常跟踪。
+        if (startSystemGestureMonitor(generation)) return
+        // 退路：WMS 指针监听（只观察，不抢流）。扇形能用，但左滑会穿透到下层应用。
         registerWindowPointerListener(generation)
+    }
+
+    /** 建 system_server 侧 monitor；失败返回 false，调用方回退到 WMS 旁观者。 */
+    private fun startSystemGestureMonitor(generation: Long): Boolean {
+        val monitor = SystemServerGestureMonitor(
+            context = context,
+            onEvent = { event ->
+                // 先喂原始流（窗口手势 / 菜单外点击 / 角区归属），再回答"这一帧抢不抢"。
+                handleRawPointer(event, generation)
+                shouldStartPilfer(event)
+            },
+            logger = { priority, code, throwable -> logger(priority, code, throwable) },
+        )
+        if (!monitor.start(MONITOR_NAME)) return false
+        gestureMonitor = monitor
+        pointerRegistered = true
+        debug("SYSTEM_GESTURE_MONITOR_ACTIVE")
+        return true
     }
 
     /** 原始指针流：浮动窗口手势、菜单外点击、角区归属都在这里判一次。 */
@@ -556,6 +579,11 @@ internal class ColorOsFreeformCoordinator(
     /** 本次抢流时手指累计位移（像素），仅用于诊断输出。 */
     private var pilferDistance = 0f
 
+    /** 抢流即激活：抢流成功那刻的手势方向与原始落点，重发 DOWN 时消费。 */
+    private var pilferActivateSide: CornerSide? = null
+    private var pilferActivateX = 0f
+    private var pilferActivateY = 0f
+
     private fun shouldStartPilfer(event: MotionEvent): Boolean =
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -610,6 +638,13 @@ internal class ColorOsFreeformCoordinator(
                     // 诊断：抢流这一刻手指已经移动了多远。数值大说明应用在抢流前就收到了足够的位移。
                     pilferDistance = moved
                     logFirstPilfer(moved)
+                    // 抢流即激活：抢流判定已确认这是角区斜推手势（非上滑方向），
+                    // 记下方向与原始落点，等重发 DOWN 到达 UI 引擎时直接进入 Revealing，
+                    // 不再等后续 MOVE 攒位移。快速轻扫（抢流后 1~25ms 抬手）的 MOVE 流
+                    // 太短，等 MOVE 判定永远来不及，表现为扇形划不出来（实测 25% 失败率）。
+                    pilferActivateSide = if (isLeftSide) CornerSide.Left else CornerSide.Right
+                    pilferActivateX = pilferDownX
+                    pilferActivateY = pilferDownY
                     return true
                 }
                 pilferEngine.move(
@@ -667,10 +702,28 @@ internal class ColorOsFreeformCoordinator(
             return
         }
         if (event.actionMasked == MotionEvent.ACTION_DOWN && pilferSessionActive) {
-            // 抢流后系统重发的那次 DOWN：只换基准点，不重置会话（日志：
-            // 走重置会把引擎打回 Armed，接着 CANCEL 一来整条流就断了，菜单定格）。
-            gestureEngine.rebase(event.x, event.y)
-            trace("SYSTEM_GESTURE_DOWN_REBASED_" + event.x.toInt() + "_" + event.y.toInt())
+            // 抢流后系统重发的那次 DOWN：坐标是手指当前位置，不是原始落点。
+            // 不能 rebase（把 origin 挪到当前位置）：抢流发生在 6~9px 时，引擎已积累的
+            // 位移会被清零，激活阈值实际变成「从重发点起算 14dp」，短滑就划不出扇形。
+            // 直接忽略这次重发 DOWN，保留原 origin——MOVE 是屏幕绝对坐标，
+            // 相对原落点的位移才是手势的真实位移。也不 reset：会把引擎打回 Armed，
+            // 接着 CANCEL 一来整条流就断了，菜单定格。
+            // 抢流即激活：抢流判定已经确认这是角区斜推（方向闸门在抢流时已过），
+            // 快速轻扫的 MOVE 流在抢流后 1~25ms 就被 UP/CANCEL 掐断，等 MOVE 攒到
+            // 14dp 激活阈值永远来不及（实测 25% 手势失败）。这里直接消费抢流时
+            // 记下的方向与原始落点，立即弹出扇形——激活与抢流合并成同一事件。
+            val pendingSide = pilferActivateSide
+            if (pendingSide != null && overlay == null) {
+                pilferActivateSide = null
+                pilferSessionActive = true
+                trace(
+                    "SYSTEM_GESTURE_ACTIVATE_INSTANT_" + pendingSide.name + "_" +
+                        pilferActivateX.toInt() + "_" + pilferActivateY.toInt(),
+                )
+                showOverlay(side = pendingSide, x = pilferActivateX, y = pilferActivateY)
+            } else {
+                pilferActivateSide = null
+            }
             return
         }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -678,11 +731,15 @@ internal class ColorOsFreeformCoordinator(
             pilferLoggedThisGesture = false
             // 把「屏蔽键盘」的两个输入也打出来：设置值 + 当前 IME 可见性，
             // 排查「开关开了但扇形照出」时一眼能看出是哪一环没到。
-            trace(
-                "SYSTEM_GESTURE_DOWN_" + event.x.toInt() + "_" + event.y.toInt() +
-                    "_kb" + lastSettings.pauseInKeyboard +
-                    "_ime" + isInputMethodVisible(),
-            )
+            // isInputMethodVisible 走 WMS 反射链，先确认详细日志开着再求值，
+            // 否则每个 DOWN 都在为一条不会输出的日志付整条反射。
+            if (io.github.hoerire.free.log.VerboseLog.enabled) {
+                trace(
+                    "SYSTEM_GESTURE_DOWN_" + event.x.toInt() + "_" + event.y.toInt() +
+                        "_kb" + lastSettings.pauseInKeyboard +
+                        "_ime" + isInputMethodVisible(),
+                )
+            }
             activeEnvironmentApproved = isGestureEnvironmentAllowed()
             if (!activeEnvironmentApproved) {
                 trace("SYSTEM_GESTURE_REJECTED_" + environmentRejectionReason())

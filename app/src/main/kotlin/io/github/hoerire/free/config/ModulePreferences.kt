@@ -173,13 +173,17 @@ internal object ModulePreferences {
     const val KEY_RADIAL_RADIUS_PERCENT = "radial_radius_percent_v1"
 
     /**
-     * 「自由拖拽」：解除内容传送门的长按拖拽准入限制。
+     * 「解除限制」：解除内容传送门的长按拖拽准入限制。
      *
      * 系统的长按拖拽只对 sys_view_drag_list.xml 里登记过的包 + Activity + 控件类名生效，
      * 没登记的包连配置都拿不到。打开后 hook 在配置下发处补一份通用白名单，
      * 让任意应用、任意页面都能长按拖起内容。只改「能不能拖」，不改「拖给谁」。
      */
     const val KEY_FREE_DRAG = "free_drag_enabled"
+
+    /** 快速分享：拖拽时弹出模块自绘的分享面板，代替官方面板。 */
+    const val KEY_QUICK_SHARE = "quick_share_enabled"
+    const val DEFAULT_QUICK_SHARE = false
 
     /** 拖拽触发延迟：系统长按阈值（毫秒），默认 400 即官方行为。 */
     const val KEY_DRAG_LONG_PRESS_MS = "drag_long_press_ms_v1"
@@ -225,7 +229,7 @@ internal object ModulePreferences {
     /** 选中光圈默认关闭：默认只保留 20% 的选中放大，特效由用户自己开。 */
     const val DEFAULT_RADIAL_SELECTION_RING = false
     const val DEFAULT_RADIAL_SHIMMER_ENABLED = false
-    /** 自由拖拽默认关闭：改写的是系统级拖拽准入，由用户主动开启。 */
+    /** 解除限制默认关闭：改写的是系统级拖拽准入，由用户主动开启。 */
     const val DEFAULT_FREE_DRAG = false
     /**
      * 扇形最多能放几个应用（收藏上限同值）。须定义在引用它的常量之前。

@@ -50,7 +50,11 @@
     <string name="free_drag_title">自由传送</string>
     <string name="drag_long_press_title">触发延迟</string>
     <string name="drag_long_press_summary">长按多久触发拖拽，400 毫秒为官方行为，越小越灵敏</string>
-    <string name="free_drag_summary">解除官方传送门白名单限制，优化使用逻辑</string>
+    <string name="free_drag_summary">长按拖起内容的两项增强</string>
+    <string name="free_drag_unlock_title">解除限制</string>
+    <string name="free_drag_unlock_summary">解除官方传送门白名单限制</string>
+    <string name="quick_share_title">快速分享</string>
+    <string name="quick_share_summary">打开之后，就弹出我们自绘的分享菜单</string>
     <string name="free_drag_unsupported">仅 ColorOS 17 支持，当前系统版本不可用</string>
     <string name="blacklist_screen_title">排除列表</string>
     <string name="blacklist_add_action">添加应用</string>
@@ -69,7 +73,7 @@
     <string name="verbose_log_title">详细日志</string>
     <string name="verbose_log_summary">开启后记录详细的诊断日志，在 LSPosed 里导出给开发者，立即生效</string>
     <string name="hide_launcher_icon_title">隐藏图标</string>
-    <string name="hide_launcher_icon_summary">从桌面与应用列表中移除入口；仍可从「设置 → Free」进入，随时在这里恢复</string>
+    <string name="hide_launcher_icon_summary">从桌面与应用列表中移除入口；仍可从系统设置的「操作教程」进入，随时在这里恢复</string>
     <string name="radial_backdrop_title">背景遮罩</string>
     <string name="radial_backdrop_summary">向左压暗，向右系统模糊，0 为不处理</string>
     <string name="outside_tap_close_title">关闭小窗</string>

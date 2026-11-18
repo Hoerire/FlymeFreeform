@@ -17,9 +17,13 @@ import io.github.hoerire.free.ui.component.SettingsGroup
 import io.github.hoerire.free.ui.component.SwitchPreference
 
 /**
- * 自由传送二级页：总开关 + 长按时长。
+ * 自由传送二级页：两个功能开关 + 长按时长。
  *
- * 主设置页的「配置」卡片里只保留一行入口：总开关与滑杆各占一行会让那张卡多出一块高度，
+ * 原来一个「自由传送」开关同时控制两件事：解除官方白名单限制、拖拽时接管成模块自绘
+ * 的分享面板。两件事互相独立（只解除限制的人不要弹窗，只要弹窗的人未必需要白名单），
+ * 拆成两个平级开关后各自单独生效。
+ *
+ * 主设置页的「配置」卡片里只保留一行入口：两个开关与滑杆各占一行会让那张卡多出一块高度，
  * 而两者只在需要时才会调。
  */
 @Composable
@@ -27,6 +31,7 @@ internal fun FreeDragScreen(
     state: FrameworkConnectionState,
     onBack: () -> Unit,
     onFreeDragChange: (Boolean) -> Unit,
+    onQuickShareChange: (Boolean) -> Unit,
     onDragLongPressChange: (Int) -> Unit,
 ) {
     val context = LocalContext.current
@@ -43,10 +48,23 @@ internal fun FreeDragScreen(
                 SwitchPreference(
                     checked = state.settings.freeDragEnabled,
                     onCheckedChange = onFreeDragChange,
-                    title = stringResource(R.string.free_drag_title),
+                    title = stringResource(R.string.free_drag_unlock_title),
                     summary =
-                        if (portalSupported) stringResource(R.string.free_drag_summary)
+                        if (portalSupported) stringResource(R.string.free_drag_unlock_summary)
                         else stringResource(R.string.free_drag_unsupported),
+                    enabled = usable,
+                    startAction = {
+                        PreferenceIcon(
+                            ImageVector.vectorResource(R.drawable.ic_free_drag),
+                            usable,
+                        )
+                    },
+                )
+                SwitchPreference(
+                    checked = state.settings.quickShareEnabled,
+                    onCheckedChange = onQuickShareChange,
+                    title = stringResource(R.string.quick_share_title),
+                    summary = stringResource(R.string.quick_share_summary),
                     enabled = usable,
                     startAction = {
                         PreferenceIcon(
@@ -59,7 +77,7 @@ internal fun FreeDragScreen(
                     icon = ImageVector.vectorResource(R.drawable.ic_trigger_delay),
                     confirmedValue = state.settings.dragLongPressMs,
                     isUpdating = state.isUpdating,
-                    enabled = usable && state.settings.freeDragEnabled,
+                    enabled = usable && (state.settings.freeDragEnabled || state.settings.quickShareEnabled),
                     title = stringResource(R.string.drag_long_press_title),
                     summary = stringResource(R.string.drag_long_press_summary),
                     minDp = ModulePreferences.MIN_DRAG_LONG_PRESS_MS,

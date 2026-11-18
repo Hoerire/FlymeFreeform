@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
                     onPauseInKeyboardChange = repository::setPauseInKeyboard,
                     onVerboseLogChange = repository::setVerboseLogEnabled,
                     onFreeDragChange = repository::setFreeDragEnabled,
+                    onQuickShareChange = repository::setQuickShareEnabled,
                     onDragLongPressChange = repository::setDragLongPressMs,
                     onZoomMaxWindowCountChange = repository::setZoomMaxWindowCount,
                     onZoomAllowAnyAppChange = repository::setZoomAllowAnyApp,

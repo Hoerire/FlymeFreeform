@@ -98,6 +98,7 @@ internal fun FreeNavHost(
     onPauseInKeyboardChange: (Boolean) -> Unit,
     onVerboseLogChange: (Boolean) -> Unit,
     onFreeDragChange: (Boolean) -> Unit,
+    onQuickShareChange: (Boolean) -> Unit,
     onDragLongPressChange: (Int) -> Unit,
     onZoomMaxWindowCountChange: (Int) -> Unit,
     onZoomAllowAnyAppChange: (Boolean) -> Unit,
@@ -264,6 +265,7 @@ internal fun FreeNavHost(
                     state = state,
                     onBack = popBackStack,
                     onFreeDragChange = onFreeDragChange,
+                    onQuickShareChange = onQuickShareChange,
                     onDragLongPressChange = onDragLongPressChange,
                 )
             AppRoute.RadialEffect ->

@@ -54,7 +54,7 @@ internal class SystemServerHookInstaller(
         // 表现为穿透到下层应用。角区触摸改由 SystemUI 的受信任 SPY 热区吞下。
 
         CenterZoomWindowHook(module, configuration).install(classLoader)
-        // 内容传送门的长按拖拽准入：给系统没登记的应用补通用白名单（「自由拖拽」开关）。
+        // 内容传送门的长按拖拽准入：给系统没登记的应用补通用白名单（「解除限制」开关）。
         FreeDragHookInstaller(module, configuration, environment).install(classLoader)
         // 系统 Home 手势的指针监听器不认挖角，也不受抢流影响，单独在入口吞掉角区按下。
         SystemGestureSuppressor(module, configuration).install(classLoader)

@@ -93,7 +93,7 @@ internal class PortalTapLegacy(
                 val context = instance as? android.content.Context
                 val supported = context?.packageManager
                     ?.getPackageInfo(PACKAGE_NAME, 0)?.versionName == "17.3.18"
-                if (instance != null && supported && configuration.snapshot.freeDragActive &&
+                if (instance != null && supported && configuration.snapshot.quickShareActive &&
                     source != null && configuration.snapshot.blacklistPackages.none {
                         source == it || source.startsWith("$it/") || source.startsWith("$it ")
                     }

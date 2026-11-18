@@ -39,11 +39,17 @@ internal object OemReflection {
     }
 
     fun findField(type: Class<*>, name: String): Field? {
+        val key = type.name + "#" + name
+        fieldCache[key]?.let { return it }
         var current: Class<*>? = type
         while (current != null) {
             runCatching { current!!.getDeclaredField(name) }
                 .getOrNull()
-                ?.let { return it.apply { isAccessible = true } }
+                ?.let {
+                    val found = it.apply { isAccessible = true }
+                    fieldCache[key] = found
+                    return found
+                }
             current = current.superclass
         }
         return null
@@ -57,6 +63,15 @@ internal object OemReflection {
      * 加载"的瞬时失败永久固定下来。
      */
     private val methodCache = java.util.concurrent.ConcurrentHashMap<String, Method>()
+
+    /**
+     * 字段查找缓存：键是「类名#字段名」，语义与 [methodCache] 相同——只缓存命中结果。
+     *
+     * 输入热路径上每个 DOWN 都要读 WMS（mAtms/mWindowManager/mRoot）与 IME 窗口状态，
+     * 字段不走缓存时每次都沿父类链 getDeclaredField，monitor 接管全屏事件后这个成本
+     * 直接乘上全部触摸。找不到仍每次重查，不把类未加载的瞬时失败固定下来。
+     */
+    private val fieldCache = java.util.concurrent.ConcurrentHashMap<String, Field>()
 
     fun findMethod(type: Class<*>, name: String, vararg parameterTypes: Class<*>): Method? {
         val key = type.name + "#" + name + "/" + parameterTypes.joinToString(",") { it.name }

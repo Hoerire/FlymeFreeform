@@ -97,8 +97,10 @@ class ModuleMain : XposedModule() {
                     "_bl" + settings.blacklistPackages.size +
                     // 「禁用浮窗」的条目数：常开 INFO 一行里带上，详细日志关掉也能确认配置读到了。
                     "_zx" + settings.zoomExcludedPackages.size +
-                    // 自由拖拽是唯一一条改写系统拖拽准入的开关，常开一行便于确认它被读到了。
-                    "_fd" + settings.freeDragActive,
+                    // 改写系统拖拽准入（解除限制）与接管面板（快速分享）的两个开关，
+                    // 常开一行便于确认配置被读到了。
+                    "_fd" + settings.freeDragActive +
+                        "_qs" + settings.quickShareActive,
             )
         }
     }
@@ -141,7 +143,9 @@ class ModuleMain : XposedModule() {
                 LauncherHookInstaller(this, settings).install(param.classLoader, param.applicationInfo)
             }
 
-            processName == PROCESS_SETTINGS && param.packageName == PROCESS_SETTINGS -> {
+            // SettingActivity 配置了 android:process，页面跑在 ":FlexibleAppControlService" 子进程；
+            // 按 packageName 匹配，主进程与子进程都挂 hook（主进程没有偏好页，装了也无害）。
+            param.packageName == PROCESS_ZOOM_SETTINGS -> {
                 hooksInstalled = true
                 SettingsHookInstaller(this, settings).install(param.classLoader)
             }
@@ -158,7 +162,7 @@ class ModuleMain : XposedModule() {
         param.isSystemServer ||
             param.processName == PROCESS_SYSTEM_UI ||
             param.processName == PROCESS_LAUNCHER ||
-            param.processName == PROCESS_SETTINGS ||
+            param.processName.startsWith(PROCESS_ZOOM_SETTINGS) ||
             param.processName == PortalTapHookInstaller.PACKAGE_NAME ||
             isSidebarProcess(param.processName)
 
@@ -186,7 +190,12 @@ class ModuleMain : XposedModule() {
         const val TAG = "Free"
         const val PROCESS_SYSTEM_UI = "com.android.systemui"
         const val PROCESS_LAUNCHER = "com.android.launcher"
-        const val PROCESS_SETTINGS = "com.android.settings"
+
+        /**
+         * 自由浮窗的设置页独立成包（辅助与关怀 > 自由浮窗 的宿主），
+         * 入口注入与偏好树转储都挂在这个进程，不再依赖设置应用。
+         */
+        const val PROCESS_ZOOM_SETTINGS = "com.oplus.pscanvas"
     }
 
     /** 进程名转成日志里可安全拼接的短标记。 */

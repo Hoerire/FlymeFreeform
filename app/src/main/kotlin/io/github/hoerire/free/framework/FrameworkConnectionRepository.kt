@@ -137,9 +137,13 @@ internal class FrameworkConnectionRepository(private val context: Context) {
             it.copy(radialRadiusPercent = ModulePreferences.coerceRadialRadiusPercent(value))
         }
 
-    /** 自由拖拽：改写系统长按拖拽的准入名单。 */
+    /** 解除限制：改写系统长按拖拽的准入名单。 */
     fun setFreeDragEnabled(enabled: Boolean) =
         updateSettings { it.copy(freeDragEnabled = enabled) }
+
+    /** 快速分享：拖拽时弹出模块自绘的分享面板。 */
+    fun setQuickShareEnabled(enabled: Boolean) =
+        updateSettings { it.copy(quickShareEnabled = enabled) }
 
     /** 拖拽触发延迟（毫秒）：写回配置，由 system_server 应用到系统长按阈值。 */
     fun setDragLongPressMs(ms: Int) =

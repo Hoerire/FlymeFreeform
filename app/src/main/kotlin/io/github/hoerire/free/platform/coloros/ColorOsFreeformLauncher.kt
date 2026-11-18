@@ -143,26 +143,51 @@ internal class ColorOsFreeformLauncher(
     /**
      * 解析该包当前真正可用的启动入口。
      *
-     * 图标包类应用（Telegram 系常见）把启动 Activity 做成多个 activity-alias，
-     * 未启用的别名在清单里是 disabled，直接按记录的别名启动会失败。
-     * 顺序：系统解析的启动入口 → LauncherApps 里该包当前可启动的入口。
+     * 「改图标/改名字」类功能（图标包、应用内改名，如 Salt Player）的实现是把启动入口
+     * 做成多个 activity-alias，切换时把旧别名 `setComponentEnabledSetting(DISABLED)`、
+     * 启用新别名。扇形里记录的是当时的入口，改名后就变成 disabled，直接按记录启动会失败。
+     * 顺序：
+     *   1. 系统解析的启动入口（getLaunchIntentForPackage）；
+     *   2. PMS 按 MAIN/LAUNCHER 枚举——AMS.startActivity 内部走的就是这条解析引擎，
+     *      与实际启动行为最一致；system_server 有完整包可见性，不依赖桌面角色；
+     *   3. LauncherApps 里该包当前可启动的入口。
      */
     private fun enabledLauncherComponent(packageName: String, requested: ComponentName): ComponentName? {
         try {
-            context.packageManager.getLaunchIntentForPackage(packageName)?.component?.let { resolved ->
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+            launchIntent?.component?.let { resolved ->
                 if (resolved != requested && unavailableReason(resolved) == null) return resolved
             }
         } catch (_: RuntimeException) {
             // 继续走枚举兜底。
         }
-        // LauncherApps 只返回当前启用、可被桌面启动的入口，正好用于别名切换后的兜底。
+        val probe = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(packageName)
+        // flags 必须是 0，不能用 MATCH_DEFAULT_ONLY：
+        // 改名/图标包类应用的启动入口是 activity-alias，filter 只有 MAIN+LAUNCHER、
+        // 不带 CATEGORY_DEFAULT，而 DEFAULT 匹配语义会把它整个过滤掉——隐式按包名
+        // startActivity 对这类入口天生解析不到（实测 am start 同样报 unable to resolve）。
+        // 桌面点得开是因为桌面拿显式组件启动，从不走隐式解析；这里 flags=0 枚举出
+        // 启用中的入口再显式启动，与桌面对齐。
+        runCatching {
+            context.packageManager.queryIntentActivities(probe, PackageManager.ResolveInfoFlags.of(0))
+        }.onSuccess { results ->
+            // 信任枚举结果：getLaunchIntentForPackage / queryIntentActivities / LauncherApps
+            // 三个同源枚举认可的入口，就是桌面会启动的那个。不要再用 unavailableReason
+            // （getActivityInfo.enabled）否决它——实测 Salt Player 改名后，枚举唯一入口
+            // 恰好就是扇形记录的组件，getActivityInfo 却误报 ACTIVITY_DISABLED，
+            // 「候选必须 != requested」的过滤把唯一可用入口排除掉，启动必然失败。
+            // 就算组件真不可用，startActivity 的失败与不过滤时相同，不会更糟。
+            val first = results?.firstOrNull()?.activityInfo ?: return null
+            return ComponentName(first.packageName, first.name)
+        }.onFailure { _ -> }
+        // LauncherApps 只返回当前启用、可被桌面启动的入口；部分系统环境下 system_server
+        // 里调用会拿不到结果（实测 Salt Player 改名后此路为空），只作最后一级。
         val launcherApps = context.getSystemService(android.content.pm.LauncherApps::class.java) ?: return null
         return try {
-            launcherApps
+            val activities = launcherApps
                 .getActivityList(packageName, android.os.Process.myUserHandle())
-                .firstOrNull { it.componentName != requested }
-                ?.componentName
-                ?.takeIf { unavailableReason(it) == null }
+            // 与 query 同口径：枚举认可的第一条直接用，不做 enabled 单点否决。
+            activities.firstOrNull()?.componentName
         } catch (_: RuntimeException) {
             null
         }

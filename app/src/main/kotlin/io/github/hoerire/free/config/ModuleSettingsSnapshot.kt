@@ -72,12 +72,12 @@ internal data class ModuleSettingsSnapshot(
     /** 扇形半径百分比：左右两侧同步放大或缩小。 */
     val radialRadiusPercent: Int = ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT,
     /**
-     * 自由拖拽：解除内容传送门的长按拖拽准入限制。
-     *
-     * 打开后 system_server 侧会给没有系统白名单的应用补一份通用配置，
+     * 解除限制：system_server 侧给没有系统白名单的应用补一份通用配置，
      * 任意页面都能长按拖起文字/图片。只影响「能不能拖」，不参与「拖给谁」。
      */
     val freeDragEnabled: Boolean = ModulePreferences.DEFAULT_FREE_DRAG,
+    /** 快速分享：拖拽时弹出模块自绘的分享面板，代替官方面板。 */
+    val quickShareEnabled: Boolean = ModulePreferences.DEFAULT_QUICK_SHARE,
     /** 拖拽触发延迟：系统长按阈值（毫秒），400 即官方行为。 */
     val dragLongPressMs: Int = ModulePreferences.DEFAULT_DRAG_LONG_PRESS_MS,
 ) {
@@ -117,8 +117,11 @@ internal data class ModuleSettingsSnapshot(
     /** 快速上滑转迷你独立于启动场景开关，只跟模块总开关走。 */
     val handleSwipeUpToMiniEffective: Boolean get() = enabled && handleSwipeUpToMiniEnabled
 
-    /** 自由拖拽只跟模块总开关走：它和自由浮窗没有依赖关系。 */
+    /** 解除限制是否生效：模块总开关 ×「解除限制」。 */
     val freeDragActive: Boolean get() = enabled && freeDragEnabled
+
+    /** 快速分享是否生效：模块总开关 ×「快速分享」。 */
+    val quickShareActive: Boolean get() = enabled && quickShareEnabled
     /** 贴边互切打开时，小窗数量交还默认值（1）。 */
     val zoomMaxWindowCountEffective: Int
         get() = if (zoomInteractionActive) zoomMaxWindowCount else ModulePreferences.DEFAULT_ZOOM_MAX_WINDOW_COUNT
@@ -177,6 +180,7 @@ internal data class ModuleSettingsSnapshot(
                 ModulePreferences.coerceRadialRadiusPercent(radialRadiusPercent),
             )
             .putBoolean(ModulePreferences.KEY_FREE_DRAG, freeDragEnabled)
+            .putBoolean(ModulePreferences.KEY_QUICK_SHARE, quickShareEnabled)
             .putInt(
                 ModulePreferences.KEY_DRAG_LONG_PRESS_MS,
                 ModulePreferences.coerceDragLongPressMs(dragLongPressMs),
@@ -436,6 +440,10 @@ internal data class ModuleSettingsSnapshot(
                 freeDragEnabled = preferences.getBoolean(
                     ModulePreferences.KEY_FREE_DRAG,
                     ModulePreferences.DEFAULT_FREE_DRAG,
+                ),
+                quickShareEnabled = preferences.getBoolean(
+                    ModulePreferences.KEY_QUICK_SHARE,
+                    ModulePreferences.DEFAULT_QUICK_SHARE,
                 ),
                 dragLongPressMs = preferences.getInt(
                     ModulePreferences.KEY_DRAG_LONG_PRESS_MS,

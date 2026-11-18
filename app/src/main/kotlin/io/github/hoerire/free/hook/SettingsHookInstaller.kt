@@ -24,11 +24,15 @@ internal class SettingsHookInstaller(
 ) {
     private val dumped = ConcurrentHashMap.newKeySet<String>()
     private val emitted = AtomicInteger(0)
-    private val injector = SettingsEntryInjector(module)
+    private val injector = SettingsEntryInjector()
 
     fun install(classLoader: ClassLoader) {
+        // 首页（设置应用）用 Compat 版基类；自由浮窗设置（com.oplus.pscanvas）用
+        // androidx.preference.PreferenceFragment（android.app.Fragment 系），
+        // 两个类的方法签名一致，按存在性回退。
         val fragmentClass =
             OemReflection.loadOrNull(classLoader, OemClasses.PREFERENCE_FRAGMENT_COMPAT)
+                ?: OemReflection.loadOrNull(classLoader, PREFERENCE_FRAGMENT_LEGACY)
         if (fragmentClass == null) {
             emit("SETTINGS_PROBE_FRAGMENT_CLASS_MISSING")
             return
@@ -39,6 +43,8 @@ internal class SettingsHookInstaller(
         hookCreatePreferences(fragmentClass)
         hookAddPreferencesFromResource(fragmentClass)
         hookConcreteHomeFragment(classLoader)
+        hookZoomSettingFragment(classLoader)
+        hookOperationRedirect(classLoader)
         emit("SETTINGS_HOOK_DONE")
     }
 
@@ -77,6 +83,55 @@ internal class SettingsHookInstaller(
                 emit("SETTINGS_HOOK_CONCRETE_FAIL_" + name + "_" + it.javaClass.simpleName)
             }
         }
+    }
+
+    /**
+     * 自由浮窗设置页（com.oplus.pscanvas）的偏好 Fragment 是独立实现，
+     * 既不继承 Compat 也不继承 legacy 基类，只能对具体类挂钩。
+     * 找不到方法就跳过（该页可能改版），不影响其它注入点。
+     */
+    private fun hookZoomSettingFragment(fragmentLoader: ClassLoader) {
+        val type =
+            OemReflection.loadOrNull(fragmentLoader, ZOOM_SETTING_FRAGMENT)
+                ?: return emit("SETTINGS_PROBE_ZOOM_FRAGMENT_MISSING")
+        listOf(
+            "onCreate" to arrayOf<Class<*>>(Bundle::class.java),
+            "onCreatePreferences" to arrayOf<Class<*>>(
+                Bundle::class.java,
+                String::class.java,
+            ),
+            "onCreateView" to arrayOf<Class<*>>(
+                android.view.LayoutInflater::class.java,
+                android.view.ViewGroup::class.java,
+                Bundle::class.java,
+            ),
+            "onViewCreated" to arrayOf<Class<*>>(
+                android.view.View::class.java,
+                Bundle::class.java,
+            ),
+            "onActivityCreated" to arrayOf<Class<*>>(Bundle::class.java),
+            "onResume" to arrayOf<Class<*>>(),
+        ).forEach { (name, parameters) ->
+            val method = OemReflection.findMethod(type, name, *parameters)
+            // 厂商自定义实现：偏好树建完的时机不确定，每个生命周期点各挂一次；
+            // 找不到的方法打缺失点，避免「静默没挂上」排障困难。
+            if (method == null) {
+                emit("SETTINGS_PROBE_ZOOM_METHOD_MISSING_" + name)
+                return@forEach
+            }
+            runCatching {
+                module
+                    .hook(method)
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .setId("free.settings.zoom." + name)
+                    .intercept { chain ->
+                        val result = chain.proceed()
+                        runCatching { handleFragment(chain.thisObject) }
+                        result
+                    }
+            }
+        }
+        emit("SETTINGS_HOOK_ZOOM_DONE")
     }
 
     private fun hookLifecycle(
@@ -161,7 +216,59 @@ internal class SettingsHookInstaller(
         if (configuration.snapshot.verboseLogEnabled && dumped.add(fragmentName)) {
             dumpTree(fragment)
         }
-        injector.inject(fragment)
+    }
+
+    /**
+     * 自由浮窗设置页的注入挂点：PreferenceGroup.addPreference。
+     *
+     * 该页的树由 App 代码逐条 addPreference 拼装（pscanvas 打包的 androidx preference
+     * 是精简版，没有 setPreferenceScreen 一类装填 API，生命周期点上树始终为空）。
+     * 在这里既能看到每个条目的归属分组，也是唯一可靠的注入时机：
+     * 「浮窗模式」分组实例在它第一条子项进来时记下，组内「操作教程」落座后
+     * 把模块入口追加到组尾（排在官方两项之后）。
+     */
+    /**
+     * 「操作教程」入口改道：该条目点击后进入 OperationActivity（自由浮窗的操作引导页），
+     * hook 它的 onCreate，改道启动 Free 模块，原引导页不再显示。
+     *
+     * 页面主体是 COUI 自绘列表，偏好框架只是壳（混淆方法表实测不走 addPreference 链路），
+     * 逐条目注入不可行；把「操作教程」作为模块入口是用户选定的方案。
+     */
+    private fun hookOperationRedirect(fragmentLoader: ClassLoader) {
+        val activityClass =
+            OemReflection.loadOrNull(fragmentLoader, OPERATION_ACTIVITY_CLASS)
+                ?: return emit("SETTINGS_PROBE_OPERATION_ACTIVITY_MISSING")
+        val onCreate = OemReflection.findMethod(activityClass, "onCreate", Bundle::class.java)
+            ?: return emit("SETTINGS_PROBE_OPERATION_ONCREATE_MISSING")
+        runCatching {
+            module
+                .hook(onCreate)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .setId("free.settings.zoom.operation_redirect")
+                .intercept { chain ->
+                    val activity = chain.thisObject as? android.app.Activity
+                    if (activity == null) {
+                        // thisObject 非 Activity（不应发生），保守放行原流程。
+                        return@intercept chain.proceed()
+                    }
+                    runCatching {
+                        val intent = android.content.Intent()
+                            .setComponent(
+                                android.content.ComponentName(MODULE_PACKAGE, MODULE_ACTIVITY_CLASS),
+                            )
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        activity.startActivity(intent)
+                        activity.finish()
+                    }.onFailure {
+                        // 启动失败时不吞掉原页面：放行原 onCreate，操作教程保持可用。
+                        emit("SETTINGS_OPERATION_REDIRECT_FAILED_" + it.javaClass.simpleName)
+                        return@intercept chain.proceed()
+                    }
+                    // 已改道：跳过原 onCreate，不再构建引导页。
+                    null
+                }
+            emit("SETTINGS_HOOK_OPERATION_REDIRECT_OK")
+        }.onFailure { emit("SETTINGS_HOOK_OPERATION_REDIRECT_FAILED_" + it.javaClass.simpleName) }
     }
 
     private fun resourceName(fragment: Any?, resourceId: Int): String {
@@ -219,6 +326,16 @@ internal class SettingsHookInstaller(
     }
 
     private companion object {
+
+
+        /** 自由浮窗的操作引导页：点「操作教程」进入，hook 其 onCreate 改道。 */
+        const val OPERATION_ACTIVITY_CLASS = "com.oplus.flexibletask.setting.OperationActivity"
+        const val MODULE_PACKAGE = "io.github.hoerire.free"
+        const val MODULE_ACTIVITY_CLASS = "io.github.hoerire.free.MainActivity"
+        /** 自由浮窗设置页的偏好 Fragment（com.oplus.pscanvas，独立实现）。 */
+        const val ZOOM_SETTING_FRAGMENT = "com.oplus.flexibletask.setting.fragment.SettingFragment"
+        /** pscanvas 侧的老版偏好 Fragment 基类（android.app.Fragment 系）。 */
+        const val PREFERENCE_FRAGMENT_LEGACY = "androidx.preference.PreferenceFragment"
         const val TAG = "Free"
         const val MAX_DEPTH = 3
         const val MAX_ENTRIES = 400

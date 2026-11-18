@@ -168,7 +168,7 @@ private fun EntryCard(
             startAction = { PreferenceIcon(Icons.Rounded.Block, featuresEnabled) },
         )
         // 自由传送原本是独立卡片（开关 + 长按时长两条），并进这张卡后只留一行入口，
-        // 具体开关与滑杆都在二级页里。
+        // 具体的两个功能开关与滑杆都在二级页里。
         ArrowPreference(
             title = stringResource(R.string.free_drag_title),
             summary = stringResource(R.string.free_drag_summary),

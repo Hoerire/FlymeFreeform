@@ -134,7 +134,7 @@ internal class PortalTapModern(
     private fun hookEntry(entry: Method) {
         hook(entry, "drag") { chain ->
             val event = chain.getArg(0) as? DragEvent
-            if (event == null || !configuration.snapshot.freeDragActive) return@hook chain.proceed()
+            if (event == null || !configuration.snapshot.quickShareActive) return@hook chain.proceed()
             window = chain.thisObject as? View
             if (event.action == DragEvent.ACTION_DRAG_STARTED ||
                 (!takeover && event.action == DragEvent.ACTION_DRAG_LOCATION && window != null && !enterSent)
