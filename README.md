@@ -8,14 +8,14 @@
   <img src="https://img.shields.io/badge/ROM-ColorOS-00A862" alt="面向 ColorOS" />
   <img src="https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android" alt="最低 Android 15" />
   <img src="https://img.shields.io/badge/libxposed-API_102-4285F4" alt="libxposed API 102" />
-  <img src="https://img.shields.io/badge/version-3.1.5-blue" alt="版本 3.1.5" />
+  <img src="https://img.shields.io/badge/version-3.1.6-blue" alt="版本 3.1.6" />
 </p>
 
 把魅族的 Flyme 小窗交互搬到 ColorOS：从屏幕底角斜向内上滑呼出扇形菜单，滑到目标松手，当即以自由浮窗打开。
 
 这是一个 LSPosed 模块，在不改动系统分区的前提下增强 ColorOS 的自由浮窗：扇形菜单、通知与横幅小窗、侧边栏目录、更多面板、内容传送门都走系统自己的窗口与管理链路，设置改完即时生效。
 
-当前版本 **3.1.5**，改动记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **3.1.6**，改动记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 预览
 
@@ -72,9 +72,12 @@
 
 ### 自由传送
 
-解除官方传送门白名单限制，优化使用逻辑。当前适配内容传送门 **17.3.18** 与 **17.5.4**（ColorOS 17）；系统升级后若传送门接口变化，需按新版本重新适配。
+两个独立开关，按需开启：
 
-优化官方内容传送门：长按即可弹出分享菜单，松手点选。触发快慢可自由调整
+- **解除限制**：解除官方传送门白名单限制，任意页面都能长按拖起内容
+- **快速分享**：拖拽时弹出模块自绘的分享菜单，长按即可弹出、松手点选
+
+「触发延迟」对两者都生效。当前适配内容传送门 **17.3.18** 与 **17.5.4**（ColorOS 17）；系统升级后若传送门接口变化，需按新版本重新适配。
 
 ### 排除列表
 

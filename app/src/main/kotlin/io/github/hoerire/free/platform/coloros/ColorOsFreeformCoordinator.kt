@@ -374,13 +374,17 @@ internal class ColorOsFreeformCoordinator(
     private fun registerPointerListener() {
         if (pointerRegistered) return
         val generation = pointerGeneration
-        // 首选：system_server 内的 InputMonitor（收到全部事件副本、不消费），并在确认
-        // 是角区滑动的那一帧 pilferPointers 抢流。没有这一步，扇形弹出的同时下层应用
-        // 仍在收 MOVE，触发范围内左滑就会穿透（2026-11-18 现场日志：整场 0 次
-        // SYSTEM_PILFER_AT / MONITOR_SESSION_END，SystemUI 侧 monitor 通道也没收到事件，
-        // 抢流环节整个缺失）。抢流后应用收到 CANCEL，事件继续投递给本进程的 monitor
-        // 通道，扇形照常跟踪。
-        if (startSystemGestureMonitor(generation)) return
+        // 抢流（system_server InputMonitor）**只在 ColorOS 17+ 启用**：
+        // 该路径在 Android 16 / ColorOS 16（API 36）上会导致系统界面崩溃（发版前实测），
+        // 而 16 的原厂输入分发不需要这层抢流补偿。旧代一律走 WMS 旁观者，
+        // 与 3.1.5 的已发布行为完全一致（代价是旧代的左滑穿透问题依然存在，
+        // 那是既有状态、不是本次回归；宁可保留旧问题也不能让 16 用户系统界面崩）。
+        //
+        // ColorOS 17 现场日志：原 SystemUI 侧 monitor 通道整场收不到事件
+        // （0 条 CORNER_TRACK），抢流环节缺失导致触发范围内左滑穿透到下层应用。
+        // 改成 system_server 内建 monitor（收到全部事件副本、不消费）后，
+        // 在首个有效 MOVE（6px 阈值）调 pilferPointers 抢流，穿透消失。
+        if (RomFlavor.isColorOs17OrNewer && startSystemGestureMonitor(generation)) return
         // 退路：WMS 指针监听（只观察，不抢流）。扇形能用，但左滑会穿透到下层应用。
         registerWindowPointerListener(generation)
     }
