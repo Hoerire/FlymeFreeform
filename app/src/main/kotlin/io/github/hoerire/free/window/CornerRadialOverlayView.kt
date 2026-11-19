@@ -184,13 +184,16 @@ internal class CornerRadialOverlayView(
     private val fingerX = mutableFloatStateOf(0f)
     private val fingerY = mutableFloatStateOf(0f)
 
+    /** 上一帧手指到底角的距离：用来算"这一帧是往外推还是往回拉"。 */
+    private var lastFingerDistance = 0f
+
     /**
-     * 本次手势里手指离底角最远的距离。
+     * 收缩量（0..1），增量积分得到。
      *
-     * 内收是"相对"的：扇形默认展开到满弧，只有手指从最远点往回拉才收缩。
-     * 若按绝对半径算，手指刚离开底角时反而处于最大内收，观感是"一开就瘪"。
+     * 手指往回拉就累加、往外推就等量抵消，所以"往外推多少就恢复多少"，
+     * 不需要回到历史最远点。默认 0 = 满弧。
      */
-    private var maxFingerDistance = 0f
+    private var inwardShrink = 0f
     private var selectedIndex: Int? = null
     private var dismissing = false
     private var dismissNotified = false
@@ -267,7 +270,8 @@ internal class CornerRadialOverlayView(
         latestY = y
         fingerX.floatValue = x
         fingerY.floatValue = y
-        maxFingerDistance = 0f
+        lastFingerDistance = 0f
+        inwardShrink = 0f
         radialImages.value = catalog.radialApps.map(::RadialImage)
         panelImages = catalog.panelApps.associate { entry -> entry.target to entry.icon.asImageBitmap() }
         selectedIndex = null
@@ -732,7 +736,13 @@ internal class CornerRadialOverlayView(
         val fingerDx = fingerX.floatValue - layout.origin.x
         val fingerDy = fingerY.floatValue - layout.origin.y
         val fingerDistance = kotlin.math.hypot(fingerDx, fingerDy)
-        if (fingerDistance > maxFingerDistance) maxFingerDistance = fingerDistance
+        // 增量跟手：往外推的位移直接抵消收缩量，往回拉则等量累加。
+        val fingerDelta = fingerDistance - lastFingerDistance
+        if (fingerDelta != 0f) {
+            inwardShrink =
+                (inwardShrink - fingerDelta / (ring * FOLLOW_IN_WINDOW)).coerceIn(0f, 1f)
+            lastFingerDistance = fingerDistance
+        }
         val fingerAngle = kotlin.math.atan2(fingerDy, fingerDx)
         val proximity =
             if (panelModeState.value) {
@@ -750,9 +760,7 @@ internal class CornerRadialOverlayView(
         // 内收/外伸分开映射：内收用更窄的窗口（退到半径 55% 就满档），
         // 否则手指在弧线附近轻微内收只有两三 dp，根本看不出来。
         val followOutward = ((normalizedRadius - 1f) / FOLLOW_OUT_WINDOW).coerceIn(0f, 1f)
-        // 相对收缩：以本次手势手指到过的最远点为 0，往回拉才收。
-        val followInward =
-            ((maxFingerDistance - fingerDistance) / (ring * FOLLOW_IN_WINDOW)).coerceIn(0f, 1f)
+        val followInward = inwardShrink
         val followGate =
             if (panelModeState.value) {
                 0f
