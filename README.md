@@ -8,14 +8,14 @@
   <img src="https://img.shields.io/badge/ROM-ColorOS-00A862" alt="面向 ColorOS" />
   <img src="https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android" alt="最低 Android 15" />
   <img src="https://img.shields.io/badge/libxposed-API_102-4285F4" alt="libxposed API 102" />
-  <img src="https://img.shields.io/badge/version-3.1.7-blue" alt="版本 3.1.7" />
+  <img src="https://img.shields.io/badge/version-3.1.8-blue" alt="版本 3.1.8" />
 </p>
 
 把魅族的 Flyme 小窗交互搬到 ColorOS：从屏幕底角斜向内上滑呼出扇形菜单，滑到目标松手，当即以自由浮窗打开。
 
 这是一个 LSPosed 模块，在不改动系统分区的前提下增强 ColorOS 的自由浮窗：扇形菜单、通知与横幅小窗、侧边栏目录、更多面板、内容传送门都走系统自己的窗口与管理链路，设置改完即时生效。
 
-当前版本 **3.1.7**，改动记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **3.1.8**，改动记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 预览
 
@@ -120,12 +120,12 @@
 - [Flyme](https://www.flyme.com/)：交互设计参考
 - [libxposed API](https://github.com/libxposed/api)：现代 Xposed API
 - [vialoyed-ctrl](https://github.com/vialoyed-ctrl)：内容传送门的分享面板与实现思路
-- [Glasmio](https://github.com/NEORUAA/Glasmio)：界面组件库（Liquid Glass），设置页与弹层基于它实现
+- [COUI](https://github.com/suqi8/coui)：ColorOS 17 风格组件库，设置页与弹层基于它实现
 
-界面层的第三方许可合规：Glasmio 0.1.3 以 Apache-2.0 发布，使用 Maven Central 的原始 AAR、未修改库源码，完整许可文本随 APK 附带在 `assets/licenses/glasmio-APACHE-2.0.txt`；其折射算法与连续圆角几何适配自 [AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass)、[Capsule](https://github.com/Kyant0/Capsule) 与 [Shapes](https://github.com/Kyant0/Shapes)（均为 Apache-2.0）。应用图标的目录扫描使用 [DexKit 2.3.0](https://github.com/LuckyPray/DexKit/tree/2.3.0)（Apache-2.0 / LGPL-3.0）。完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+界面层的第三方许可合规：COUI 2.0.0 以 Apache-2.0 发布，使用 Maven Central 的原始 AAR、未修改库源码，完整许可文本随 APK 附带在 `assets/licenses/coui-APACHE-2.0.txt`；COUI 构建在 [Miuix](https://github.com/compose-miuix-ui/miuix)（同为 Apache-2.0）之上。应用图标的目录扫描使用 [DexKit 2.3.0](https://github.com/LuckyPray/DexKit/tree/2.3.0)（Apache-2.0 / LGPL-3.0）。完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 许可
 
 本项目以上游相同的 [GNU General Public License v3.0](LICENSE) 发布，完整协议文本见仓库根目录的 `LICENSE`，APK 内亦随附于 `assets/licenses/GPL-3.0.txt`。
 
-第三方组件各自遵循其自身许可（Glasmio、DexKit 等），声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+第三方组件各自遵循其自身许可（COUI、Miuix、DexKit 等），声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

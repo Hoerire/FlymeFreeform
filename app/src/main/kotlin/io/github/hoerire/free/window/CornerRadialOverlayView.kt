@@ -748,7 +748,6 @@ internal class CornerRadialOverlayView(
     ) {
         val direction = if (layout.side == CornerSide.Left) 1f else -1f
         val overshoot = direction * RadialEntryMotion.HORIZONTAL_OVERSHOOT_DP * metrics.pixelsPerBaseDp * motion.horizontalOvershoot
-        val itemCount = layout.itemCenters.size.coerceAtLeast(1)
         // 拉伸强度只看「手指离圆弧有多近」：手指正好落在弧线上时最大，
         // 走向圆心或滑出圆环都会平滑收敛。面板模式（更多面板）不参与。
         val ring = metrics.radius.coerceAtLeast(1f)
@@ -773,14 +772,9 @@ internal class CornerRadialOverlayView(
                 ((motion.radialProgress - 0.85f) / 0.15f).coerceIn(0f, 1f)
             }
         layout.itemCenters.forEachIndexed { index, destination ->
-            // 逐个图标交错飞出：所有格共用 motion.radialProgress 时，
-            // 整个扇形整体平移，只有"展开 / 回弹"两段观感。
-            // 这里给每一格分配一个起始偏移，靠后的格子晚一点出发，
-            // 扇形就有了"依次铺开"的层次；收回时顺序自然反过来。
-            val startAt =
-                if (itemCount > 1) ITEM_STAGGER_RATIO * index / (itemCount - 1) else 0f
-            val localProgress =
-                ((motion.radialProgress - startAt) / (1f - ITEM_STAGGER_RATIO)).coerceIn(0f, 1f)
+            // 所有格共用同一条展开进度（不做错峰：错峰会让图标拉开距离、
+            // 连成一串残影，实测观感更差）。展开/收起都由这条进度驱动。
+            val localProgress = motion.radialProgress.coerceIn(0f, 1f)
             // 拉伸：整圈按 proximity 外扩，正对手指的那一格再额外外推一点，
             // 观感上是"被手指拉起一角"，而不是整块等比放大。
             val itemVectorX = destination.x - layout.origin.x
@@ -818,7 +812,7 @@ internal class CornerRadialOverlayView(
             val centerY =
                 layout.origin.y + itemVectorY * localProgress * stretch +
                     unitY * radialOffset * localProgress
-            // 选中项放大：复用每格原有 0→1 的进度动画，1f→1.2f 平滑放大。
+            // 选中项放大：复用每格 0→1 的选中进度，按设置里的百分比平滑放大。
             val selectionScale = 1f + shimmer.selectionScalePercent / 100f * ringProgress
             val scale = motion.iconScale * contentScale * selectionScale
             // Dock 式放大：与抬升共用同一条衰减，指针正下方最大、两端归零。
@@ -1554,21 +1548,6 @@ internal class CornerRadialOverlayView(
          * 但不改变真正要伸多远才够得着。6dp 约 2.2mm（图标直径的 14%），肉眼看得见、伸手几乎无感。
          */
         const val STRETCH_MAX_DP = 6f
-
-        /**
-         * 交错比例：整段入场里最多有这么长的时间用于"逐格错开"。
-         *
-         * 0.35 意味着第 0 格立即出发、最后一格晚 35% 出发，但所有格子都在动画结束时归位。
-         * 继续加大会让最后一格出现过晚的观感，继续减小则回到整体平移的观感。
-         */
-        /**
-         * 每格错峰比例。
-         *
-         * 设成 0：所有格子用同一段时长飞完同样距离，速度一致。
-         * 之前是 0.35，靠后的格子被压到 65% 的时间里跑完，速度更快，
-         * 叠起来看就是一片残影。
-         */
-        const val ITEM_STAGGER_RATIO = 0f
 
 
         /** 背景遮罩不透明度（窗口不使用 FLAG_DIM_BEHIND，由绘制层提供）。 */

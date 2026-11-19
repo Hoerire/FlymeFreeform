@@ -8,11 +8,11 @@
 
 其传递依赖包括 [FlatBuffers](https://github.com/google/flatbuffers)（Apache-2.0）和 [libcxx Prefab](https://github.com/RikkaW/libcxx-prefab)（发布元数据声明 Apache-2.0）。
 
-## Glasmio
+## COUI
 
-界面层使用 NEORUAA 的 [Glasmio 0.1.3](https://github.com/NEORUAA/Glasmio/tree/v0.1.3)（Apache-2.0），使用 Maven Central 发布的原始 AAR，未修改库源码。APK 的 `assets/licenses/glasmio-APACHE-2.0.txt` 附带完整许可文本。
+界面层使用 suqi8 的 [COUI 2.0.0](https://github.com/suqi8/coui)（Apache-2.0），使用 Maven Central 发布的原始 AAR，未修改库源码。APK 的 `assets/licenses/coui-APACHE-2.0.txt` 附带完整许可文本。
 
-Glasmio 自行声明其折射算法、连续圆角几何等适配自 [AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass)、[Capsule](https://github.com/Kyant0/Capsule) 与 [Shapes](https://github.com/Kyant0/Shapes)（均为 Apache-2.0）。库自带的界面素材不含字体文件，本项目也不分发 SF Pro / SF Symbols 字体。
+COUI 是 ColorOS 17 风格的 Compose Multiplatform 组件库，构建在 [Miuix](https://github.com/compose-miuix-ui/miuix)（同为 Apache-2.0）之上；两者均以 Apache-2.0 分发，许可文本相同。
 
 ## 应用图标
 
