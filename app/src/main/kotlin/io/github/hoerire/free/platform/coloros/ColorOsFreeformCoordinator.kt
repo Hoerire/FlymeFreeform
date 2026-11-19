@@ -1052,9 +1052,16 @@ internal class ColorOsFreeformCoordinator(
         val generation = pointerGeneration
         activeEnvironmentApproved = false
         gestureEngine.cancel()
-        // 退场动画已停用，浮层在松手当帧直接撤掉：
-        // 留着它会让深色背景盖住新窗口（表现为黑色遮罩）。
-        removeOverlay(immediate = true)
+        // 取屏类工具要求浮层彻底消失后再执行；应用/快捷方式让浮层自己播一段
+        // "缩回底角"的动画，启动不等它（下面的 handler.post 立即执行），
+        // 动画播完由 onDismissRequested 回调移除窗口。
+        val requiresHiddenOverlay =
+            (entry.target as? PinnedTarget.Sidebar)?.kind == PinnedTarget.Kind.Tool
+        if (requiresHiddenOverlay) {
+            removeOverlay(immediate = true)
+        } else {
+            overlay?.retractAnimated(quick = true) ?: removeOverlay(immediate = true)
+        }
         handler.post {
             if (generation == pointerGeneration) launchCommittedEntry(entry)
         }

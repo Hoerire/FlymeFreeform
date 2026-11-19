@@ -198,6 +198,9 @@ internal class CornerRadialOverlayView(
 
     /** 系统动画开关的缓存（组合里算一次），供非组合上下文的 dismissAnimated 读取。 */
     private var exitAnimationsEnabled = true
+
+    /** 本次缩回是否用"选中后"的短时长。 */
+    private var retractQuick = false
     private var disposed = false
     private var lastTickUptime = 0L
     private val timeout = Runnable(::requestDismiss)
@@ -275,6 +278,18 @@ internal class CornerRadialOverlayView(
         )
         removeCallbacks(timeout)
         if (!keepOpen) postDelayed(timeout, GESTURE_TIMEOUT_MS)
+    }
+
+    /**
+     * 选中目标后的收拢动画：应用启动不等它，窗口移除推迟到动画播完。
+     *
+     * 取屏类工具要求屏幕立刻干净，协调器不会调用本方法（仍走立即移除）。
+     */
+    fun retractAnimated(quick: Boolean) {
+        if (disposed || retracting.value) return
+        if (!exitAnimationsEnabled) return
+        retractQuick = quick
+        retracting.value = true
     }
 
     fun updateGesture(x: Float, y: Float): Int? {
@@ -436,15 +451,17 @@ internal class CornerRadialOverlayView(
         LaunchedEffect(retracting.value) {
             if (!retracting.value) return@LaunchedEffect
             if (animationsEnabled) {
+                val durationMillis =
+                    if (retractQuick) {
+                        RadialExitMotion.COMMIT_RETRACT_DURATION_MILLIS
+                    } else {
+                        RadialExitMotion.RETRACT_DURATION_MILLIS
+                    }
                 entryProgress.animateTo(
                     targetValue = 0f,
                     animationSpec =
                         tween(
-                            durationMillis =
-                                SystemMotion.scaledMillis(
-                                    RadialExitMotion.RETRACT_DURATION_MILLIS,
-                                    motionScale,
-                                ).toInt(),
+                            durationMillis = SystemMotion.scaledMillis(durationMillis, motionScale).toInt(),
                             easing = LinearEasing,
                         ),
                 )
@@ -1310,15 +1327,20 @@ internal class CornerRadialOverlayView(
         // 再等两帧 → 屏幕已经是干净的，不必再为动画白等 200ms。
         if (pendingCommit != null) {
             commitNotified = true
+            // 协调器在这里决定：取屏工具/动画关闭 -> 立即移除；应用/快捷方式 ->
+            // 调 retractAnimated() 让我们播完缩回再移除（启动本身已经并行开始）。
             listener.onEntryCommitted(pendingCommit)
             if (disposed) return
+            if (!retracting.value) completeRadialExit()
+            return
         }
-        if (pendingCommit == null && exitAnimationsEnabled) {
+        if (exitAnimationsEnabled) {
             // 取消：播一段"原路缩回"的动画，播完在 LaunchedEffect 里通知宿主移除窗口。
+            retractQuick = false
             retracting.value = true
             return
         }
-        // 选中目标或系统关闭动画：直接收场（窗口由宿主在回调里立刻移除）。
+        // 系统关闭动画：直接收场（窗口由宿主在回调里立刻移除）。
         completeRadialExit()
     }
 
