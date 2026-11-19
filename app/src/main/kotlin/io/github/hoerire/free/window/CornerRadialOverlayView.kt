@@ -173,6 +173,15 @@ internal class CornerRadialOverlayView(
     private var keepOpen = false
     private var latestX = 0f
     private var latestY = 0f
+
+    /**
+     * 手指当前位置（绘制阶段读取）。
+     *
+     * 用 Compose 状态而不是普通字段：MOVE 每帧都更新，Canvas 直接读它，
+     * 只在绘制阶段失效重绘，不触发整棵树重组。扇形「跟随距离拉伸」就靠它驱动。
+     */
+    private val fingerX = mutableFloatStateOf(0f)
+    private val fingerY = mutableFloatStateOf(0f)
     private var selectedIndex: Int? = null
     private var dismissing = false
     private var dismissNotified = false
@@ -233,6 +242,8 @@ internal class CornerRadialOverlayView(
         this.catalog = catalog
         latestX = x
         latestY = y
+        fingerX.floatValue = x
+        fingerY.floatValue = y
         radialImages.value = catalog.radialApps.map(::RadialImage)
         panelImages = catalog.panelApps.associate { entry -> entry.target to entry.icon.asImageBitmap() }
         selectedIndex = null
@@ -257,6 +268,8 @@ internal class CornerRadialOverlayView(
     fun updateGesture(x: Float, y: Float): Int? {
         latestX = x
         latestY = y
+        fingerX.floatValue = x
+        fingerY.floatValue = y
         if (panelModeState.value || dismissing) return selectedIndex
         removeCallbacks(timeout)
         if (!keepOpen) postDelayed(timeout, GESTURE_TIMEOUT_MS)
@@ -643,6 +656,21 @@ internal class CornerRadialOverlayView(
         val direction = if (layout.side == CornerSide.Left) 1f else -1f
         val overshoot = direction * RadialEntryMotion.HORIZONTAL_OVERSHOOT_DP * metrics.pixelsPerBaseDp * motion.horizontalOvershoot
         val itemCount = layout.itemCenters.size.coerceAtLeast(1)
+        // 拉伸强度只看「手指离圆弧有多近」：手指正好落在弧线上时最大，
+        // 走向圆心或滑出圆环都会平滑收敛。面板模式（更多面板）不参与。
+        val ring = metrics.radius.coerceAtLeast(1f)
+        val fingerDx = fingerX.floatValue - layout.origin.x
+        val fingerDy = fingerY.floatValue - layout.origin.y
+        val fingerDistance = kotlin.math.hypot(fingerDx, fingerDy)
+        val fingerAngle = kotlin.math.atan2(fingerDy, fingerDx)
+        val proximity =
+            if (panelModeState.value) {
+                0f
+            } else {
+                (1f - kotlin.math.abs(fingerDistance / ring - 1f) / STRETCH_FALLOFF)
+                    .coerceIn(0f, 1f)
+            }
+        val globalStretch = 1f + STRETCH_GLOBAL * proximity
         layout.itemCenters.forEachIndexed { index, destination ->
             // 逐个图标交错飞出：所有格共用 motion.radialProgress 时，
             // 整个扇形整体平移，只有"展开 / 回弹"两段观感。
@@ -652,8 +680,15 @@ internal class CornerRadialOverlayView(
                 if (itemCount > 1) ITEM_STAGGER_RATIO * index / (itemCount - 1) else 0f
             val localProgress =
                 ((motion.radialProgress - startAt) / (1f - ITEM_STAGGER_RATIO)).coerceIn(0f, 1f)
-            val centerX = layout.origin.x + (destination.x - layout.origin.x) * localProgress + overshoot * localProgress
-            val centerY = layout.origin.y + (destination.y - layout.origin.y) * localProgress
+            // 拉伸：整圈按 proximity 外扩，正对手指的那一格再额外外推一点，
+            // 观感上是"被手指拉起一角"，而不是整块等比放大。
+            val itemVectorX = destination.x - layout.origin.x
+            val itemVectorY = destination.y - layout.origin.y
+            val itemAngle = kotlin.math.atan2(itemVectorY, itemVectorX)
+            val facing = kotlin.math.cos(itemAngle - fingerAngle).coerceAtLeast(0f)
+            val stretch = globalStretch * (1f + STRETCH_DIRECTIONAL * facing * facing * proximity)
+            val centerX = layout.origin.x + itemVectorX * localProgress * stretch + overshoot * localProgress
+            val centerY = layout.origin.y + itemVectorY * localProgress * stretch
             val ringProgress = itemRings.getOrNull(index)?.value ?: 0f
             // 选中项放大：复用每格原有 0→1 的进度动画，1f→1.2f 平滑放大。
             val selectionScale = 1f + shimmer.selectionScalePercent / 100f * ringProgress
@@ -1328,6 +1363,15 @@ internal class CornerRadialOverlayView(
 
 
     private companion object {
+        /** 拉伸：手指贴近弧线时，整圈最多外扩这么多（8%）。 */
+        const val STRETCH_GLOBAL = 0.10f
+
+        /** 拉伸：正对手指的那一格再额外外推的比例（10%），形成被"拉起"的斜向拖拽感。 */
+        const val STRETCH_DIRECTIONAL = 0.14f
+
+        /** 拉伸的生效窗口：|d/R - 1| 超过这个比例后完全不拉伸，避免手指远处也变形。 */
+        const val STRETCH_FALLOFF = 0.75f
+
         /**
          * 交错比例：整段入场里最多有这么长的时间用于"逐格错开"。
          *
