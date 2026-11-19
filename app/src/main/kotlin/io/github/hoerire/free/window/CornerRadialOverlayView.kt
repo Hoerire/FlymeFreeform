@@ -202,15 +202,6 @@ internal class CornerRadialOverlayView(
 
     /** 本次缩回是否用"选中后"的短时长。 */
     private var retractQuick = false
-
-    /**
-     * 跟手展开进度（0..1）：手指从底角走出去多远，扇形就开到多大。
-     *
-     * 只增不减：手指往回退不把已经铺开的扇形再收回去，否则选格过程中会一缩一缩。
-     * 时间曲线降级成兜底（*很慢*，见 RadialEntryMotion.DURATION_MILLIS），
-     * 只在手指停下时把剩下的部分补完。
-     */
-    private val fingerOpenProgress = mutableFloatStateOf(0f)
     private var disposed = false
     private var lastTickUptime = 0L
     private val timeout = Runnable(::requestDismiss)
@@ -280,7 +271,6 @@ internal class CornerRadialOverlayView(
         dismissNotified = false
         commitNotified = false
         retracting.value = false
-        fingerOpenProgress.floatValue = 0f
         val displayMetrics = resources.displayMetrics
         updateLayout(
             requestedWidth = displayMetrics.widthPixels,
@@ -308,38 +298,12 @@ internal class CornerRadialOverlayView(
         latestY = y
         fingerX.floatValue = x
         fingerY.floatValue = y
-        driveOpenFromFinger(x, y)
         if (panelModeState.value || dismissing) return selectedIndex
         removeCallbacks(timeout)
         if (!keepOpen) postDelayed(timeout, GESTURE_TIMEOUT_MS)
         updateGestureFromLatestPoint()
         return selectedIndex
     }
-
-    /**
-     * 跟手推进展开进度：手指到远点的距离 / 扇形半径 = 打开比例。
-     *
-     * 这是"跟手"的核心——你划多快，扇形就开多快，不再等固定时长的动画。
-     * 划到圆弧附近就算完全展开；同时达到放行阈值就置位 [entrySettled]，
-     * 快速轻扫不必再等时间曲线。
-     */
-    private fun driveOpenFromFinger(x: Float, y: Float) {
-        val metrics = metricsState.value ?: return
-        val layout = layoutState.value
-        if (layout.itemCenters.isEmpty()) return
-        val radius = metrics.radial.radius
-        if (radius <= 0f) return
-        val distance = kotlin.math.hypot(x - layout.origin.x, y - layout.origin.y)
-        val progress = (distance / radius).coerceIn(0f, 1f)
-        if (progress > fingerOpenProgress.floatValue) {
-            fingerOpenProgress.floatValue = progress
-        }
-        if (fingerOpenProgress.floatValue >= SETTLE_FRACTION) entrySettled = true
-    }
-
-    /** 当前"视觉上"的展开进度：跟手值与时间兜底取较大者，绘制与命中共用。 */
-    private fun visualOpenProgress(): Float =
-        maxOf(entryProgress.value, fingerOpenProgress.floatValue).coerceIn(0f, 1f)
 
     /** 入场动画结束标志：由渲染层的动画完成回调置位，抬手只读它。 */
     @Volatile private var entrySettled = false
@@ -706,9 +670,7 @@ internal class CornerRadialOverlayView(
                 when {
                     !animationsEnabled -> 1f
                     panelModeState.value -> handoffEntryProgress.floatValue
-                    // 跟手与时间兜底取较大值：手指划得快时完全由手指驱动，
-                    // 停手时再由慢速时间曲线把剩余部分补完。
-                    else -> maxOf(entryProgress.value, fingerOpenProgress.floatValue)
+                    else -> entryProgress.value
                 },
             )
             val handoffVisuals = RadialHandoffMotion.sample(
@@ -770,6 +732,18 @@ internal class CornerRadialOverlayView(
                     .coerceIn(0f, 1f)
             }
         val globalStretch = 1f + STRETCH_GLOBAL * proximity
+        // 跟手外伸/内收：只看手指相对圆弧的径向位置。
+        // 在弧线外侧 -> 整体往外伸；在内侧 -> 整体往回收。
+        // 纯绘制偏移，不做命中判定、不占用时间轴，开销就是每格多一次加法。
+        val followRatio = ((fingerDistance / ring) - 1f).coerceIn(-1f, 1f)
+        val followGate =
+            if (panelModeState.value) {
+                0f
+            } else {
+                // 入场没展开时不做跟手，避免和展开动画抢方向盘。
+                ((motion.radialProgress - 0.85f) / 0.15f).coerceIn(0f, 1f)
+            }
+        val followPx = followRatio * FOLLOW_RANGE_DP * metrics.pixelsPerBaseDp * followGate
         layout.itemCenters.forEachIndexed { index, destination ->
             // 逐个图标交错飞出：所有格共用 motion.radialProgress 时，
             // 整个扇形整体平移，只有"展开 / 回弹"两段观感。
@@ -796,8 +770,14 @@ internal class CornerRadialOverlayView(
                 } else {
                     rawStretch
                 }
-            val centerX = layout.origin.x + itemVectorX * localProgress * stretch + overshoot * localProgress
-            val centerY = layout.origin.y + itemVectorY * localProgress * stretch
+            val unitX = itemVectorX / itemRadius
+            val unitY = itemVectorY / itemRadius
+            val centerX =
+                layout.origin.x + itemVectorX * localProgress * stretch +
+                    unitX * followPx * localProgress + overshoot * localProgress
+            val centerY =
+                layout.origin.y + itemVectorY * localProgress * stretch +
+                    unitY * followPx * localProgress
             val ringProgress = itemRings.getOrNull(index)?.value ?: 0f
             // 选中项放大：复用每格原有 0→1 的进度动画，1f→1.2f 平滑放大。
             val selectionScale = 1f + shimmer.selectionScalePercent / 100f * ringProgress
@@ -1270,35 +1250,9 @@ internal class CornerRadialOverlayView(
         val metrics = metricsState.value ?: return
         val layout = layoutState.value
         if (layout.itemCenters.isEmpty()) return
-        // 跟手展开期间，图标画在 origin + (中心 - origin) × 进度 的位置上；
-        // 命中判定必须用同一份"视觉布局"，否则会出现"看得见、点不到"。
-        val progress = visualOpenProgress()
-        if (progress < MIN_SELECT_PROGRESS) {
-            // 扇形还很小：不判格，避免手指刚离开底角就误选到最近的一格。
-            if (selectedIndex != null) {
-                selectedIndex = null
-                selectedIndexState.intValue = NO_SELECTION
-            }
-            return
-        }
-        val selectionLayout =
-            if (progress >= 0.999f) {
-                layout
-            } else {
-                layout.copy(
-                    radius = layout.radius * progress,
-                    itemCenters =
-                        layout.itemCenters.map { center ->
-                            io.github.hoerire.free.gesture.GesturePoint(
-                                x = layout.origin.x + (center.x - layout.origin.x) * progress,
-                                y = layout.origin.y + (center.y - layout.origin.y) * progress,
-                            )
-                        },
-                )
-            }
         val next =
             RadialGeometry.selection(
-                layout = selectionLayout,
+                layout = layout,
                 x = latestX,
                 y = latestY,
                 previous = selectedIndex,
@@ -1307,7 +1261,7 @@ internal class CornerRadialOverlayView(
             )
         if (next == selectedIndex) return
         // 命中区判定细节：进了哪一格、离格心多远、当前生效的进入半径。
-        val center = next?.let { selectionLayout.itemCenters.getOrNull(it) }
+        val center = next?.let { layout.itemCenters.getOrNull(it) }
         debug(
             if (next == null) {
                 "SYSTEM_HIT_LEAVE"
@@ -1511,12 +1465,9 @@ internal class CornerRadialOverlayView(
         /**
          * 误触判定的放行点：展开进度到这里就允许提交。
          *
-         * 跟手展开后进度直接来自手指走过的距离：35% 半径（约 85dp）已经是一次
-         * 明确的斜推，不再是"从底角弹出的误触"，因此与 [MIN_SELECT_PROGRESS] 对齐。
+         * 0.6 与原 300ms 入场下的可用时刻大致对齐，避免"曲线变慢 → 轻扫失效"。
          */
-        /** 小于这个展开进度不判格：扇形还堆在底角，选谁都是误选。 */
-        const val MIN_SELECT_PROGRESS = 0.35f
-        const val SETTLE_FRACTION = 0.35f
+        const val SETTLE_FRACTION = 0.6f
 
         /** 拉伸：手指贴近弧线时，整圈最多外扩这么多（8%）。 */
         const val STRETCH_GLOBAL = 0.04f
@@ -1526,6 +1477,14 @@ internal class CornerRadialOverlayView(
 
         /** 拉伸的生效窗口：|d/R - 1| 超过这个比例后完全不拉伸，避免手指远处也变形。 */
         const val STRETCH_FALLOFF = 0.75f
+
+        /**
+         * 跟手外伸/内收的最大位移（dp）。
+         *
+         * 手指在弧线外侧时整体外伸、在内侧时整体内收，最多这个量。
+         * 只改绘制位置，命中判定仍在原布局上，所以"要伸多远才够得着"不变。
+         */
+        const val FOLLOW_RANGE_DP = 10f
 
         /**
          * 外扩量的硬上限（dp）。
