@@ -93,6 +93,7 @@ import io.github.hoerire.free.ui.theme.RadialItemColors
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @SuppressLint("ViewConstructor")
@@ -433,14 +434,22 @@ internal class CornerRadialOverlayView(
                     entryProgress.snapTo(1f)
                 } else {
                     entryProgress.snapTo(start)
-                    entryProgress.animateTo(
-                        targetValue = 1f,
-                        animationSpec =
-                            tween(
-                                durationMillis = remaining,
-                                easing = LinearEasing,
-                            ),
-                    )
+                    // 误触判定在展开 60% 时就放行：入场曲线为了"软回弹"放慢了，
+                    // 若仍等整段动画跑完（380ms），快速轻扫会被大面积误判成误触。
+                    kotlinx.coroutines.coroutineScope {
+                        launch {
+                            delay((remaining * SETTLE_FRACTION).toLong())
+                            entrySettled = true
+                        }
+                        entryProgress.animateTo(
+                            targetValue = 1f,
+                            animationSpec =
+                                tween(
+                                    durationMillis = remaining,
+                                    easing = LinearEasing,
+                                ),
+                        )
+                    }
                 }
             }
             // 入场动画结束事件：抬手判定只读这个标志，不做任何时间计算。
@@ -1435,6 +1444,13 @@ internal class CornerRadialOverlayView(
 
 
     private companion object {
+        /**
+         * 误触判定的放行点：展开进度到这里就允许提交。
+         *
+         * 0.6 与原 300ms 入场下的可用时刻大致对齐，避免"曲线变慢 → 轻扫失效"。
+         */
+        const val SETTLE_FRACTION = 0.6f
+
         /** 拉伸：手指贴近弧线时，整圈最多外扩这么多（8%）。 */
         const val STRETCH_GLOBAL = 0.04f
 

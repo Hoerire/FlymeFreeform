@@ -17,7 +17,7 @@ internal object RadialEntryMotion {
      * 注意这是**整段时间预算**，不是 tween 的时长：窗口 addView 到出第一帧之间的
      * 延迟由 CornerRadialOverlayView 从这里面扣掉，因此展开完成时刻是固定的。
      */
-    const val DURATION_MILLIS = 300L
+    const val DURATION_MILLIS = 380L
     const val SELECTION_DURATION_MILLIS = 200L
     const val HORIZONTAL_OVERSHOOT_DP = 6f
     const val SELECTION_RING_ALPHA = 64f / 255f
@@ -39,11 +39,13 @@ internal object RadialEntryMotion {
     private val springEase = CubicMotionCurve(0.25f, 1.32f, 0.5f, 1f)
 
     /**
-     * 展开曲线：起步陡、收尾缓，前 40% 就把大半半径铺出去。
+     * 展开曲线：像一根被拉开的软带 —— 起步轻、中段加速、越过终点后回弹收敛。
      *
-     * 依据：入场总时长由 300ms 预算固定，曲线前段太平缓会让抬手后的前三分之一几乎没有位移。
+     * 旧曲线（0.2/0/0/1）把大部分半径压在开头 40%：八个图标从底角同一点出发、
+     * 在极短时间里散开，观感是"弹射 + 一串虚影"。现在起点更柔和，
+     * 末段 y 越过 1（约 7%）再落回 1，展开完成时有一次明显的软回弹。
      */
-    private val expandEase = CubicMotionCurve(0.2f, 0f, 0f, 1f)
+    private val expandEase = CubicMotionCurve(0.30f, 0.05f, 0.62f, 1.40f)
 
     /**
      * 选中曲线：两端都缓（0.32, 0 → 0.22, 1）。
@@ -64,8 +66,8 @@ internal object RadialEntryMotion {
             radialProgress = expandEase.sample(progress),
             horizontalOvershoot = 0f,
             rotationDegrees = 0f,
-            // 起步 0.7：整段飞行图标都是完整可辨的，只做最后一段放大回弹。
-            iconScale = 0.7f + 0.3f * spring,
+            // 起步 0.9：图标几乎原大飞行，放大只发生在末端回弹那一小段。
+            iconScale = 0.9f + 0.1f * spring,
         )
     }
 

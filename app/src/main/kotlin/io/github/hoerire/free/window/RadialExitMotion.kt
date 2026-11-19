@@ -16,7 +16,7 @@ internal object RadialExitMotion {
      * 比展开短：展开是"铺开给人看"，收起只需要交代清楚"收回去了"，
      * 拖久了会让下一次呼出显得迟钝。
      */
-    const val RETRACT_DURATION_MILLIS = 190L
+    const val RETRACT_DURATION_MILLIS = 240L
 
     /**
      * 选中目标后的缩回时长。
@@ -24,7 +24,7 @@ internal object RadialExitMotion {
      * 这条路径上应用已经在启动，浮层只做最后一眼"收回"，不能挡住新窗口太久；
      * 取屏类工具不播这段动画（要求屏幕立刻干净）。
      */
-    const val COMMIT_RETRACT_DURATION_MILLIS = 130L
+    const val COMMIT_RETRACT_DURATION_MILLIS = 150L
     const val DURATION_SECONDS = DURATION_MILLIS / 1_000f
 
     private const val CONTENT_END_FRACTION = 0.72f
