@@ -801,10 +801,17 @@ internal class CornerRadialOverlayView(
             val unitX = itemVectorX / itemRadius
             val unitY = itemVectorY / itemRadius
             val ringProgress = itemRings.getOrNull(index)?.value ?: 0f
-            // 选中项沿径向往外顶半个图标：像被"拿起来"一格，和其他格拉开层次。
+            // 选中项沿径向往外顶：像被"拿起来"一格，和其他格拉开层次。
             // 跟 ringProgress 走，所以选中/取消时会平滑地顶出与收回。
             val selectedPush = ringProgress * metrics.iconDiameter * SELECTED_PUSH_RATIO
-            val radialOffset = selectedPush
+            // Dock 隆起：只有指针附近这一段往外抬，弧的两端（上/下）保持不动，
+            // 否则整条弧一起平移，看起来就不像 Dock 了。
+            val dockDistance =
+                kotlin.math.hypot(destination.x - dockX, destination.y - dockY)
+            val dockFalloff = (1f - dockDistance / dockInfluence).coerceIn(0f, 1f)
+            val dockLift =
+                DOCK_LIFT_DP * metrics.pixelsPerBaseDp * dockFalloff * dockFalloff * dockGate
+            val radialOffset = selectedPush + dockLift
             val centerX =
                 layout.origin.x + itemVectorX * localProgress * stretch +
                     unitX * radialOffset * localProgress + overshoot * localProgress
@@ -814,10 +821,7 @@ internal class CornerRadialOverlayView(
             // 选中项放大：复用每格原有 0→1 的进度动画，1f→1.2f 平滑放大。
             val selectionScale = 1f + shimmer.selectionScalePercent / 100f * ringProgress
             val scale = motion.iconScale * contentScale * selectionScale
-            // Dock 式放大：按与指针的距离做平方衰减，指针正下方最大、一圈外归零。
-            val dockDistance =
-                kotlin.math.hypot(destination.x - dockX, destination.y - dockY)
-            val dockFalloff = (1f - dockDistance / dockInfluence).coerceIn(0f, 1f)
+            // Dock 式放大：与抬升共用同一条衰减，指针正下方最大、两端归零。
             val dockScale = 1f + DOCK_MAX_GROWTH * dockFalloff * dockFalloff * dockGate
             val diameter = metrics.iconDiameter * scale * dockScale
             rotate(motion.rotationDegrees, pivot = Offset(centerX, centerY)) {
@@ -1516,6 +1520,14 @@ internal class CornerRadialOverlayView(
 
         /** Dock 式放大的最大增量：0.4 = 指针正下方最多放大到 1.4 倍。 */
         const val DOCK_MAX_GROWTH = 0.4f
+
+        /**
+         * Dock 隆起的最大外移量（dp）。
+         *
+         * 只作用在指针附近、按同一条衰减收敛，弧的两端保持不动——
+         * 整条弧一起平移就不像 Dock 了。8dp 约 3mm。
+         */
+        const val DOCK_LIFT_DP = 8f
 
         /** 拉伸：手指贴近弧线时，整圈最多外扩这么多（8%）。 */
         const val STRETCH_GLOBAL = 0.04f
