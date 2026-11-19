@@ -6,6 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -16,21 +17,20 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.hoerire.free.R
 import io.github.hoerire.free.update.UpdateState
-import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.core.IosTypography
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
-import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
+import io.github.suqi8.coui.kmp.layout.DialogButtonBar
+import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
+import io.github.suqi8.coui.kmp.overlay.OverlayDialog
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 更新弹窗的统一入口。
  *
- * 弹窗常驻组合，仅切换 [GlasmioAlertDialog] 的可见性，以保留关闭动画；
- * 关闭或跳转后记录版本号，同一版本不再重复弹出。
+ * 用 COUI 的 `OverlayDialog`（COUI 警告对话框），按钮走 `DialogButtonBar`：
+ * 文案放不下时它会自动从横排翻成纵排，不再挤压文字。
+ * 弹窗必须挂在某个 `Scaffold` 下面才能渲染，所以由页面骨架的 `overlay` 槽位承载。
  *
- * 采样源留空：默认取 [io.github.neoruaa.glasmio.glass.LocalBlurBackdrop]，
- * 也就是 [PageBackdropScope] 录下的页面内容。库内部再做一次跨窗口取样，
- * 弹窗才能像首页标题那样透出身后内容。
+ * 弹窗常驻组合，仅切换可见性，以保留关闭动画；
+ * 关闭或跳转后记录版本号，同一版本不再重复弹出。
  */
 @Composable
 internal fun UpdateOverlay(
@@ -43,24 +43,37 @@ internal fun UpdateOverlay(
     val uriHandler = LocalUriHandler.current
     // 说明文本可滚动：每次弹出都回到顶部，避免沿用上次的滚动位置把开头截掉。
     val notesScroll = rememberScrollState()
-    androidx.compose.runtime.LaunchedEffect(pending) { notesScroll.scrollTo(0) }
-    GlasmioAlertDialog(
-        visible = pending != null,
+    LaunchedEffect(pending) { notesScroll.scrollTo(0) }
+
+    OverlayDialog(
+        show = pending != null,
         title =
             pending?.let {
                 stringResource(R.string.update_available_title, it.version)
-            } ?: "",
+            },
         onDismissRequest = {
             pending?.let {
                 closedVersion = it.version
                 onDismissUpdate(it.version)
             }
         },
-        buttons =
-            listOf(
-                GlasmioAlertButtonSpec(
-                    label = stringResource(R.string.update_dismiss_action),
-                    role = GlasmioAlertButtonRole.Cancel,
+    ) {
+        pending?.notes?.takeIf { it.isNotBlank() }?.let { notes ->
+            Text(
+                text = notes,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 300.dp)
+                        .verticalScroll(notesScroll),
+                style = COUITheme.textStyles.bodyS,
+                color = COUITheme.colorScheme.labelSecondary,
+            )
+        }
+        DialogButtonBar(
+            negative =
+                DialogButtonBarAction(
+                    text = stringResource(R.string.update_dismiss_action),
                     onClick = {
                         pending?.let {
                             closedVersion = it.version
@@ -68,8 +81,9 @@ internal fun UpdateOverlay(
                         }
                     },
                 ),
-                GlasmioAlertButtonSpec(
-                    label = stringResource(R.string.update_open_action),
+            positive =
+                DialogButtonBarAction(
+                    text = stringResource(R.string.update_open_action),
                     onClick = {
                         pending?.let {
                             closedVersion = it.version
@@ -77,21 +91,6 @@ internal fun UpdateOverlay(
                         }
                     },
                 ),
-            ),
-        content = {
-            // 弹窗本身就是玻璃表面，内部不再嵌卡片：再套一层会多出一圈边线。
-            pending?.notes?.takeIf { it.isNotBlank() }?.let { notes ->
-                Text(
-                    text = notes,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 300.dp)
-                            .verticalScroll(notesScroll),
-                    style = IosTypography.subheadline,
-                    color = GlasmioTheme.colors.secondaryContent,
-                )
-            }
-        },
-    )
+        )
+    }
 }

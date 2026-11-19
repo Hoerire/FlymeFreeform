@@ -26,9 +26,8 @@ import io.github.hoerire.free.config.PinnedTarget
 import io.github.hoerire.free.framework.FrameworkConnectionState
 import io.github.hoerire.free.ui.component.BasicComponent
 import io.github.hoerire.free.ui.component.SettingsGroup
-import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.core.IosTypography
-import io.github.neoruaa.glasmio.ui.GlasmioTextField
+import io.github.suqi8.coui.kmp.basic.TextField
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 包名列表页：排除列表与「禁用浮窗」共用这一套骨架，只有文案与数据源不同。
@@ -98,7 +97,7 @@ private fun PackageListScreen(
                                         contentDescription =
                                             stringResource(R.string.blacklist_remove_action),
                                         modifier = Modifier.size(20.dp),
-                                        tint = GlasmioTheme.colors.secondaryContent,
+                                        tint = COUITheme.colorScheme.labelSecondary,
                                     )
                                 }
                             },
@@ -194,11 +193,12 @@ private fun PackagePickerScreen(
         onBack = onBack,
     ) {
         item(key = "search") {
-            GlasmioTextField(
+            TextField(
                 value = query,
                 onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = stringResource(R.string.search_apps_placeholder),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                label = stringResource(R.string.search_apps_placeholder),
+                singleLine = true,
             )
         }
         item(key = "list") {
@@ -225,8 +225,8 @@ private fun PackagePickerScreen(
                                 if (added) {
                                     Text(
                                         text = addedLabel,
-                                        style = IosTypography.subheadline,
-                                        color = GlasmioTheme.colors.accent,
+                                        style = COUITheme.textStyles.bodyS,
+                                        color = COUITheme.colorScheme.primary,
                                     )
                                 }
                             },

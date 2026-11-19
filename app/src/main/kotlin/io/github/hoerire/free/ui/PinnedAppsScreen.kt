@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -58,11 +59,10 @@ import io.github.hoerire.free.config.PinnedTargetCodec
 import io.github.hoerire.free.framework.FrameworkConnectionState
 import io.github.hoerire.free.ui.component.BasicComponent
 import io.github.hoerire.free.ui.component.SettingsGroup
-import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.core.IosTypography
-import io.github.neoruaa.glasmio.scaffold.GlasmioPinnedListPage
-import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
-import io.github.neoruaa.glasmio.ui.GlasmioTextField
+import io.github.suqi8.coui.kmp.basic.TextField
+import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.window.WindowBottomSheet
+import io.github.hoerire.free.ui.component.PreferenceIcon
 
 @Composable
 internal fun PinnedAppsScreen(
@@ -109,11 +109,10 @@ internal fun PinnedAppsScreen(
         }
         val displayed = localOrder ?: pinned
         val appByComponent = remember(allEntries) { allEntries.associateBy(SelectableEntry::target) }
-        GlasmioPinnedListPage(
+        SettingsPage(
             title = title,
             subtitle = stringResource(R.string.radial_apps_screen_subtitle),
-            onNavigateBack = onBack,
-            horizontalContentPadding = side,
+            onBack = onBack,
         ) {
             item(key = "radial_options") {
                 SettingsGroup(modifier = Modifier.fillMaxWidth()) {
@@ -140,8 +139,8 @@ internal fun PinnedAppsScreen(
                         Modifier
                             .padding(start = 16.dp, bottom = 8.dp)
                             .semantics { heading() },
-                    color = GlasmioTheme.colors.secondaryContent,
-                    style = IosTypography.subheadline,
+                    color = COUITheme.colorScheme.labelSecondary,
+                    style = COUITheme.textStyles.bodyS,
                 )
             }
             item(key = "added") {
@@ -250,17 +249,14 @@ internal fun PinnedAppsScreen(
             ).filter { it.second.isNotEmpty() }
         }
         val sheetTitle = stringResource(R.string.select_apps_action)
-        GlasmioBottomSheet(
-            visible = pickerOpen,
+        WindowBottomSheet(
+            show = pickerOpen,
             title = sheetTitle,
             onDismissRequest = { pickerOpen = false },
         ) {
-            Text(
-                text = sheetTitle,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-                style = IosTypography.title3,
-                color = GlasmioTheme.colors.content,
-            )
+            androidx.compose.foundation.layout.Column(
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f),
+            ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -269,13 +265,14 @@ internal fun PinnedAppsScreen(
                     imageVector = Icons.Rounded.Search,
                     contentDescription = null,
                     modifier = Modifier.padding(start = 16.dp, end = 4.dp).size(20.dp),
-                    tint = GlasmioTheme.colors.secondaryContent,
+                    tint = COUITheme.colorScheme.labelSecondary,
                 )
-                GlasmioTextField(
+                TextField(
                     value = pickerQuery,
                     onValueChange = { pickerQuery = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = stringResource(R.string.search_apps_placeholder),
+                    label = stringResource(R.string.search_apps_placeholder),
+                    singleLine = true,
                 )
             }
             LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp)) {
@@ -311,8 +308,8 @@ internal fun PinnedAppsScreen(
                             Text(
                                 text = stringResource(groupTitle),
                                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp).semantics { heading() },
-                                style = IosTypography.subheadline,
-                                color = GlasmioTheme.colors.secondaryContent,
+                                style = COUITheme.textStyles.bodyS,
+                                color = COUITheme.colorScheme.labelSecondary,
                             )
                         }
                         items(entries, key = { PinnedTargetCodec.encode(it.target) }) { app ->
@@ -328,7 +325,7 @@ internal fun PinnedAppsScreen(
                                                 imageVector = Icons.Rounded.Check,
                                                 contentDescription = null,
                                                 modifier = Modifier.size(20.dp),
-                                                tint = GlasmioTheme.colors.accent,
+                                                tint = COUITheme.colorScheme.primary,
                                             )
                                         }
                                     } else {
@@ -353,6 +350,7 @@ internal fun PinnedAppsScreen(
                         }
                     }
                 }
+            }
             }
         }
     }
@@ -426,13 +424,13 @@ private fun AddedAppRow(
                             Modifier
                                 .size(44.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(GlasmioTheme.colors.container),
+                                .background(COUITheme.colorScheme.backgroundElevated),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             text = "?",
-                            color = GlasmioTheme.colors.secondaryContent,
-                            style = IosTypography.body,
+                            color = COUITheme.colorScheme.labelSecondary,
+                            style = COUITheme.textStyles.bodyM,
                         )
                     }
                 }
@@ -443,7 +441,7 @@ private fun AddedAppRow(
                         Modifier
                             .size(26.dp)
                             .clip(RoundedCornerShape(13.dp))
-                            .background(GlasmioTheme.colors.destructive)
+                            .background(COUITheme.colorScheme.error)
                             .clickable(enabled = enabled, onClick = onRemove),
                     contentAlignment = Alignment.Center,
                 ) {

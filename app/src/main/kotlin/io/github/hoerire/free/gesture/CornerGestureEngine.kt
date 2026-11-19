@@ -131,6 +131,12 @@ internal class CornerGestureEngine {
             if (upward > inward * VERTICAL_UPWARD_RATIO) {
                 return GestureAction.PassThrough
             }
+            // 反过来，几乎水平的内向滑动也不是角区手势：视频进度条、横向滑动的列表
+            // 就压在触发范围内，拖动时 upward≈0 而 inward 很大。以前只挡了"过于垂直"，
+            // 这种"几乎水平"会被当成斜推，抢流之后进度条就拖不动了。
+            if (upward < inward * MIN_UPWARD_RATIO) {
+                return GestureAction.PassThrough
+            }
             claimed = true
             phase = GesturePhase.Revealing
             return GestureAction.Activate(activeSide, originX, originY, x, y)
@@ -140,7 +146,7 @@ internal class CornerGestureEngine {
         return GestureAction.Update(activeSide, x, y)
     }
 
-    private companion object {
+    internal companion object {
         /**
          * upward / inward 超过这个比值就按「垂直上滑」处理，不接管。
          *
@@ -148,6 +154,18 @@ internal class CornerGestureEngine {
          * 3 倍留足余量：手指抖一点、稍微斜一点的正常呼出都不会被误判成上滑。
          */
         const val VERTICAL_UPWARD_RATIO = 3f
+
+        /**
+         * 角区手势必须是「斜向」的：upward 至少达到 inward 的这个比例（约 14°）。
+         *
+         * 挡的是"几乎水平"的内向拖动 —— 视频进度条、横向列表就在触发范围内，
+         * 拖动时 upward≈0，旧逻辑会把它当成斜推并抢流，表现为进度条拖不动。
+         *
+         * ⚠️ 抢流判定（`ColorOsFreeformCoordinator.shouldStartPilfer`、
+         * `CornerInputPilferMonitor`）用的是**同一个常量**：两处必须一致，
+         * 否则会出现「扇形激活了但流没被抢」的穿透。
+         */
+        const val MIN_UPWARD_RATIO = 0.25f
     }
 
     fun up(pointerId: Int): GestureAction {

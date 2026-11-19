@@ -61,11 +61,9 @@ import io.github.hoerire.free.ui.component.SettingsGroup
 import io.github.hoerire.free.ui.component.SliderRow
 import io.github.hoerire.free.ui.component.SwitchPreference
 import io.github.hoerire.free.update.UpdateState
-import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.core.IosTypography
-import io.github.neoruaa.glasmio.icons.SfIcon
-import io.github.neoruaa.glasmio.preference.GlasmioPreferenceEntry
-import io.github.neoruaa.glasmio.scaffold.GlasmioPinnedListPage
+import io.github.hoerire.free.ui.component.HomeScaffold
+import io.github.hoerire.free.ui.component.PreferenceIcon
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -97,14 +95,15 @@ internal fun ControlScreen(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val windowWidth = maxWidth
         val sidePadding = maxOf(ScreenHorizontalMargin, (windowWidth - ScreenContentMaxWidth) / 2)
-        // 页面内容录进一条采样层，更新弹窗才能透出它；弹窗本体放在录制层之外。
-        PageBackdropScope(
-            content = {
-                GlasmioPinnedListPage(
-                    title = stringResource(R.string.app_name),
-                    horizontalContentPadding = sidePadding,
-                    verticalArrangement = Arrangement.spacedBy(CardSpacing),
-                ) {
+        HomeScaffold(
+            title = stringResource(R.string.app_name),
+            overlay = {
+                UpdateOverlay(
+                    update = update,
+                    onDismissUpdate = onDismissUpdate,
+                )
+            },
+        ) {
                     item(key = "runtime") {
                         RuntimeCard(
                             state = state,
@@ -121,18 +120,10 @@ internal fun ControlScreen(
                             onNavigateToFreeDrag = onNavigateToFreeDrag,
                         )
                     }
-                    item(key = "about") {
-                        AboutCard(onNavigateToAbout = onNavigateToAbout)
-                    }
-                }
-            },
-            overlay = {
-                UpdateOverlay(
-                    update = update,
-                    onDismissUpdate = onDismissUpdate,
-                )
-            },
-        )
+            item(key = "about") {
+                AboutCard(onNavigateToAbout = onNavigateToAbout)
+            }
+        }
     }
 }
 
@@ -219,8 +210,8 @@ private fun RuntimeCard(
             endActions = {
                 Text(
                     text = presentation.label,
-                    color = GlasmioTheme.colors.secondaryContent,
-                    style = IosTypography.subheadline,
+                    color = COUITheme.colorScheme.labelSecondary,
+                    style = COUITheme.textStyles.bodyS,
                 )
             },
             startAction = { PreferenceIcon(Icons.Rounded.ElectricalServices) },
@@ -329,8 +320,8 @@ internal fun CornerRangePreview(
     leftEnabled: Boolean,
     rightEnabled: Boolean,
 ) {
-    val activeColor = GlasmioTheme.colors.accent
-    val inactiveColor = GlasmioTheme.colors.secondaryContent
+    val activeColor = COUITheme.colorScheme.primary
+    val inactiveColor = COUITheme.colorScheme.labelSecondary
     Canvas(modifier = Modifier.fillMaxSize()) {
         val radius = rangeDp.dp.toPx()
         val arcSize = Size(radius * 2f, radius * 2f)
@@ -382,8 +373,8 @@ internal fun HitRangePreview(
     leftEnabled: Boolean,
     rightEnabled: Boolean,
 ) {
-    val activeColor = GlasmioTheme.colors.accent
-    val inactiveColor = GlasmioTheme.colors.secondaryContent
+    val activeColor = COUITheme.colorScheme.primary
+    val inactiveColor = COUITheme.colorScheme.labelSecondary
     Canvas(modifier = Modifier.fillMaxSize()) {
         val basePixel = minOf(size.width, size.height) / RadialBaseShortEdgeDp
         val arcRadius = RadialBaseArcRadiusDp * basePixel
@@ -449,59 +440,19 @@ private fun AboutCard(onNavigateToAbout: () -> Unit) {
             },
             startAction = { PreferenceIcon(Icons.Rounded.Forum) },
         )
-        GlasmioPreferenceEntry(
-            title = { Text(stringResource(R.string.about_app_title), style = IosTypography.body) },
-            content = {
-                // 版本行：左为标签，右为完整版本号，右侧留出箭头的位置。
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(R.string.about_version_label),
-                        color = GlasmioTheme.colors.secondaryContent,
-                        style = IosTypography.subheadline,
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = stringResource(
-                            R.string.about_version_format,
-                            BuildConfig.VERSION_NAME,
-                            BuildConfig.VERSION_CODE.toString(),
-                        ),
-                        color = GlasmioTheme.colors.secondaryContent,
-                        style = IosTypography.subheadline,
-                        textAlign = TextAlign.End,
-                    )
-                }
-            },
-            icon = { PreferenceIcon(Icons.Rounded.Info) },
-            trailingContent = {
-                SfIcon(
-                    systemName = "chevron.right",
-                    contentDescription = null,
-                    size = 14.dp,
-                    tint = GlasmioTheme.colors.tertiaryContent,
-                )
-            },
+        ArrowPreference(
+            title = stringResource(R.string.about_app_title),
+            summary = stringResource(
+                R.string.about_version_format,
+                BuildConfig.VERSION_NAME,
+                BuildConfig.VERSION_CODE.toString(),
+            ),
             onClick = onNavigateToAbout,
-            showTopSeparator = false,
+            startAction = { PreferenceIcon(Icons.Rounded.Info) },
         )
     }
 }
 
-@Composable
-internal fun PreferenceIcon(imageVector: ImageVector, enabled: Boolean = true) {
-    Icon(
-        imageVector = imageVector,
-        contentDescription = null,
-        modifier = Modifier.padding(end = 6.dp).size(24.dp),
-        tint =
-            if (enabled) GlasmioTheme.colors.content
-            else GlasmioTheme.colors.tertiaryContent,
-    )
-}
 
 @Composable
 private fun frameworkPresentation(state: FrameworkConnectionState): FrameworkPresentation =
@@ -569,8 +520,8 @@ internal fun IconSizePreview(
     leftEnabled: Boolean,
     rightEnabled: Boolean,
 ) {
-    val activeColor = GlasmioTheme.colors.accent
-    val inactiveColor = GlasmioTheme.colors.secondaryContent
+    val activeColor = COUITheme.colorScheme.primary
+    val inactiveColor = COUITheme.colorScheme.labelSecondary
     Canvas(modifier = Modifier.fillMaxSize()) {
         val basePixel = minOf(size.width, size.height) / RadialBaseShortEdgeDp
         // 与 RadialIconGeometry 一致：图标变大时半径同比外推。

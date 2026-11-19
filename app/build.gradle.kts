@@ -74,6 +74,8 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material.icons.extended)
+    // material3 之前是通过 Glasmio 传递进来的；迁移到 COUI 后必须显式声明。
+    implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.lifecycle.runtime.compose)
     compileOnly(libs.libxposed.api)
     // framework @hide 类的编译期占位（android.view.InputChannel / InputEventReceiver）。
@@ -85,11 +87,9 @@ dependencies {
     compileOnly(files(rootProject.file("libs/fragment-classes.jar")))
     implementation(libs.dexkit)
     implementation(libs.libxposed.service)
-    implementation(libs.glasmio.core)
-    implementation(libs.glasmio.glass)
-    implementation(libs.glasmio.ui)
-    implementation(libs.glasmio.scaffold)
-    implementation(libs.glasmio.preference)
-    implementation(libs.glasmio.icons)
+    implementation(libs.coui.ui)
+    implementation(libs.coui.preference)
+    implementation(libs.coui.icons)
+    implementation(libs.coui.blur)
     testImplementation(libs.junit)
 }

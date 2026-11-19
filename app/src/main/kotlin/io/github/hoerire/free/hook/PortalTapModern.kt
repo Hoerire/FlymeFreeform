@@ -762,12 +762,12 @@ internal class PortalTapModern(
         const val CELL_HEIGHT_DP = 96
         const val MAX_ROWS = 5
 
-        /** 面板底色 = 应用页面骨架的分组背景色；不透明，面板下面是别的应用内容。 */
-        const val SURFACE_LIGHT = 0xFFF2F2F7.toInt()
+        /** 面板底色 = 应用页面骨架的分组背景色（COUI backgroundWithCard）；不透明，面板下面是别的应用内容。 */
+        const val SURFACE_LIGHT = 0xFFF0F1F2.toInt()
         const val SURFACE_DARK = 0xFF000000.toInt()
 
-        /** 与应用主题卡片同一档圆角（Glasmio shapes.medium = 26dp）。 */
-        const val PANEL_CORNER_DP = 26
+        /** 与应用主题卡片同一档圆角（COUI Card 默认 24dp）。 */
+        const val PANEL_CORNER_DP = 24
     }
 }
 

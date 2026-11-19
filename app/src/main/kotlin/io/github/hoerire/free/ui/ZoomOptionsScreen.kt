@@ -19,6 +19,7 @@ import io.github.hoerire.free.ui.component.ArrowPreference
 import io.github.hoerire.free.ui.component.SectionTitle
 import io.github.hoerire.free.ui.component.SettingsGroup
 import io.github.hoerire.free.ui.component.SwitchPreference
+import io.github.hoerire.free.ui.component.PreferenceIcon
 
 /**
  * 小窗交互。

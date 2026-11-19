@@ -639,6 +639,14 @@ internal class ColorOsFreeformCoordinator(
                     // 而 UI 引擎逐帧重判，稍后方向转内时扇形仍然激活，
                     // 结果是扇形弹出但事件留在应用侧，形成穿透。
                     if (upward > inward * VERTICAL_ABORT_RATIO) return false
+                    // 另一头：几乎纯水平的内向拖动也不是角区手势。
+                    // 视频进度条、横向滑动的列表就在触发范围内，拖动时 upward≈0 而 inward 很大；
+                    // 旧逻辑只挡"过于垂直"，于是拖进度条的第一帧（6px）就被抢流，
+                    // 表现为进度条拖不动、视频没法快进后退。
+                    // 同样只让这一帧、不 cancel：手指后续转成斜向时仍会正常抢流。
+                    // 比例必须与 CornerGestureEngine.MIN_UPWARD_RATIO 一致，
+                    // 否则会出现「扇形激活但流没被抢」的穿透。
+                    if (upward < inward * CornerGestureEngine.MIN_UPWARD_RATIO) return false
                     // 诊断：抢流这一刻手指已经移动了多远。数值大说明应用在抢流前就收到了足够的位移。
                     pilferDistance = moved
                     logFirstPilfer(moved)

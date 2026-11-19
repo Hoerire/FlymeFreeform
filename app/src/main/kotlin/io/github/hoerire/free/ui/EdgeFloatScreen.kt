@@ -12,6 +12,7 @@ import io.github.hoerire.free.config.ModulePreferences
 import io.github.hoerire.free.framework.FrameworkConnectionState
 import io.github.hoerire.free.ui.component.SettingsGroup
 import io.github.hoerire.free.ui.component.SwitchPreference
+import io.github.hoerire.free.ui.component.PreferenceIcon
 
 /**
  * 贴边浮标二级页：贴边挂机与浮标数量。

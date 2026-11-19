@@ -67,7 +67,7 @@ internal sealed interface AppRoute {
 /**
  * 设置界面与各级子页面。
  *
- * **不要换回 `GlasmioNavDisplay`。** 0.1.3 的导航层给每条 entry 都挂了一层全屏
+ * **不要换回第三方导航组件。** 早期用过的导航库给每条 entry 都挂了一层全屏
  * `pointerInput` 输入阻断，条件是
  * `blockInputDuringTransition && !isSettled && targetScene != transition.targetState`，
  * 而 settled 由内部 `SeekableTransitionState` 的 animateTo 协程推动。从二级页返回时

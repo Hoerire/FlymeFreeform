@@ -14,6 +14,7 @@ import io.github.hoerire.free.framework.FrameworkConnectionState
 import io.github.hoerire.free.ui.component.ListChoicePreference
 import io.github.hoerire.free.ui.component.SettingsGroup
 import io.github.hoerire.free.ui.component.SwitchPreference
+import io.github.hoerire.free.ui.component.PreferenceIcon
 
 /**
  * 手势交互二级页：快速上滑、长按静音、关闭方式。

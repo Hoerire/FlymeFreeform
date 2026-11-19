@@ -424,12 +424,12 @@ internal class PortalTapLegacy(
          * 标题「Flyme 小窗」就压在这一层上；面板沿用同一色值，视觉才和页面连成一体，
          * 不需要再自己调透明度。
          */
-        const val SURFACE_LIGHT = 0xFFF2F2F7.toInt()
+        const val SURFACE_LIGHT = 0xFFF0F1F2.toInt()
         const val SURFACE_DARK = 0xFF000000.toInt()
 
 
-        /** 与应用主题卡片同一档圆角（Glasmio shapes.medium = 26dp）。 */
-        const val PANEL_CORNER_DP = 26
+        /** 与应用主题卡片同一档圆角（COUI Card 默认 24dp）。 */
+        const val PANEL_CORNER_DP = 24
 
         /** 设计尺寸：格子宽高、内边距、圆角与最大行数。 */
         const val CELL_WIDTH_DP = 80

@@ -35,8 +35,7 @@ import io.github.hoerire.free.framework.FrameworkConnectionState
 import io.github.hoerire.free.gesture.RadialGeometry
 import io.github.hoerire.free.ui.component.SettingsGroup
 import io.github.hoerire.free.window.RadialIconGeometry
-import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.core.IosTypography
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -149,7 +148,7 @@ private fun RadialSizePreview(
     radiusPercent: Int,
     backdropLevel: Int,
 ) {
-    val colors = GlasmioTheme.colors
+    val colors = COUITheme.colorScheme
     Column {
         Box(
             modifier =
@@ -157,7 +156,7 @@ private fun RadialSizePreview(
                     .fillMaxWidth()
                     .height(PREVIEW_HEIGHT_DP)
                     .clip(RoundedCornerShape(24.dp))
-                    .background(colors.container),
+                    .background(colors.backgroundElevated),
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 // 背景遮罩浓度：呼出时整块屏幕被压暗的程度。
@@ -191,15 +190,15 @@ private fun RadialSizePreview(
                             x = origin.x + cos(radians) * radiusPx,
                             y = origin.y + sin(radians) * radiusPx,
                         )
-                    drawCircle(color = colors.accent.copy(alpha = 0.10f), radius = hitPx, center = center)
+                    drawCircle(color = colors.primary.copy(alpha = 0.10f), radius = hitPx, center = center)
                     drawCircle(
-                        color = colors.accent.copy(alpha = 0.55f),
+                        color = colors.primary.copy(alpha = 0.55f),
                         radius = hitPx,
                         center = center,
                         style = Stroke(width = 1.4.dp.toPx(), pathEffect = dash),
                     )
                     drawCircle(
-                        color = colors.accent.copy(alpha = 0.85f),
+                        color = colors.primary.copy(alpha = 0.85f),
                         radius = iconPx / 2f,
                         center = center,
                     )
@@ -209,7 +208,7 @@ private fun RadialSizePreview(
                         drawCircle(
                             brush =
                                 Brush.radialGradient(
-                                    colors = listOf(colors.content.copy(alpha = 0.5f), Color.Transparent),
+                                    colors = listOf(colors.labelPrimary.copy(alpha = 0.5f), Color.Transparent),
                                     center = center,
                                     radius = glowPx,
                                 ),
@@ -217,7 +216,7 @@ private fun RadialSizePreview(
                             center = center,
                         )
                         drawCircle(
-                            color = colors.content.copy(alpha = 0.9f),
+                            color = colors.labelPrimary.copy(alpha = 0.9f),
                             radius = iconPx / 2f,
                             center = center,
                             style = Stroke(width = 1.4.dp.toPx()),
@@ -225,13 +224,13 @@ private fun RadialSizePreview(
                     }
                 }
                 // 角落原点。
-                drawCircle(color = colors.tertiaryContent, radius = 3.dp.toPx(), center = origin)
+                drawCircle(color = colors.labelTertiary, radius = 3.dp.toPx(), center = origin)
             }
         }
         androidx.compose.material3.Text(
             text = stringResource(R.string.radial_size_preview_hint),
-            style = IosTypography.footnote,
-            color = colors.tertiaryContent,
+            style = COUITheme.textStyles.bodyXS,
+            color = colors.labelTertiary,
             modifier = Modifier.padding(start = 18.dp, top = 8.dp, bottom = 6.dp),
         )
     }

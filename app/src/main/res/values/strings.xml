@@ -161,6 +161,7 @@
     <string name="search_apps_placeholder">搜索工具、快捷入口或应用</string>
     <string name="no_matching_apps">未找到匹配项</string>
     <string name="back_action">返回</string>
+    <string name="cancel">取消</string>
 
     <string name="about_check_update_title">检查更新</string>
     <string name="about_check_update_summary_idle">从 GitHub 获取最新版本</string>

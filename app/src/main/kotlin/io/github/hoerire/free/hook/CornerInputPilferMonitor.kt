@@ -13,6 +13,7 @@ import android.view.InputEventReceiver
 import android.view.MotionEvent
 import io.github.libxposed.api.XposedModule
 import io.github.hoerire.free.config.ModuleSettingsSnapshot
+import io.github.hoerire.free.gesture.CornerGestureEngine
 import io.github.hoerire.free.gesture.CornerSide
 import io.github.hoerire.free.gesture.CornerTriggerRegion
 
@@ -213,6 +214,13 @@ internal class CornerInputPilferMonitor(
                     if (upward > inward * VERTICAL_UPWARD_RATIO) {
                         tracking = false
                         module.log(Log.INFO, TAG, "CORNER_PILFER_SKIP_VERTICAL")
+                        return
+                    }
+                    // 几乎纯水平的内向拖动（视频进度条、横向滑动的列表）不是角区手势，
+                    // 不能抢流；只让这一帧、不放弃整条手势，手指转成斜向时仍会正常抢。
+                    // 比例与 CornerGestureEngine.MIN_UPWARD_RATIO 共用，避免两处分叉造成穿透。
+                    if (upward < inward * CornerGestureEngine.MIN_UPWARD_RATIO) {
+                        skip("horizontal")
                         return
                     }
                 }

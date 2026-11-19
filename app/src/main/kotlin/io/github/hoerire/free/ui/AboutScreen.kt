@@ -25,7 +25,8 @@ import io.github.hoerire.free.update.UpdateState
 import io.github.hoerire.free.ui.component.BasicComponent
 import io.github.hoerire.free.ui.component.SettingsGroup
 import io.github.hoerire.free.ui.component.SwitchPreference
-import io.github.neoruaa.glasmio.scaffold.GlasmioPinnedListPage
+import io.github.hoerire.free.ui.component.BackOnlyScaffold
+import io.github.hoerire.free.ui.component.PreferenceIcon
 
 /**
  * 关于页。
@@ -44,14 +45,15 @@ internal fun AboutScreen(
 ) {
     val uriHandler = LocalUriHandler.current
     val available = update as? UpdateState.Available
-    PageBackdropScope(
-        content = {
-            // 标题已在上一级入口显示，这里只保留返回按钮。
-            GlasmioPinnedListPage(
-                title = "",
-                showsLargeTitle = false,
-                onNavigateBack = onBack,
-            ) {
+    BackOnlyScaffold(
+        onBack = onBack,
+        overlay = {
+            UpdateOverlay(
+                update = update,
+                onDismissUpdate = onDismissUpdate,
+            )
+        },
+    ) {
                 item(key = "about") {
                     SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                         BasicComponent(
@@ -141,16 +143,8 @@ internal fun AboutScreen(
                             },
                         )
                     }
-                }
-            }
-        },
-        overlay = {
-            UpdateOverlay(
-                update = update,
-                onDismissUpdate = onDismissUpdate,
-            )
-        },
-    )
+        }
+    }
 }
 
 /** 检查更新这一行的小字：随检测状态变化。 */
