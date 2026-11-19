@@ -1493,15 +1493,15 @@ internal class CornerRadialOverlayView(
         const val FOLLOW_OUT_DP = 10f
 
         /** 跟手内收的最大位移（dp）：手指退到弧线内侧时整圈往里收。 */
-        const val FOLLOW_IN_DP = 24f
+        const val FOLLOW_IN_DP = 48f
 
         /**
          * 选中项往外顶的比例：以图标直径为基准。
          *
-         * 0.5 = 半个图标（默认 44dp 图标即 22dp），够把选中格和其他格区分开，
+         * 1/3 个图标（默认 44dp 图标即约 15dp），够把选中格和其他格区分开，
          * 又不至于让它飞出扇形弧线太多。
          */
-        const val SELECTED_PUSH_RATIO = 0.5f
+        const val SELECTED_PUSH_RATIO = 1f / 3f
 
         /** 外伸的归一化窗口：手指到 1 + 这个比例倍的半径时满档。 */
         const val FOLLOW_OUT_WINDOW = 0.6f
