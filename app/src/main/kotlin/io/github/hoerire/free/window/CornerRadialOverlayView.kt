@@ -735,7 +735,12 @@ internal class CornerRadialOverlayView(
         // 跟手外伸/内收：只看手指相对圆弧的径向位置。
         // 在弧线外侧 -> 整体往外伸；在内侧 -> 整体往回收。
         // 纯绘制偏移，不做命中判定、不占用时间轴，开销就是每格多一次加法。
-        val followRatio = ((fingerDistance / ring) - 1f).coerceIn(-1f, 1f)
+        // 手指相对圆弧的归一化半径：1 = 正好在弧线上，<1 在内侧，>1 在外侧。
+        val normalizedRadius = fingerDistance / ring
+        // 内收/外伸分开映射：内收用更窄的窗口（退到半径 55% 就满档），
+        // 否则手指在弧线附近轻微内收只有两三 dp，根本看不出来。
+        val followOutward = ((normalizedRadius - 1f) / FOLLOW_OUT_WINDOW).coerceIn(0f, 1f)
+        val followInward = ((1f - normalizedRadius) / FOLLOW_IN_WINDOW).coerceIn(0f, 1f)
         val followGate =
             if (panelModeState.value) {
                 0f
@@ -743,7 +748,9 @@ internal class CornerRadialOverlayView(
                 // 入场没展开时不做跟手，避免和展开动画抢方向盘。
                 ((motion.radialProgress - 0.85f) / 0.15f).coerceIn(0f, 1f)
             }
-        val followPx = followRatio * FOLLOW_RANGE_DP * metrics.pixelsPerBaseDp * followGate
+        val followPx =
+            (followOutward * FOLLOW_OUT_DP - followInward * FOLLOW_IN_DP) *
+                metrics.pixelsPerBaseDp * followGate
         layout.itemCenters.forEachIndexed { index, destination ->
             // 逐个图标交错飞出：所有格共用 motion.radialProgress 时，
             // 整个扇形整体平移，只有"展开 / 回弹"两段观感。
@@ -772,13 +779,17 @@ internal class CornerRadialOverlayView(
                 }
             val unitX = itemVectorX / itemRadius
             val unitY = itemVectorY / itemRadius
+            val ringProgress = itemRings.getOrNull(index)?.value ?: 0f
+            // 选中项沿径向往外顶半个图标：像被"拿起来"一格，和其他格拉开层次。
+            // 跟 ringProgress 走，所以选中/取消时会平滑地顶出与收回。
+            val selectedPush = ringProgress * metrics.iconDiameter * SELECTED_PUSH_RATIO
+            val radialOffset = followPx + selectedPush
             val centerX =
                 layout.origin.x + itemVectorX * localProgress * stretch +
-                    unitX * followPx * localProgress + overshoot * localProgress
+                    unitX * radialOffset * localProgress + overshoot * localProgress
             val centerY =
                 layout.origin.y + itemVectorY * localProgress * stretch +
-                    unitY * followPx * localProgress
-            val ringProgress = itemRings.getOrNull(index)?.value ?: 0f
+                    unitY * radialOffset * localProgress
             // 选中项放大：复用每格原有 0→1 的进度动画，1f→1.2f 平滑放大。
             val selectionScale = 1f + shimmer.selectionScalePercent / 100f * ringProgress
             val scale = motion.iconScale * contentScale * selectionScale
@@ -1478,13 +1489,25 @@ internal class CornerRadialOverlayView(
         /** 拉伸的生效窗口：|d/R - 1| 超过这个比例后完全不拉伸，避免手指远处也变形。 */
         const val STRETCH_FALLOFF = 0.75f
 
+        /** 跟手外伸的最大位移（dp）：手指越过弧线之后整圈往外让。 */
+        const val FOLLOW_OUT_DP = 10f
+
+        /** 跟手内收的最大位移（dp）：手指退到弧线内侧时整圈往里收。 */
+        const val FOLLOW_IN_DP = 24f
+
         /**
-         * 跟手外伸/内收的最大位移（dp）。
+         * 选中项往外顶的比例：以图标直径为基准。
          *
-         * 手指在弧线外侧时整体外伸、在内侧时整体内收，最多这个量。
-         * 只改绘制位置，命中判定仍在原布局上，所以"要伸多远才够得着"不变。
+         * 0.5 = 半个图标（默认 44dp 图标即 22dp），够把选中格和其他格区分开，
+         * 又不至于让它飞出扇形弧线太多。
          */
-        const val FOLLOW_RANGE_DP = 10f
+        const val SELECTED_PUSH_RATIO = 0.5f
+
+        /** 外伸的归一化窗口：手指到 1 + 这个比例倍的半径时满档。 */
+        const val FOLLOW_OUT_WINDOW = 0.6f
+
+        /** 内收的归一化窗口：手指退到半径的这个比例以内就满档。越小越灵敏。 */
+        const val FOLLOW_IN_WINDOW = 0.45f
 
         /**
          * 外扩量的硬上限（dp）。
