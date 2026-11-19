@@ -9,6 +9,14 @@ internal data class RadialExitVisuals(
 /** Keeps radial items in place while their content and scrim leave on separate timelines. */
 internal object RadialExitMotion {
     const val DURATION_MILLIS = 240L
+
+    /**
+     * 取消手势时的「缩回」时长。
+     *
+     * 比展开短：展开是"铺开给人看"，收起只需要交代清楚"收回去了"，
+     * 拖久了会让下一次呼出显得迟钝。
+     */
+    const val RETRACT_DURATION_MILLIS = 190L
     const val DURATION_SECONDS = DURATION_MILLIS / 1_000f
 
     private const val CONTENT_END_FRACTION = 0.72f

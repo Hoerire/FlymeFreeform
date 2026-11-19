@@ -187,6 +187,17 @@ internal class CornerRadialOverlayView(
     private var dismissNotified = false
     /** 松手当帧已把目标交给宿主（应用/快捷方式），退场动画结束后只做收尾。 */
     private var commitNotified = false
+
+    /**
+     * 收起动画进行中。
+     *
+     * 取消手势时不再"啪"地消失：反向播放一遍入场曲线，图标沿原轨迹缩回底角，
+     * 播完才通知宿主移除窗口。选中目标那条路径不等动画（启动速度 + 取屏工具要求屏幕立刻干净）。
+     */
+    private val retracting = mutableStateOf(false)
+
+    /** 系统动画开关的缓存（组合里算一次），供非组合上下文的 dismissAnimated 读取。 */
+    private var exitAnimationsEnabled = true
     private var disposed = false
     private var lastTickUptime = 0L
     private val timeout = Runnable(::requestDismiss)
@@ -255,6 +266,7 @@ internal class CornerRadialOverlayView(
         dismissing = false
         dismissNotified = false
         commitNotified = false
+        retracting.value = false
         val displayMetrics = resources.displayMetrics
         updateLayout(
             requestedWidth = displayMetrics.widthPixels,
@@ -375,6 +387,7 @@ internal class CornerRadialOverlayView(
         // 缩放大于 1 时同比例拉长，避免模块动画比系统窗口动画先结束。
         val motionScale = remember { SystemMotion.durationScale() }
         val animationsEnabled = remember { SystemMotion.animationsRunning(motionScale) }
+        androidx.compose.runtime.SideEffect { exitAnimationsEnabled = animationsEnabled }
         // 诊断：进场动画是否真的在跑（仅详细日志时输出）。
         remember(animationsEnabled, motionScale) {
             io.github.hoerire.free.log.ModuleLog.debug(
@@ -417,6 +430,28 @@ internal class CornerRadialOverlayView(
             }
             // 入场动画结束事件：抬手判定只读这个标志，不做任何时间计算。
             entrySettled = true
+        }
+        // 收起：把入场进度线性退回 0，配合 RadialEntryMotion 的曲线就是"倒放展开"，
+        // 图标沿各自的错峰轨迹缩回底角；结束后才让宿主移除窗口。
+        LaunchedEffect(retracting.value) {
+            if (!retracting.value) return@LaunchedEffect
+            if (animationsEnabled) {
+                entryProgress.animateTo(
+                    targetValue = 0f,
+                    animationSpec =
+                        tween(
+                            durationMillis =
+                                SystemMotion.scaledMillis(
+                                    RadialExitMotion.RETRACT_DURATION_MILLIS,
+                                    motionScale,
+                                ).toInt(),
+                            easing = LinearEasing,
+                        ),
+                )
+            } else {
+                entryProgress.snapTo(0f)
+            }
+            completeRadialExit()
         }
         LaunchedEffect(selectedIndexState.intValue, itemRings) {
             val selected = selectedIndexState.intValue
@@ -1278,7 +1313,12 @@ internal class CornerRadialOverlayView(
             listener.onEntryCommitted(pendingCommit)
             if (disposed) return
         }
-        // 收起没有退场动画：直接收场（窗口由宿主在回调里立刻移除）。
+        if (pendingCommit == null && exitAnimationsEnabled) {
+            // 取消：播一段"原路缩回"的动画，播完在 LaunchedEffect 里通知宿主移除窗口。
+            retracting.value = true
+            return
+        }
+        // 选中目标或系统关闭动画：直接收场（窗口由宿主在回调里立刻移除）。
         completeRadialExit()
     }
 
