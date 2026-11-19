@@ -111,9 +111,17 @@ internal fun PinnedAppsScreen(
         val appByComponent = remember(allEntries) { allEntries.associateBy(SelectableEntry::target) }
         SettingsPage(
             title = title,
-            subtitle = stringResource(R.string.radial_apps_screen_subtitle),
             onBack = onBack,
         ) {
+            // 说明放在页面顶部而不是顶栏副标题：COUI 的副标题只有单行，长文案会被截断。
+            item(key = "intro") {
+                Text(
+                    text = stringResource(R.string.radial_apps_screen_subtitle),
+                    modifier = Modifier.padding(start = 32.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
+                    style = COUITheme.textStyles.bodyS,
+                    color = COUITheme.colorScheme.labelSecondary,
+                )
+            }
             item(key = "radial_options") {
                 SettingsGroup(modifier = Modifier.fillMaxWidth()) {
                     BasicComponent(
