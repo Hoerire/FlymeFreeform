@@ -16,8 +16,11 @@ internal object RadialEntryMotion {
      *
      * 注意这是**整段时间预算**，不是 tween 的时长：窗口 addView 到出第一帧之间的
      * 延迟由 CornerRadialOverlayView 从这里面扣掉，因此展开完成时刻是固定的。
+     *
+     * 展开现在主要"跟手"（手指走多远开多大），这条时间曲线只做兜底：
+     * 因此刻意放慢，避免它跑得比手指还快、把跟手感盖掉。
      */
-    const val DURATION_MILLIS = 380L
+    const val DURATION_MILLIS = 650L
     const val SELECTION_DURATION_MILLIS = 200L
     const val HORIZONTAL_OVERSHOOT_DP = 6f
     const val SELECTION_RING_ALPHA = 64f / 255f
