@@ -686,7 +686,17 @@ internal class CornerRadialOverlayView(
             val itemVectorY = destination.y - layout.origin.y
             val itemAngle = kotlin.math.atan2(itemVectorY, itemVectorX)
             val facing = kotlin.math.cos(itemAngle - fingerAngle).coerceAtLeast(0f)
-            val stretch = globalStretch * (1f + STRETCH_DIRECTIONAL * facing * facing * proximity)
+            val rawStretch = globalStretch * (1f + STRETCH_DIRECTIONAL * facing * facing * proximity)
+            // 按硬上限收敛：外扩量 = (stretch - 1) × 该格半径，不得超过 STRETCH_MAX_DP。
+            val itemRadius = kotlin.math.hypot(itemVectorX, itemVectorY).coerceAtLeast(1f)
+            val maxExtra = STRETCH_MAX_DP * metrics.pixelsPerBaseDp
+            val extra = (rawStretch - 1f) * itemRadius
+            val stretch =
+                if (extra > maxExtra) {
+                    1f + maxExtra / itemRadius
+                } else {
+                    rawStretch
+                }
             val centerX = layout.origin.x + itemVectorX * localProgress * stretch + overshoot * localProgress
             val centerY = layout.origin.y + itemVectorY * localProgress * stretch
             val ringProgress = itemRings.getOrNull(index)?.value ?: 0f
@@ -1364,13 +1374,22 @@ internal class CornerRadialOverlayView(
 
     private companion object {
         /** 拉伸：手指贴近弧线时，整圈最多外扩这么多（8%）。 */
-        const val STRETCH_GLOBAL = 0.10f
+        const val STRETCH_GLOBAL = 0.04f
 
         /** 拉伸：正对手指的那一格再额外外推的比例（10%），形成被"拉起"的斜向拖拽感。 */
-        const val STRETCH_DIRECTIONAL = 0.14f
+        const val STRETCH_DIRECTIONAL = 0.06f
 
         /** 拉伸的生效窗口：|d/R - 1| 超过这个比例后完全不拉伸，避免手指远处也变形。 */
         const val STRETCH_FALLOFF = 0.75f
+
+        /**
+         * 外扩量的硬上限（dp）。
+         *
+         * 外扩会把图标推离手指，手指就得追着往外伸——幅度大了很难用。
+         * 因此无论比例算出多少，单格外扩都不超过这个值：保留"呼吸/被拉起"的观感，
+         * 但不改变真正要伸多远才够得着。6dp 约 2.2mm（图标直径的 14%），肉眼看得见、伸手几乎无感。
+         */
+        const val STRETCH_MAX_DP = 6f
 
         /**
          * 交错比例：整段入场里最多有这么长的时间用于"逐格错开"。
