@@ -183,6 +183,14 @@ internal class CornerRadialOverlayView(
      */
     private val fingerX = mutableFloatStateOf(0f)
     private val fingerY = mutableFloatStateOf(0f)
+
+    /**
+     * 本次手势里手指离底角最远的距离。
+     *
+     * 内收是"相对"的：扇形默认展开到满弧，只有手指从最远点往回拉才收缩。
+     * 若按绝对半径算，手指刚离开底角时反而处于最大内收，观感是"一开就瘪"。
+     */
+    private var maxFingerDistance = 0f
     private var selectedIndex: Int? = null
     private var dismissing = false
     private var dismissNotified = false
@@ -259,6 +267,7 @@ internal class CornerRadialOverlayView(
         latestY = y
         fingerX.floatValue = x
         fingerY.floatValue = y
+        maxFingerDistance = 0f
         radialImages.value = catalog.radialApps.map(::RadialImage)
         panelImages = catalog.panelApps.associate { entry -> entry.target to entry.icon.asImageBitmap() }
         selectedIndex = null
@@ -723,6 +732,7 @@ internal class CornerRadialOverlayView(
         val fingerDx = fingerX.floatValue - layout.origin.x
         val fingerDy = fingerY.floatValue - layout.origin.y
         val fingerDistance = kotlin.math.hypot(fingerDx, fingerDy)
+        if (fingerDistance > maxFingerDistance) maxFingerDistance = fingerDistance
         val fingerAngle = kotlin.math.atan2(fingerDy, fingerDx)
         val proximity =
             if (panelModeState.value) {
@@ -740,7 +750,9 @@ internal class CornerRadialOverlayView(
         // 内收/外伸分开映射：内收用更窄的窗口（退到半径 55% 就满档），
         // 否则手指在弧线附近轻微内收只有两三 dp，根本看不出来。
         val followOutward = ((normalizedRadius - 1f) / FOLLOW_OUT_WINDOW).coerceIn(0f, 1f)
-        val followInward = ((1f - normalizedRadius) / FOLLOW_IN_WINDOW).coerceIn(0f, 1f)
+        // 相对收缩：以本次手势手指到过的最远点为 0，往回拉才收。
+        val followInward =
+            ((maxFingerDistance - fingerDistance) / (ring * FOLLOW_IN_WINDOW)).coerceIn(0f, 1f)
         val followGate =
             if (panelModeState.value) {
                 0f
@@ -1498,10 +1510,10 @@ internal class CornerRadialOverlayView(
         /**
          * 选中项往外顶的比例：以图标直径为基准。
          *
-         * 1/3 个图标（默认 44dp 图标即约 15dp），够把选中格和其他格区分开，
+         * 1/4 个图标（默认 44dp 图标即约 11dp），够把选中格和其他格区分开，
          * 又不至于让它飞出扇形弧线太多。
          */
-        const val SELECTED_PUSH_RATIO = 1f / 3f
+        const val SELECTED_PUSH_RATIO = 1f / 4f
 
         /** 外伸的归一化窗口：手指到 1 + 这个比例倍的半径时满档。 */
         const val FOLLOW_OUT_WINDOW = 0.6f
