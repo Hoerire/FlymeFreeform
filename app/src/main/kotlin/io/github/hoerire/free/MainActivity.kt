@@ -87,6 +87,7 @@ class MainActivity : ComponentActivity() {
                     onLongPressMuteChange = repository::setLongPressMute,
                     onRadialInteractionEnabledChange = repository::setRadialInteractionEnabled,
                     onRadialKeepOpenChange = repository::setRadialKeepOpen,
+                    onSecondaryGroupSideChange = repository::setSecondaryGroupSide,
                     onRadialSelectionRingChange = repository::setRadialSelectionRing,
                     onRadialShimmerEnabledChange = repository::setRadialShimmerEnabled,
                     onRadialShimmerChange = repository::setRadialShimmer,

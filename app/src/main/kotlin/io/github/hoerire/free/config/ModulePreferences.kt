@@ -67,6 +67,10 @@ internal object ModulePreferences {
     /** 扇形图标的基准直径（dp）；第三方主题图标与「更多」圆盘都按它对齐。 */
     const val KEY_RADIAL_ICON_SIZE_DP = "radial_icon_size_dp"
     const val KEY_PINNED_TARGETS = "corner_targets_v2"
+    /** 第二组扇形固定项：与 [KEY_PINNED_TARGETS] 各存各的，互不影响。 */
+    const val KEY_PINNED_TARGETS_ALTERNATE = "corner_targets_alt_v1"
+    /** 第二组生效位置（[RadialGroupSide.storedValue]）：默认不启用，两侧都用默认组。 */
+    const val KEY_SECONDARY_GROUP_SIDE = "secondary_group_side_v1"
     const val KEY_CORNER_PINS = "corner_pins_v1"
     const val KEY_OUTSIDE_TAP_CLOSE_MODE = "outside_tap_close_mode_v1"
     const val KEY_HANDLE_SWIPE_UP_TO_MINI_ENABLED = "handle_swipe_up_to_mini_enabled"

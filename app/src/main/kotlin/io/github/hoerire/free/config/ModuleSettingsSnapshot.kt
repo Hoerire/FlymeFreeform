@@ -12,6 +12,18 @@ internal data class ModuleSettingsSnapshot(
     val radialIconSizeDp: Int = ModulePreferences.DEFAULT_RADIAL_ICON_SIZE_DP,
     val pinsSaved: Boolean = false,
     val pinnedTargets: List<PinnedTarget> = emptyList(),
+    /**
+     * 第二组扇形固定项：与 [pinnedTargets] 完全独立，同一项不得同时出现在两组。
+     *
+     * 默认空：升级上来的用户左右两侧仍按 [pinnedTargets] 显示，行为不变。
+     */
+    val alternatePinnedTargets: List<PinnedTarget> = emptyList(),
+    /**
+     * 第二组的生效位置：[RadialGroupSide.Disabled] 表示不启用，两侧都显示默认组。
+     *
+     * 默认不启用：升级上来的用户看不到任何变化；启用后只有所选那一侧换成第二组。
+     */
+    val secondaryGroupSide: RadialGroupSide = RadialGroupSide.Disabled,
     val outsideTapCloseMode: OutsideTapCloseMode =
         ModulePreferences.DEFAULT_OUTSIDE_TAP_CLOSE_MODE,
     val handleSwipeUpToMiniEnabled: Boolean =
@@ -132,6 +144,34 @@ internal data class ModuleSettingsSnapshot(
     fun isBlacklisted(packageName: String?): Boolean =
         packageName != null && blacklistPackages.any { it == packageName }
 
+    /** 指定分组的固定项；分组的读写点只有这一处。 */
+    fun pinsFor(group: RadialGroup): List<PinnedTarget> =
+        when (group) {
+            RadialGroup.Primary -> pinnedTargets
+            RadialGroup.Alternate -> alternatePinnedTargets
+        }
+
+    /**
+     * 该目标是否属于任一组扇形固定项。
+     *
+     * 启动前的准入校验必须按「两组都算」来判断：只看默认组的话，
+     * 第二组里的工具/快捷方式会被判成不在固定项里而静默丢弃。
+     */
+    fun isPinned(target: PinnedTarget): Boolean =
+        pinnedTargets.any { it == target } || alternatePinnedTargets.any { it == target }
+
+    /**
+     * 某一侧底角实际使用哪一组。
+     *
+     * 生效位置选「不启用」时两侧一律默认组；选了某一侧后只有那一侧换成第二组。
+     */
+    fun groupForSide(left: Boolean): RadialGroup =
+        when (secondaryGroupSide) {
+            RadialGroupSide.Disabled -> RadialGroup.Primary
+            RadialGroupSide.Left -> if (left) RadialGroup.Alternate else RadialGroup.Primary
+            RadialGroupSide.Right -> if (left) RadialGroup.Primary else RadialGroup.Alternate
+        }
+
     /** 该应用在前台时是否等同关闭小窗跳转。 */
     fun isZoomLaunchExcluded(packageName: String?): Boolean =
         packageName != null && zoomExcludedPackages.any { it == packageName }
@@ -229,6 +269,13 @@ internal data class ModuleSettingsSnapshot(
         } else {
             editor.remove(ModulePreferences.KEY_PINNED_TARGETS)
         }
+        // 第二组没有「历史迁移」概念：始终写一份（空列表写空串），读回来仍是空列表。
+        editor.putString(
+            ModulePreferences.KEY_PINNED_TARGETS_ALTERNATE,
+            PinnedTargetCodec.encodeList(alternatePinnedTargets),
+        )
+        editor
+            .putInt(ModulePreferences.KEY_SECONDARY_GROUP_SIDE, secondaryGroupSide.storedValue)
         editor.remove(ModulePreferences.KEY_CORNER_PINS)
         return editor
     }
@@ -283,6 +330,17 @@ internal data class ModuleSettingsSnapshot(
             } else {
                 PinnedTargetCodec.decodeLegacy(preferences.getString(ModulePreferences.KEY_CORNER_PINS, "").orEmpty())
             }
+            val alternatePins =
+                PinnedTargetCodec.decodeList(
+                    preferences.getString(ModulePreferences.KEY_PINNED_TARGETS_ALTERNATE, "").orEmpty(),
+                )
+            val secondaryGroupSide =
+                RadialGroupSide.fromStoredValue(
+                    preferences.getInt(
+                        ModulePreferences.KEY_SECONDARY_GROUP_SIDE,
+                        RadialGroupSide.Disabled.storedValue,
+                    ),
+                )
             val bothCornersDisabled = !leftEnabled && !rightEnabled
             // 老配置迁移（升级路径）：
             // 1. 总开关「轻量打开」为停用状态但仍有值且为关 —— 说明升级前用户把小窗能力整体关着，
@@ -344,6 +402,8 @@ internal data class ModuleSettingsSnapshot(
                     ),
                 pinsSaved = pinsSaved,
                 pinnedTargets = pins,
+                alternatePinnedTargets = alternatePins,
+                secondaryGroupSide = secondaryGroupSide,
                 outsideTapCloseMode = outsideTapCloseMode,
                 handleSwipeUpToMiniEnabled = handleSwipeUpToMiniEnabled,
                 pauseInLandscape = preferences.getBoolean(

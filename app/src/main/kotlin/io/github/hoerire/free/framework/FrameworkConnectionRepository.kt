@@ -12,6 +12,8 @@ import io.github.hoerire.free.config.ModuleSettingsSnapshot
 import io.github.hoerire.free.config.OutsideTapCloseMode
 import io.github.hoerire.free.config.PinnedTarget
 import io.github.hoerire.free.config.PinnedTargetCodec
+import io.github.hoerire.free.config.RadialGroup
+import io.github.hoerire.free.config.RadialGroupSide
 import io.github.hoerire.free.config.SettingsBridge
 import java.util.IdentityHashMap
 import java.util.concurrent.Executors
@@ -209,14 +211,24 @@ internal class FrameworkConnectionRepository(private val context: Context) {
             it.copy(zoomExcludedPackages = ModulePreferences.decodePackages(ModulePreferences.encodePackages(packages)))
         }
 
-    fun setPinnedTargets(components: List<PinnedTarget>) =
-        updateSettings {
-            it.copy(
-                pinsSaved = true,
-                pinnedTargets =
-                    io.github.hoerire.free.config.PinnedTargetCodec.normalize(components),
-            )
+    /**
+     * 某一组扇形固定项。
+     *
+     * 同一项不允许同时出现在两组：写入前按另一组过滤一次，界面上的拦截之外再兜一层。
+     */
+    fun setPinnedTargets(group: RadialGroup, components: List<PinnedTarget>) =
+        updateSettings { settings ->
+            val other = settings.pinsFor(group.opposite).toSet()
+            val cleaned = PinnedTargetCodec.normalize(components.filterNot { it in other })
+            when (group) {
+                RadialGroup.Primary -> settings.copy(pinsSaved = true, pinnedTargets = cleaned)
+                RadialGroup.Alternate -> settings.copy(alternatePinnedTargets = cleaned)
+            }
         }
+
+    /** 第二组生效位置：不启用 / 左侧 / 右侧。 */
+    fun setSecondaryGroupSide(side: RadialGroupSide) =
+        updateSettings { it.copy(secondaryGroupSide = side) }
 
     fun requestMissingScopes() {
         worker.execute {

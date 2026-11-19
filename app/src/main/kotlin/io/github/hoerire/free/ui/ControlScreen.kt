@@ -442,11 +442,8 @@ private fun AboutCard(onNavigateToAbout: () -> Unit) {
         )
         ArrowPreference(
             title = stringResource(R.string.about_app_title),
-            summary = stringResource(
-                R.string.about_version_format,
-                BuildConfig.VERSION_NAME,
-                BuildConfig.VERSION_CODE.toString(),
-            ),
+            // 只显示版本名：后面的 versionCode 是日期型整数，放在这里没有意义。
+            summary = stringResource(R.string.about_version_format, BuildConfig.VERSION_NAME),
             onClick = onNavigateToAbout,
             startAction = { PreferenceIcon(Icons.Rounded.Info) },
         )

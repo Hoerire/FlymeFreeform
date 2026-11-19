@@ -178,7 +178,7 @@ internal class ColorOsSidebarEntryEndpoint(
                 log(
                     Log.WARN,
                     "SIDEBAR_ENTRY_RECV_TARGET_REJECT_" + target.alias +
-                        "_pinned" + (target in configuration.snapshot.pinnedTargets) +
+                        "_pinned" + configuration.snapshot.isPinned(target) +
                         "_en" + configuration.snapshot.enabled,
                     null,
                 )

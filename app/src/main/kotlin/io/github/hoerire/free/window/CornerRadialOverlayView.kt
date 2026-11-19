@@ -763,7 +763,8 @@ internal class CornerRadialOverlayView(
                     .coerceIn(0f, 1f)
             }
         val globalStretch = 1f + STRETCH_GLOBAL * proximity
-        // Dock 式放大：以手指（弹簧平滑后的位置）为圆心，越近的图标放得越大。
+        // Dock 隆起：以手指（弹簧平滑后的位置）为圆心算衰减，越近的图标抬得越高。
+        // 衰减同时决定「选中放大」的取舍（见下方 emphasis），不再单独放大图标。
         val dockInfluence = metrics.iconDiameter * DOCK_REACH
         val dockGate =
             if (panelModeState.value) {
@@ -803,8 +804,12 @@ internal class CornerRadialOverlayView(
             val dockDistance =
                 kotlin.math.hypot(destination.x - dockX, destination.y - dockY)
             val dockFalloff = (1f - dockDistance / dockInfluence).coerceIn(0f, 1f)
-            val dockLift =
-                DOCK_LIFT_DP * metrics.pixelsPerBaseDp * dockFalloff * dockFalloff * dockGate
+            // 强调量：选中进度与指针衰减取大者。
+            // 命中范围有 40..140dp，手指经常离选中的那格很远（径向偏进/偏出弧线都会被算中），
+            // 只看指针距离的话，同一个格「按在图标上」和「在命中范围里划过」会一大一小。
+            // 选中即满档，和落点无关。
+            val emphasis = maxOf(ringProgress, dockFalloff * dockFalloff)
+            val dockLift = DOCK_LIFT_DP * metrics.pixelsPerBaseDp * emphasis * dockGate
             val radialOffset = selectedPush + dockLift
             val centerX =
                 layout.origin.x + itemVectorX * localProgress * stretch +
@@ -812,12 +817,13 @@ internal class CornerRadialOverlayView(
             val centerY =
                 layout.origin.y + itemVectorY * localProgress * stretch +
                     unitY * radialOffset * localProgress
-            // 选中项放大：复用每格 0→1 的选中进度，按设置里的百分比平滑放大。
-            val selectionScale = 1f + shimmer.selectionScalePercent / 100f * ringProgress
-            val scale = motion.iconScale * contentScale * selectionScale
-            // Dock 式放大：与抬升共用同一条衰减，指针正下方最大、两端归零。
-            val dockScale = 1f + DOCK_MAX_GROWTH * dockFalloff * dockFalloff * dockGate
-            val diameter = metrics.iconDiameter * scale * dockScale
+            // 选中放大：严格按「选中放大」设置里的百分比走，Dock 放大不再作为另一个乘数
+            // 叠上去。之前两条路径各乘一次：设置 10% 时按在图标上实际是 1.4 × 1.1 ≈ 1.54 倍，
+            // 而同一个格从命中范围选中只有 1.1 倍，观感差一大截；设成 0 也照样会被 Dock 撑大。
+            // 邻格沿用同一条指针衰减，但上限同样是这个设置值，保证不会比选中的那格还大。
+            val emphasisScale = 1f + shimmer.selectionScalePercent / 100f * emphasis
+            val scale = motion.iconScale * contentScale * emphasisScale
+            val diameter = metrics.iconDiameter * scale
             rotate(motion.rotationDegrees, pivot = Offset(centerX, centerY)) {
                 // 选中细节：先落一层很淡的椭圆投影（往下偏 5% 直径），图标看着是浮起来的，
                 // 而不是被硬放大的贴纸；放大完成后外沿再加一圈细高光，边界更清楚。
@@ -1505,15 +1511,12 @@ internal class CornerRadialOverlayView(
         const val SETTLE_FRACTION = 0.6f
 
         /**
-         * Dock 式放大的影响半径：以图标直径为单位。
+         * Dock 隆起的影响半径：以图标直径为单位。
          *
-         * 2.2 意味着指针正下方的图标最大，隔一到两个图标的位置基本不再放大，
+         * 2.2 意味着指针正下方的图标抬得最高，隔一到两个图标的位置基本不再抬，
          * 与 macOS Dock 的邻域范围相当。
          */
         const val DOCK_REACH = 2.2f
-
-        /** Dock 式放大的最大增量：0.4 = 指针正下方最多放大到 1.4 倍。 */
-        const val DOCK_MAX_GROWTH = 0.4f
 
         /**
          * Dock 隆起的最大外移量（dp）。

@@ -312,6 +312,13 @@ internal fun <T> ListChoicePreference(
     valueText: @Composable (T) -> String,
     onSelected: (T) -> Unit,
     enabled: Boolean = true,
+    /**
+     * 是否在标题下再显示一次当前选中项。
+     *
+     * 右侧的值区本来就会显示当前选中项，对"值本身就很短"的行（如生效位置）重复一次
+     * 只是多一行灰字，这类场景传 false。
+     */
+    showSummary: Boolean = true,
     /** 保留参数：COUI 版列表不再画行间分割线，值被忽略。 */
     @Suppress("UNUSED_PARAMETER") showTopSeparator: Boolean = false,
 ) {
@@ -324,7 +331,7 @@ internal fun <T> ListChoicePreference(
             values.getOrNull(index)?.let(onSelected)
         },
         title = title,
-        summary = labels.getOrNull(selectedIndex),
+        summary = if (showSummary) labels.getOrNull(selectedIndex) else null,
         startAction = icon,
         cancelButtonText = stringResource(R.string.cancel),
         enabled = enabled,

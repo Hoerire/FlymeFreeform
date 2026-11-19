@@ -101,7 +101,8 @@ internal class ColorOsFreeformCoordinator(
                 // 后台任务完成时配置可能已再次变化，旧结果不得覆盖新外观。
                 if (snapshot.matches(lastSettings)) {
                     catalogSnapshot = snapshot
-                    overlay?.updateRadialAppearance(snapshot)
+                    // 浮层只认识「一组」条目：按它当前所在的那一侧取对应分组再刷新图标。
+                    overlay?.updateRadialAppearance(radialCatalogFor(overlaySide(), snapshot))
                 }
             }
         }
@@ -116,7 +117,7 @@ internal class ColorOsFreeformCoordinator(
                 entryCatalog.invalidate()
                 if (lastSettings.enabled) {
                     appCatalog.refresh(lastSettings)
-                    if (lastSettings.pinnedTargets.any { it is PinnedTarget.Sidebar }) entryCatalog.refresh()
+                    if (hasSidebarPins(lastSettings)) entryCatalog.refresh()
                 }
             }
         }
@@ -189,11 +190,8 @@ internal class ColorOsFreeformCoordinator(
 
 
 
-    /** 最近任务校验的节流时间戳。 */
+    /** 「更多」面板最近任务重排的节流时间戳。 */
     private var lastRecentsCheckAt = 0L
-
-    /** 最近任务广播的节流时间戳：扇形呼出与面板打开都要给侧边栏送一份最新的。 */
-    private var lastRecentsBroadcastAt = 0L
 
     /** 本次 overlay 实际用的窗口类型；决定它压不压在输入法上面。 */
     private var overlayWindowType = OVERLAY_WINDOW_TYPE
@@ -316,7 +314,8 @@ internal class ColorOsFreeformCoordinator(
     private fun applySettings(settings: ModuleSettingsSnapshot) {
         val selectionChanged =
             settings.pinsSaved != lastSettings.pinsSaved ||
-                settings.pinnedTargets != lastSettings.pinnedTargets
+                settings.pinnedTargets != lastSettings.pinnedTargets ||
+                settings.alternatePinnedTargets != lastSettings.alternatePinnedTargets
         lastSettings = settings
         // 「屏蔽键盘」是否真的到了本进程：设置推送/落地的诊断（详细日志）。
         trace("SYSTEM_SETTINGS_APPLIED_pkb" + settings.pauseInKeyboard)
@@ -332,10 +331,12 @@ internal class ColorOsFreeformCoordinator(
             (settings.leftCornerEnabled || settings.rightCornerEnabled)
         ) {
             val resuming = !pointerRegistered
-            if ((resuming || selectionChanged) && settings.pinnedTargets.any { it is PinnedTarget.Sidebar }) entryCatalog.refresh()
+            if ((resuming || selectionChanged) && hasSidebarPins(settings)) entryCatalog.refresh()
             registerPointerListener()
-            if (resuming || selectionChanged || !catalogSnapshot.matches(settings) || catalogSnapshot.radialApps.isEmpty()) {
-                appCatalog.refresh(settings, reloadApps = resuming || selectionChanged || catalogSnapshot.radialApps.isEmpty())
+            val catalogEmpty =
+                catalogSnapshot.radialApps.isEmpty() && catalogSnapshot.alternateRadialApps.isEmpty()
+            if (resuming || selectionChanged || !catalogSnapshot.matches(settings) || catalogEmpty) {
+                appCatalog.refresh(settings, reloadApps = resuming || selectionChanged || catalogEmpty)
             }
         } else {
             sidebar.cancel()
@@ -884,13 +885,6 @@ internal class ColorOsFreeformCoordinator(
      * ColorOS 不把游戏写进 UsageStats，侧边栏只能看到「用过但不含游戏」的那一份；
      * system_server 这边 `getRecentTasks` 是完整的，用它补上游戏。
      */
-    private fun broadcastRecentsIfDue() {
-        val now = android.os.SystemClock.uptimeMillis()
-        if (now - lastRecentsBroadcastAt < RECENTS_BROADCAST_INTERVAL_MS) return
-        lastRecentsBroadcastAt = now
-        syncRecentsToSidebar()
-    }
-
     private fun syncRecentsToSidebar() {
         val manager = runCatching { context.getSystemService(android.app.ActivityManager::class.java) }.getOrNull() ?: return
         val packages =
@@ -911,6 +905,24 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
+    /** 任一组里是否有需要向侧边栏进程解析的条目（工具 / 快捷方式 / 分身）。 */
+    private fun hasSidebarPins(settings: ModuleSettingsSnapshot): Boolean =
+        settings.pinnedTargets.any { it is PinnedTarget.Sidebar } ||
+            settings.alternatePinnedTargets.any { it is PinnedTarget.Sidebar }
+
+    /** 当前浮层挂在哪个下角；没有浮层时按左侧兜底（只影响取哪一组图标，不影响窗口）。 */
+    private fun overlaySide(): CornerSide =
+        if (overlayAtLeft) CornerSide.Left else CornerSide.Right
+
+    /**
+     * 某一侧实际要显示的扇形条目。
+     *
+     * 分组选择只在这里解析一次：浮层、命中判定与启动路径拿到的仍然是「一组条目」，
+     * 不需要知道分组的存在，打开逻辑与原来完全一致。
+     */
+    private fun radialCatalogFor(side: CornerSide, snapshot: AppCatalogSnapshot): AppCatalogSnapshot =
+        snapshot.forGroup(lastSettings.groupForSide(left = side == CornerSide.Left))
+
     private fun showOverlay(
         side: io.github.hoerire.free.gesture.CornerSide,
         x: Float,
@@ -918,8 +930,6 @@ internal class ColorOsFreeformCoordinator(
     ) {
         entryLaunchGeneration++
         entryCatalog.cancelLaunch()
-        // 扇形先于「更多」面板出现；在这里就把最近任务推给侧边栏，第一次打开面板时才是最新的。
-        broadcastRecentsIfDue()
         removeOverlay()
         // 扇形呼出时收掉「更多」面板：面板是应用层之上的 overlay，留着会盖住扇形，
         // 也会盖住随后打开的小窗。这里只做这一件事，面板内部状态机不动。
@@ -931,15 +941,19 @@ internal class ColorOsFreeformCoordinator(
         overlayAtLeft = side == io.github.hoerire.free.gesture.CornerSide.Left
 
         val hitRangeDp = lastSettings.radialHitRangeDp
+        // 先按这一侧选定的分组取条目：左右两侧可以显示互不相同的两组应用。
+        val sideCatalog = radialCatalogFor(side, catalogSnapshot)
+        val sideGroup = lastSettings.groupForSide(left = side == CornerSide.Left)
         debug(
             "SYSTEM_OVERLAY_HIT_RANGE_" + hitRangeDp + "DP_" +
                 (hitRangeDp * context.resources.displayMetrics.density).toInt() + "PX_" +
                 "SIDE_" + side.name +
-                "_APPS_" + catalogSnapshot.radialApps.size +
+                "_GROUP_" + sideGroup.name +
+                "_APPS_" + sideCatalog.radialApps.size +
                 "_PANEL_" + catalogSnapshot.panelApps.size +
                 "_BLACKLIST_" + lastSettings.blacklistPackages.size,
         )
-        if (catalogSnapshot.radialApps.isEmpty()) {
+        if (sideCatalog.radialApps.isEmpty()) {
             // 目录尚未就绪时扇形只有「更多」一格；触发一次刷新，下次呼出恢复。
             debug("SYSTEM_CATALOG_EMPTY_REFRESH")
             appCatalog.refresh(lastSettings, reloadApps = true)
@@ -957,7 +971,7 @@ internal class ColorOsFreeformCoordinator(
             view.setBackdropAlpha(ModulePreferences.backdropShadeAlpha(lastSettings.backdropLevel))
             view.begin(
                 side = side,
-                catalog = catalogSnapshot,
+                catalog = sideCatalog,
                 x = x,
                 y = y,
                 hitRangeDp = hitRangeDp,
@@ -970,7 +984,7 @@ internal class ColorOsFreeformCoordinator(
             )
             overlay = view
             // 扇形展开才读侧边栏目录：Provider 按需启动，早读必然失败。
-            if (lastSettings.pinnedTargets.any { it is PinnedTarget.Sidebar }) entryCatalog.refresh()
+            if (hasSidebarPins(lastSettings)) entryCatalog.refresh()
             try {
                 windowManager.addView(view, params)
                 overlayWindowType = OVERLAY_WINDOW_TYPE
@@ -1002,7 +1016,7 @@ internal class ColorOsFreeformCoordinator(
         if (view != null) {
             overlay = view
             // 扇形展开才读侧边栏目录：Provider 按需启动，早读必然失败。
-            if (lastSettings.pinnedTargets.any { it is PinnedTarget.Sidebar }) entryCatalog.refresh()
+            if (hasSidebarPins(lastSettings)) entryCatalog.refresh()
             removeOverlay()
         } else {
             overlay = null
@@ -1086,7 +1100,9 @@ internal class ColorOsFreeformCoordinator(
                         entryCatalog.launch(target) {
                             generation == entryLaunchGeneration &&
                                 (!requiresHiddenOverlay || overlay == null) && isGestureEnvironmentAllowed() &&
-                                target in lastSettings.pinnedTargets && focusedWindow() === focus &&
+                                // 两组都算「已固定」：只看默认组会把第二组的工具静默丢弃。
+                                lastSettings.isPinned(target) &&
+                                focusedWindow() === focus &&
                                 context.getSystemService(android.hardware.display.DisplayManager::class.java)
                                     .getDisplay(Display.DEFAULT_DISPLAY)?.rotation == rotation
                         }
@@ -1190,7 +1206,7 @@ internal class ColorOsFreeformCoordinator(
 
     override fun onMorePanelRequested() {
         debug("SYSTEM_MORE_PANEL_REQUESTED")
-        // 「更多」面板用最新的最近任务重排；扇形本身已不再依赖这份数据。
+        // 「更多」面板按最新的最近任务重排（扇形本身不使用最近任务）。
         refreshPanelRecents()
         if (!isGestureEnvironmentAllowed()) {
             removeOverlay()
@@ -2221,8 +2237,6 @@ internal class ColorOsFreeformCoordinator(
         /** 推给侧边栏的最近任务条数。 */
         const val RECENT_TASKS_LIMIT = 16
 
-        /** 最近任务广播的最小间隔（毫秒）。 */
-        const val RECENTS_BROADCAST_INTERVAL_MS = 1_500L
 
         /** 任务树下钻深度：DisplayContent 下还套着 5 层以上 DisplayArea。 */
         const val MAX_TASK_WALK_DEPTH = 12

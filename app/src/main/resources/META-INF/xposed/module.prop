@@ -1,7 +1,3 @@
-name=Free
-version=2.7.2
-versionCode=2026111482
-description=智能侧边栏 / 小窗 / 自由浮窗增强
 minApiVersion=102
 targetApiVersion=102
 staticScope=true

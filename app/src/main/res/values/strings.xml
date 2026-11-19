@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">Free</string>
+    <!-- API 102 规范：模块名称取 android:label，模块描述取 android:description。 -->
+    <string name="module_description">为 ColorOS 启用 Flyme 的交互手势，支持 ColorOS 15~17</string>
 
     <string name="framework_service_title">框架服务</string>
     <string name="framework_status_waiting">等待连接</string>
@@ -44,6 +46,12 @@
     <string name="radial_apps_title">扇形应用</string>
     <string name="radial_apps_empty_summary">未固定快捷项，扇形中仅显示“更多”</string>
     <string name="radial_apps_count_summary">已固定 %1$d 项</string>
+    <string name="radial_group_default">默认组</string>
+    <string name="radial_group_second">第二组</string>
+    <string name="radial_secondary_side_title">生效位置</string>
+    <string name="radial_group_side_disabled">禁用</string>
+    <string name="radial_side_left">左侧</string>
+    <string name="radial_side_right">右侧</string>
 
     <string name="blacklist_title">排除列表</string>
     <string name="blacklist_summary">排除列表内的应用在前台时停用模块全部功能，离开后自动恢复</string>
@@ -148,7 +156,10 @@
     <string name="handle_swipe_up_to_mini_summary">底部横条上滑，切为迷你浮窗</string>
 
     <string name="radial_apps_screen_title">扇形应用</string>
-    <string name="radial_apps_screen_subtitle">最多添加七项，长按拖动调整顺序，与侧边栏独立保存</string>
+    <string name="radial_apps_screen_subtitle">最多添加七项，长按拖动调整顺序；第二组可在上方切换后单独配置</string>
+    <string name="radial_apps_alt_subtitle">第二组只在「生效位置」所选的底角出现，最多七项；同一项不能同时在默认组</string>
+    <string name="radial_apps_group_title">编辑分组</string>
+    <string name="pinned_in_other_group">已在%1$s</string>
     <string name="added_apps_title">已添加（%1$d/%2$d）</string>
     <string name="added_apps_empty">未添加快捷项</string>
     <string name="added_apps_empty_summary">添加应用、快捷入口或工具后，按此顺序显示在扇形中</string>
@@ -177,7 +188,7 @@
     <string name="update_dismiss_summary">该版本不再提示，直到出现更高版本</string>
     <string name="about_app_title">关于应用</string>
     <string name="about_version_label">版本号</string>
-    <string name="about_version_format">%1$s (%2$s)</string>
+    <string name="about_version_format">%1$s</string>
     <string name="about_feedback_title">交流反馈</string>
     <string name="about_feedback_summary">点击加入 QQ 群</string>
     <string name="about_own_repo_title">项目地址</string>

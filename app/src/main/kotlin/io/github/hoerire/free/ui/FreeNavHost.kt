@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import io.github.hoerire.free.apps.SelectableEntry
 import io.github.hoerire.free.config.OutsideTapCloseMode
 import io.github.hoerire.free.config.PinnedTarget
+import io.github.hoerire.free.config.RadialGroup
+import io.github.hoerire.free.config.RadialGroupSide
 import io.github.hoerire.free.config.RadialShimmer
 import io.github.hoerire.free.framework.FrameworkConnectionState
 import io.github.hoerire.free.update.UpdateState
@@ -114,12 +116,13 @@ internal fun FreeNavHost(
     onZoomExcludedChange: (List<String>) -> Unit,
     onRadialInteractionEnabledChange: (Boolean) -> Unit,
     onRadialKeepOpenChange: (Boolean) -> Unit,
+    onSecondaryGroupSideChange: (RadialGroupSide) -> Unit,
     onRadialSelectionRingChange: (Boolean) -> Unit,
     onRadialShimmerEnabledChange: (Boolean) -> Unit,
     onRadialShimmerChange: (RadialShimmer) -> Unit,
     onRadialRadiusPercentChange: (Int) -> Unit,
     onRequestScopes: () -> Unit,
-    onPinnedTargetsChange: (List<PinnedTarget>) -> Unit,
+    onPinnedTargetsChange: (RadialGroup, List<PinnedTarget>) -> Unit,
     onBlacklistChange: (List<String>) -> Unit,
     updateFlow: kotlinx.coroutines.flow.StateFlow<UpdateState>,
     onCheckUpdate: () -> Unit,
@@ -355,6 +358,7 @@ internal fun FreeNavHost(
                     onCancelCatalog = onCancelCatalog,
                     onBack = popBackStack,
                     onPinnedTargetsChange = onPinnedTargetsChange,
+                    onSecondaryGroupSideChange = onSecondaryGroupSideChange,
                 )
         }
     }

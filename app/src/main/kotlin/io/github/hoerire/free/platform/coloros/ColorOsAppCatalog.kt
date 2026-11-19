@@ -18,6 +18,7 @@ import io.github.hoerire.free.apps.SelectableEntry
 import io.github.hoerire.free.config.ModulePreferences
 import io.github.hoerire.free.config.ModuleSettingsSnapshot
 import io.github.hoerire.free.config.PinnedTarget
+import io.github.hoerire.free.config.RadialGroup
 import java.text.Collator
 import java.util.Locale
 import java.util.concurrent.Executor
@@ -42,6 +43,8 @@ internal data class RadialEntry(
 
 internal data class AppCatalogSnapshot(
     val radialApps: List<RadialEntry> = emptyList(),
+    /** 第二组固定项解析出的条目；与 [radialApps] 独立，左右两侧各取一组。 */
+    val alternateRadialApps: List<RadialEntry> = emptyList(),
     val panelApps: List<RadialEntry> = emptyList(),
     val settings: ModuleSettingsSnapshot = ModuleSettingsSnapshot(),
 ) {
@@ -52,7 +55,12 @@ internal data class AppCatalogSnapshot(
      */
     fun matches(settings: ModuleSettingsSnapshot): Boolean =
         this.settings.pinsSaved == settings.pinsSaved &&
-            this.settings.pinnedTargets == settings.pinnedTargets
+            this.settings.pinnedTargets == settings.pinnedTargets &&
+            this.settings.alternatePinnedTargets == settings.alternatePinnedTargets
+
+    /** 换成「某一侧实际要画的那一组」：扇形视图只认 [radialApps]，不需要知道分组。 */
+    fun forGroup(group: RadialGroup): AppCatalogSnapshot =
+        if (group == RadialGroup.Alternate) copy(radialApps = alternateRadialApps) else this
 }
 
 /** 目录查询只在后台执行；发布后的 Bitmap 与列表供手势热路径只读。 */
@@ -109,7 +117,7 @@ internal class ColorOsAppCatalog(
         executor.execute {
             val revision = contentRevision.get()
             val cached = cachedContent
-            // 最近任务会随时变化；扇形要在每次呼出时反映最新结果，所以它必须参与缓存判定。
+            // 最近任务会随时变化；「更多」面板每次打开都要反映最新结果，所以它必须参与缓存判定。
             val recentComponents = recentComponents()
             val recentKey = recentComponents.map { it.flattenToString() }
             val content =
@@ -117,6 +125,7 @@ internal class ColorOsAppCatalog(
                     cached.sidebarRevision == sidebarRevision &&
                     cached.settings.pinsSaved == settings.pinsSaved &&
                     cached.settings.pinnedTargets == settings.pinnedTargets &&
+                    cached.settings.alternatePinnedTargets == settings.alternatePinnedTargets &&
                     // 只有显式要求（打开「更多」面板）时才按最近任务重建。
                     (!forceRecentOrder || cached.recentKey == recentKey)
                 ) {
@@ -125,30 +134,45 @@ internal class ColorOsAppCatalog(
                     loadContent(settings, revision, recentKey, recentComponents) ?: return@execute
                 }
             cachedContent = content
-            val shapedRadial = content.radialApps.map { entry ->
-                val cached = iconCache[entry.target]
-                if (cached != null) {
-                    entry.copy(icon = cached)
-                } else {
-                    val drawable = content.radialSources[entry.target]
-                    val base = if (drawable == null) entry.icon else {
-                        try {
-                            iconRenderer.shapedIcon(drawable).toBitmap()
-                        } catch (_: RuntimeException) {
+            val shape: (List<RadialEntry>) -> List<RadialEntry> = { entries ->
+                entries.map { entry ->
+                    val cachedIcon = iconCache[entry.target]
+                    if (cachedIcon != null) {
+                        entry.copy(icon = cachedIcon)
+                    } else {
+                        val drawable = content.radialSources[entry.target]
+                        val base = if (drawable == null) {
                             entry.icon
+                        } else {
+                            try {
+                                iconRenderer.shapedIcon(drawable).toBitmap()
+                            } catch (_: RuntimeException) {
+                                entry.icon
+                            }
                         }
+                        // 扇形里的图标统一裁成圆：绘制期裁切对满底位图不生效，因此在生成阶段一次成圆。
+                        val icon = IconContentMetrics.circular(base)
+                        iconCache[entry.target] = icon
+                        entry.copy(icon = icon)
                     }
-                    // 扇形里的图标统一裁成圆：绘制期裁切对满底位图不生效，因此在生成阶段一次成圆。
-                    val icon = IconContentMetrics.circular(base)
-                    iconCache[entry.target] = icon
-                    entry.copy(icon = icon)
                 }
             }
-            shapedRadial.forEach { entry ->
+            val shapedRadial = shape(content.radialApps)
+            val shapedAlternate = shape(content.alternateRadialApps)
+            (shapedRadial + shapedAlternate).forEach { entry ->
                 entry.icon.prepareToDraw()
                 entry.badge?.prepareToDraw()
             }
-            if (revision == contentRevision.get()) publish(AppCatalogSnapshot(shapedRadial, content.panelApps, settings))
+            if (revision == contentRevision.get()) {
+                publish(
+                    AppCatalogSnapshot(
+                        radialApps = shapedRadial,
+                        alternateRadialApps = shapedAlternate,
+                        panelApps = content.panelApps,
+                        settings = settings,
+                    ),
+                )
+            }
         }
     }
 
@@ -189,7 +213,16 @@ internal class ColorOsAppCatalog(
                 identity = RadialEntry::target,
                 limit = ModulePreferences.MAX_PINNED_APPS,
             )
-        val excluded = radial.mapTo(HashSet(), RadialEntry::target)
+        // 第二组与第一组各自独立解析，顺序同样只取用户在设置页拖出来的顺序。
+        val alternate =
+            AppSelectionPolicy.radialItems(
+                availablePins =
+                    radialPinOrder(settings.alternatePinnedTargets).mapNotNull(byComponent::get),
+                identity = RadialEntry::target,
+                limit = ModulePreferences.MAX_PINNED_APPS,
+            )
+        // 「更多」面板不重复出现已经在任一组扇形里的条目。
+        val excluded = (radial + alternate).mapTo(HashSet(), RadialEntry::target)
         val panel =
             AppSelectionPolicy.panelItems(
                 recent = recents,
@@ -205,7 +238,7 @@ internal class ColorOsAppCatalog(
                 activities.filter { it.componentName.packageName == entry.packageName }
                     .singleOrNull()?.let { entry.target to it }
             }.toMap()
-        val sources = radial.mapNotNull { entry ->
+        val sources = (radial + alternate).mapNotNull { entry ->
             val info = activityByComponent[entry.target] ?: cloneActivities[entry.target]
             if (info == null) return@mapNotNull entry.target to entry.icon.toDrawable(context.resources)
             try {
@@ -215,13 +248,23 @@ internal class ColorOsAppCatalog(
             }
         }.toMap()
         panel.forEach { it.icon.prepareToDraw() }
-        return CatalogContent(revision, settings, radial, panel, sources, recentKey, sidebarRevision)
+        return CatalogContent(
+            revision = revision,
+            settings = settings,
+            radialApps = radial,
+            alternateRadialApps = alternate,
+            panelApps = panel,
+            radialSources = sources,
+            recentKey = recentKey,
+            sidebarRevision = sidebarRevision,
+        )
     }
 
     private data class CatalogContent(
         val revision: Long,
         val settings: ModuleSettingsSnapshot,
         val radialApps: List<RadialEntry>,
+        val alternateRadialApps: List<RadialEntry>,
         val panelApps: List<RadialEntry>,
         val radialSources: Map<PinnedTarget, Drawable>,
         /** 生成这份目录时用到的最近任务序列；不一致就说明「最近应用」需要重排。 */

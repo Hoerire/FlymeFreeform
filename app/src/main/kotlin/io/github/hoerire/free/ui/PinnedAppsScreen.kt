@@ -23,6 +23,8 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SwipeRight
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,8 +58,11 @@ import io.github.hoerire.free.apps.SidebarCatalogStatus
 import io.github.hoerire.free.config.ModulePreferences
 import io.github.hoerire.free.config.PinnedTarget
 import io.github.hoerire.free.config.PinnedTargetCodec
+import io.github.hoerire.free.config.RadialGroup
+import io.github.hoerire.free.config.RadialGroupSide
 import io.github.hoerire.free.framework.FrameworkConnectionState
 import io.github.hoerire.free.ui.component.BasicComponent
+import io.github.hoerire.free.ui.component.ListChoicePreference
 import io.github.hoerire.free.ui.component.SettingsGroup
 import io.github.suqi8.coui.kmp.basic.TextField
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -72,7 +77,8 @@ internal fun PinnedAppsScreen(
     onRefreshCatalog: () -> Unit,
     onCancelCatalog: () -> Unit,
     onBack: () -> Unit,
-    onPinnedTargetsChange: (List<PinnedTarget>) -> Unit,
+    onPinnedTargetsChange: (RadialGroup, List<PinnedTarget>) -> Unit,
+    onSecondaryGroupSideChange: (RadialGroupSide) -> Unit,
 ) {
     val refreshCatalog by rememberUpdatedState(onRefreshCatalog)
     val cancelCatalog by rememberUpdatedState(onCancelCatalog)
@@ -92,6 +98,8 @@ internal fun PinnedAppsScreen(
     val allEntries = remember(launchableApps, sidebarCatalog.entries) { launchableApps + sidebarCatalog.entries }
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerQuery by remember { mutableStateOf("") }
+    // 当前编辑哪一组：默认组始终参与，第二组只在下面的「生效位置」所选那一侧出现。
+    var group by remember { mutableStateOf(RadialGroup.Primary) }
     // 拖动或增删后的本地顺序；远端配置回读同步前以它为准，避免列表闪回旧顺序
     var localOrder by remember { mutableStateOf<List<PinnedTarget>?>(null) }
     LaunchedEffect(state.canChangeSettings, state.issue) {
@@ -103,11 +111,14 @@ internal fun PinnedAppsScreen(
     val title = stringResource(R.string.radial_apps_screen_title)
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val side = maxOf(ScreenHorizontalMargin, (maxWidth - ScreenContentMaxWidth) / 2)
-        val pinned = state.settings.pinnedTargets
+        val pinned = state.settings.pinsFor(group)
         LaunchedEffect(pinned) {
             if (localOrder != null && pinned == localOrder) localOrder = null
         }
         val displayed = localOrder ?: pinned
+        // 另一组已有的条目：不允许再加进这一组（同一个应用/工具只能出现在一组里）。
+        val otherPinned = state.settings.pinsFor(group.opposite)
+        val otherSet = remember(otherPinned) { otherPinned.toSet() }
         val appByComponent = remember(allEntries) { allEntries.associateBy(SelectableEntry::target) }
         SettingsPage(
             title = title,
@@ -116,7 +127,14 @@ internal fun PinnedAppsScreen(
             // 说明放在页面顶部而不是顶栏副标题：COUI 的副标题只有单行，长文案会被截断。
             item(key = "intro") {
                 Text(
-                    text = stringResource(R.string.radial_apps_screen_subtitle),
+                    text =
+                        stringResource(
+                            if (group == RadialGroup.Alternate) {
+                                R.string.radial_apps_alt_subtitle
+                            } else {
+                                R.string.radial_apps_screen_subtitle
+                            },
+                        ),
                     modifier = Modifier.padding(start = 32.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
                     style = COUITheme.textStyles.bodyS,
                     color = COUITheme.colorScheme.labelSecondary,
@@ -124,6 +142,35 @@ internal fun PinnedAppsScreen(
             }
             item(key = "radial_options") {
                 SettingsGroup(modifier = Modifier.fillMaxWidth()) {
+                    ListChoicePreference(
+                        title = stringResource(R.string.radial_apps_group_title),
+                        icon = { PreferenceIcon(Icons.Rounded.Widgets, state.settingsEditable) },
+                        selected = group,
+                        values = RadialGroup.entries,
+                        valueText = { radialGroupLabel(it) },
+                        onSelected = { next ->
+                            // 切换分组等于换一份数据：清掉本地拖拽顺序，避免把上一组的顺序套过来。
+                            if (next != group) {
+                                group = next
+                                localOrder = null
+                            }
+                        },
+                        enabled = state.settingsEditable,
+                    )
+                    if (group == RadialGroup.Alternate) {
+                        // 只有第二组需要「生效位置」：默认不启用，选了哪一侧就只替换那一侧。
+                        ListChoicePreference(
+                            title = stringResource(R.string.radial_secondary_side_title),
+                            icon = { PreferenceIcon(Icons.Rounded.SwipeRight, state.settingsEditable) },
+                            selected = state.settings.secondaryGroupSide,
+                            values = RadialGroupSide.entries,
+                            valueText = { radialGroupSideLabel(it) },
+                            onSelected = onSecondaryGroupSideChange,
+                            enabled = state.settingsEditable,
+                            // 右侧值区已经显示当前状态，标题下不再重复一行。
+                            showSummary = false,
+                        )
+                    }
                     BasicComponent(
                         title = stringResource(R.string.select_apps_action),
                         startAction = { PreferenceIcon(Icons.Rounded.Add, state.settingsEditable) },
@@ -170,7 +217,7 @@ internal fun PinnedAppsScreen(
                                 onRemove = {
                                     val updated = displayed.filterNot { it == component }
                                     localOrder = updated
-                                    onPinnedTargetsChange(updated)
+                                    onPinnedTargetsChange(group, updated)
                                 },
                                 onDragStart = {
                                     localOrder = displayed
@@ -210,7 +257,7 @@ internal fun PinnedAppsScreen(
                                         if (order == pinned) {
                                             localOrder = null
                                         } else {
-                                            onPinnedTargetsChange(order)
+                                            onPinnedTargetsChange(group, order)
                                         }
                                     }
                                 },
@@ -322,9 +369,19 @@ internal fun PinnedAppsScreen(
                         }
                         items(entries, key = { PinnedTargetCodec.encode(it.target) }) { app ->
                             val added = app.target in addedSet
+                            // 同一个应用/工具只能属于一组：另一组已有的条目在这里直接拦住。
+                            val conflict = !added && app.target in otherSet
                             BasicComponent(
                                 title = app.label,
-                                summary = app.packageName,
+                                summary =
+                                    if (conflict) {
+                                        stringResource(
+                                            R.string.pinned_in_other_group,
+                                            radialGroupLabel(group.opposite),
+                                        )
+                                    } else {
+                                        app.packageName
+                                    },
                                 startAction = { AppIcon(app) },
                                 endActions =
                                     if (added) {
@@ -348,10 +405,11 @@ internal fun PinnedAppsScreen(
                                                 .take(ModulePreferences.MAX_PINNED_APPS)
                                         }
                                     localOrder = updated
-                                    onPinnedTargetsChange(updated)
+                                    onPinnedTargetsChange(group, updated)
                                 },
                                 enabled =
                                     state.settingsEditable &&
+                                        !conflict &&
                                         (added || displayed.size < ModulePreferences.MAX_PINNED_APPS) &&
                                         (added || app.target is PinnedTarget.App || sidebarCatalog.status == SidebarCatalogStatus.Ready),
                             )
@@ -492,3 +550,24 @@ private fun PinnedTarget.displayIdentity(): String = when (this) {
     is PinnedTarget.App -> packageName
     is PinnedTarget.Sidebar -> alias
 }
+
+/** 分组在界面上的名字；两处（编辑页与左右侧选择）共用同一套文案。 */
+@Composable
+internal fun radialGroupLabel(group: RadialGroup): String =
+    stringResource(
+        when (group) {
+            RadialGroup.Primary -> R.string.radial_group_default
+            RadialGroup.Alternate -> R.string.radial_group_second
+        },
+    )
+
+/** 第二组生效位置在界面上的名字。 */
+@Composable
+internal fun radialGroupSideLabel(side: RadialGroupSide): String =
+    stringResource(
+        when (side) {
+            RadialGroupSide.Disabled -> R.string.radial_group_side_disabled
+            RadialGroupSide.Left -> R.string.radial_side_left
+            RadialGroupSide.Right -> R.string.radial_side_right
+        },
+    )

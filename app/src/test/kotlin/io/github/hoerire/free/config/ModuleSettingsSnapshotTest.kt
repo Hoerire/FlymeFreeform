@@ -174,6 +174,89 @@ class ModuleSettingsSnapshotTest {
         val restored = ModuleSettingsSnapshot.readFrom(preferences)
         assertEquals(160, restored.cornerTriggerRangeDp)
     }
+
+    @Test
+    fun alternateGroupAndEffectiveSideRoundTripIndependently() {
+        val alternate =
+            listOf(
+                PinnedTarget.App("com.alt", "com.alt.Main"),
+                PinnedTarget.Sidebar(PinnedTarget.Kind.Tool, "capture", 0),
+            )
+        val expected =
+            ModuleSettingsSnapshot(
+                pinsSaved = true,
+                pinnedTargets = listOf(PinnedTarget.App("com.main", "com.main.Main")),
+                alternatePinnedTargets = alternate,
+                secondaryGroupSide = RadialGroupSide.Right,
+            )
+        val preferences = InMemoryPreferences()
+        expected.writeTo(preferences.edit()).commit()
+
+        val restored = ModuleSettingsSnapshot.readFrom(preferences)
+        assertEquals(expected, restored)
+        assertEquals(expected.pinnedTargets, restored.pinsFor(RadialGroup.Primary))
+        assertEquals(alternate, restored.pinsFor(RadialGroup.Alternate))
+        assertEquals(RadialGroupSide.Right, restored.secondaryGroupSide)
+        // 右侧换成第二组，左侧仍是默认组。
+        assertEquals(RadialGroup.Primary, restored.groupForSide(left = true))
+        assertEquals(RadialGroup.Alternate, restored.groupForSide(left = false))
+    }
+
+    @Test
+    fun missingAlternateGroupLeavesPrimaryPinsUntouched() {
+        val preferences =
+            InMemoryPreferences(ModulePreferences.KEY_PINNED_TARGETS to "A|com.a/com.a.A")
+
+        val snapshot = ModuleSettingsSnapshot.readFrom(preferences)
+
+        assertTrue(snapshot.alternatePinnedTargets.isEmpty())
+        assertEquals(
+            listOf(PinnedTarget.App("com.a", "com.a.A")),
+            snapshot.pinnedTargets,
+        )
+        // 默认不启用：两侧都用默认组。
+        assertEquals(RadialGroupSide.Disabled, snapshot.secondaryGroupSide)
+        assertEquals(RadialGroup.Primary, snapshot.groupForSide(left = true))
+        assertEquals(RadialGroup.Primary, snapshot.groupForSide(left = false))
+    }
+
+    @Test
+    fun unknownStoredEffectiveSideFallsBackToDisabled() {
+        val preferences =
+            InMemoryPreferences(ModulePreferences.KEY_SECONDARY_GROUP_SIDE to 99)
+
+        val snapshot = ModuleSettingsSnapshot.readFrom(preferences)
+
+        assertEquals(RadialGroupSide.Disabled, snapshot.secondaryGroupSide)
+        assertEquals(RadialGroup.Primary, snapshot.groupForSide(left = true))
+        assertEquals(RadialGroup.Primary, snapshot.groupForSide(left = false))
+    }
+
+    @Test
+    fun pinnedMembershipCoversBothGroups() {
+        val primaryPin = PinnedTarget.App("com.main", "com.main.Main")
+        // 第二组里的工具以前会被启动前的准入校验当成「不在固定项」，导致点了没反应。
+        val alternatePin = PinnedTarget.Sidebar(PinnedTarget.Kind.Tool, "capture", 0)
+        val snapshot =
+            ModuleSettingsSnapshot(
+                pinsSaved = true,
+                pinnedTargets = listOf(primaryPin),
+                alternatePinnedTargets = listOf(alternatePin),
+            )
+
+        assertTrue(snapshot.isPinned(primaryPin))
+        assertTrue(snapshot.isPinned(alternatePin))
+        assertFalse(snapshot.isPinned(PinnedTarget.App("com.other", "com.other.Main")))
+    }
+
+    @Test
+    fun leftSelectedSecondaryGroupLeavesRightSideOnPrimary() {
+        val snapshot =
+            ModuleSettingsSnapshot(secondaryGroupSide = RadialGroupSide.Left)
+
+        assertEquals(RadialGroup.Alternate, snapshot.groupForSide(left = true))
+        assertEquals(RadialGroup.Primary, snapshot.groupForSide(left = false))
+    }
 }
 
 private class InMemoryPreferences(vararg initialValues: Pair<String, Any>) : SharedPreferences {
