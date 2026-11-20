@@ -162,7 +162,6 @@ internal class CornerRadialOverlayView(
     private var radialRadiusPercent = ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT
 
     /** 选中光圈：滑选条目时是否在图标外沿画细白边与投影（静态）。 */
-    private var selectionRingEnabled = ModulePreferences.DEFAULT_RADIAL_SELECTION_RING
 
     /** 流光特效：常亮光圈、星头与运动轨迹（动态），独立于选中光圈。 */
     private var shimmerEnabled = ModulePreferences.DEFAULT_RADIAL_SHIMMER_ENABLED
@@ -186,6 +185,8 @@ internal class CornerRadialOverlayView(
     private val fingerY = mutableFloatStateOf(0f)
 
     private var selectedIndex: Int? = null
+    /** 本次手势里手指是否到过外半圈：只有到过，「往内角回拉」才按取消处理。 */
+    private var reachedOutward = false
     private var dismissing = false
     private var dismissNotified = false
     /** 松手当帧已把目标交给宿主（应用/快捷方式），退场动画结束后只做收尾。 */
@@ -240,13 +241,11 @@ internal class CornerRadialOverlayView(
         iconSizeDp: Int = ModulePreferences.DEFAULT_RADIAL_ICON_SIZE_DP,
         radiusPercent: Int = ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT,
         keepOpen: Boolean = false,
-        selectionRing: Boolean = ModulePreferences.DEFAULT_RADIAL_SELECTION_RING,
         shimmerEnabled: Boolean = ModulePreferences.DEFAULT_RADIAL_SHIMMER_ENABLED,
         shimmer: RadialShimmer = RadialShimmer(),
     ) {
         check(!isAttachedToWindow) { "Overlay must be initialized before it is attached" }
         this.keepOpen = keepOpen
-        this.selectionRingEnabled = selectionRing
         this.shimmerEnabled = shimmerEnabled
         this.shimmer = shimmer
         this.side = side
@@ -264,6 +263,7 @@ internal class CornerRadialOverlayView(
          radialImages.value = catalog.radialApps.map(::RadialImage)
         panelImages = catalog.panelApps.associate { entry -> entry.target to entry.icon.asImageBitmap() }
         selectedIndex = null
+        reachedOutward = false
         selectedIndexState.intValue = NO_SELECTION
         handoffEntryProgress.floatValue = 0f
         handoffLayoutState.value = EMPTY_LAYOUT
@@ -405,7 +405,7 @@ internal class CornerRadialOverlayView(
         // 缩放大于 1 时同比例拉长，避免模块动画比系统窗口动画先结束。
         val motionScale = remember { SystemMotion.durationScale() }
         val animationsEnabled = remember { SystemMotion.animationsRunning(motionScale) }
-        // Dock 式放大用的指针位置：手指给出目标，弹簧追过去。
+        // Dock 隆起圆心跟手（3.1.9 的做法）：手指给出目标，弹簧追过去。
         // dampingRatio < 1 会带一点过冲，指针扫过时图标"duang"一下再回落。
         val dockX by
             androidx.compose.animation.core.animateFloatAsState(
@@ -585,9 +585,9 @@ internal class CornerRadialOverlayView(
                 panelProgress = panelProgress,
                 radialHandoffProgress = radialHandoffProgress,
                 itemRings = itemRings,
-                animationsEnabled = animationsEnabled,
                 dockX = dockX,
                 dockY = dockY,
+                animationsEnabled = animationsEnabled,
             )
             if (keepOpen && !panelModeState.value) {
                 // 保持显示期间窗口可触摸：点中条目直接启动，点空白处收起。
@@ -657,9 +657,9 @@ internal class CornerRadialOverlayView(
         panelProgress: Animatable<Float, *>,
         radialHandoffProgress: Animatable<Float, *>,
         itemRings: List<Animatable<Float, *>>,
-        animationsEnabled: Boolean,
         dockX: Float,
         dockY: Float,
+        animationsEnabled: Boolean,
     ) {
         val itemColors = LocalRadialItemColors.current
         // 选中流光的旋转相位：只在动画可用时逐帧推进，关闭动画时停在固定角度。
@@ -726,10 +726,10 @@ internal class CornerRadialOverlayView(
                 contentAlpha = alpha,
                 contentScale = if (panelModeState.value) handoffVisuals.contentScale else 1f,
                 itemRings = itemRings,
-                colors = itemColors,
-                shimmerAngle = shimmerAngle.floatValue,
                 dockX = dockX,
                 dockY = dockY,
+                colors = itemColors,
+                shimmerAngle = shimmerAngle.floatValue,
             )
         }
     }
@@ -741,10 +741,10 @@ internal class CornerRadialOverlayView(
         contentAlpha: Float,
         contentScale: Float,
         itemRings: List<Animatable<Float, *>>,
-        colors: RadialItemColors,
-        shimmerAngle: Float,
         dockX: Float,
         dockY: Float,
+        colors: RadialItemColors,
+        shimmerAngle: Float,
     ) {
         val direction = if (layout.side == CornerSide.Left) 1f else -1f
         val overshoot = direction * RadialEntryMotion.HORIZONTAL_OVERSHOOT_DP * metrics.pixelsPerBaseDp * motion.horizontalOvershoot
@@ -763,8 +763,7 @@ internal class CornerRadialOverlayView(
                     .coerceIn(0f, 1f)
             }
         val globalStretch = 1f + STRETCH_GLOBAL * proximity
-        // Dock 隆起：以手指（弹簧平滑后的位置）为圆心算衰减，越近的图标抬得越高。
-        // 衰减同时决定「选中放大」的取舍（见下方 emphasis），不再单独放大图标。
+        // Dock 隆起：以手指（弹簧平滑后的位置）为圆心，越近的图标抬得越高。
         val dockInfluence = metrics.iconDiameter * DOCK_REACH
         val dockGate =
             if (panelModeState.value) {
@@ -796,20 +795,14 @@ internal class CornerRadialOverlayView(
             val unitX = itemVectorX / itemRadius
             val unitY = itemVectorY / itemRadius
             val ringProgress = itemRings.getOrNull(index)?.value ?: 0f
-            // 选中项沿径向往外顶：像被"拿起来"一格，和其他格拉开层次。
-            // 跟 ringProgress 走，所以选中/取消时会平滑地顶出与收回。
-            val selectedPush = ringProgress * metrics.iconDiameter * SELECTED_PUSH_RATIO
-            // Dock 隆起：只有指针附近这一段往外抬，弧的两端（上/下）保持不动，
-            // 否则整条弧一起平移，看起来就不像 Dock 了。
+            // Dock 隆起：只看指针距离做衰减，弧的两端保持不动。
             val dockDistance =
                 kotlin.math.hypot(destination.x - dockX, destination.y - dockY)
             val dockFalloff = (1f - dockDistance / dockInfluence).coerceIn(0f, 1f)
-            // 强调量：选中进度与指针衰减取大者。
-            // 命中范围有 40..140dp，手指经常离选中的那格很远（径向偏进/偏出弧线都会被算中），
-            // 只看指针距离的话，同一个格「按在图标上」和「在命中范围里划过」会一大一小。
-            // 选中即满档，和落点无关。
             val emphasis = maxOf(ringProgress, dockFalloff * dockFalloff)
             val dockLift = DOCK_LIFT_DP * metrics.pixelsPerBaseDp * emphasis * dockGate
+            // 选中项沿半径向外顶：比例由「选中外顶」设置控制，只有选中的那一格。
+            val selectedPush = ringProgress * metrics.iconDiameter * shimmer.selectedPushPercent / 100f
             val radialOffset = selectedPush + dockLift
             val centerX =
                 layout.origin.x + itemVectorX * localProgress * stretch +
@@ -817,35 +810,11 @@ internal class CornerRadialOverlayView(
             val centerY =
                 layout.origin.y + itemVectorY * localProgress * stretch +
                     unitY * radialOffset * localProgress
-            // 选中放大：严格按「选中放大」设置里的百分比走，Dock 放大不再作为另一个乘数
-            // 叠上去。之前两条路径各乘一次：设置 10% 时按在图标上实际是 1.4 × 1.1 ≈ 1.54 倍，
-            // 而同一个格从命中范围选中只有 1.1 倍，观感差一大截；设成 0 也照样会被 Dock 撑大。
-            // 邻格沿用同一条指针衰减，但上限同样是这个设置值，保证不会比选中的那格还大。
-            val emphasisScale = 1f + shimmer.selectionScalePercent / 100f * emphasis
+            // 选中放大：只作用于被选中的那一格，默认 0（关闭）；邻格不放大。
+            val emphasisScale = 1f + shimmer.selectionScalePercent / 100f * ringProgress
             val scale = motion.iconScale * contentScale * emphasisScale
             val diameter = metrics.iconDiameter * scale
             rotate(motion.rotationDegrees, pivot = Offset(centerX, centerY)) {
-                // 选中细节：先落一层很淡的椭圆投影（往下偏 5% 直径），图标看着是浮起来的，
-                // 而不是被硬放大的贴纸；放大完成后外沿再加一圈细高光，边界更清楚。
-                if (selectionRingEnabled && ringProgress > 0f) {
-                    val shadowRadius = diameter * 0.66f
-                    val shadowCenter = Offset(centerX, centerY + diameter * 0.05f)
-                    drawCircle(
-                        brush =
-                            Brush.radialGradient(
-                                colors =
-                                    listOf(
-                                        Color.Black.copy(alpha = METEOR_SHADOW_ALPHA),
-                                        Color.Transparent,
-                                    ),
-                                center = shadowCenter,
-                                radius = shadowRadius,
-                            ),
-                        radius = shadowRadius,
-                        center = shadowCenter,
-                        alpha = ringProgress * contentAlpha,
-                    )
-                }
                 // 外发光归「流光特效」：它的亮度与范围就在流光参数页里。
                 if (shimmerEnabled && ringProgress > 0f) {
                     val glowRadius = diameter * shimmer.glowRadiusPercent / 100f
@@ -871,21 +840,6 @@ internal class CornerRadialOverlayView(
                     }
                 } else {
                     drawMoreItem(centerX, centerY, diameter, contentAlpha, colors)
-                }
-                // 细边高光：只出现在选中态，半径按「光圈大小」缩放（100 = 贴图标外沿）。
-                // 与流光特效是两个独立功能，两者可以同时开着：这里只画静态的圈，动效在下面。
-                if (selectionRingEnabled && ringProgress > 0f) {
-                    val ringScale = shimmer.ringSizePercent.coerceIn(
-                        RadialShimmer.RING_SIZE_RANGE.first,
-                        RadialShimmer.RING_SIZE_RANGE.last,
-                    ) / 100f
-                    drawCircle(
-                        color = Color.White,
-                        radius = diameter / 2f * ringScale,
-                        center = Offset(centerX, centerY),
-                        alpha = ringProgress * contentAlpha * METEOR_RIM_ALPHA,
-                        style = Stroke(width = (diameter * METEOR_RIM_WIDTH).coerceAtLeast(METEOR_MIN_WIDTH_PX)),
-                    )
                 }
                 // 流光特效：一颗小星头 + 一段由细到粗、由亮到淡的运动轨迹，绕着常亮光圈跑。
                 if (shimmerEnabled && ringProgress > 0f) {
@@ -1300,6 +1254,18 @@ internal class CornerRadialOverlayView(
                 enterRadius = metrics.radial.selectionEnterRadius,
                 keepRadius = metrics.radial.selectionKeepRadius,
             )
+        val inwardDistance = kotlin.math.hypot(latestX - layout.origin.x, latestY - layout.origin.y)
+        if (inwardDistance >= layout.radius * CANCEL_INWARD_RATIO) reachedOutward = true
+        // 往内角回拉即取消：手指到过外半圈之后再退回内半圈，就收起，不依赖抬手事件。
+        // 底角是系统手势区，抢流后这条流可能被系统 CANCEL 且不再投递 UP，
+        // 那样菜单会一直定格在屏幕上；这里在判定层直接把「回拉」当成取消。
+        if (reachedOutward && inwardDistance < layout.radius * CANCEL_INWARD_RATIO) {
+            debug("SYSTEM_HIT_CANCEL_INWARD")
+            selectedIndex = null
+            selectedIndexState.intValue = NO_SELECTION
+            dismissAnimated()
+            return
+        }
         if (next == selectedIndex) return
         // 命中区判定细节：进了哪一格、离格心多远、当前生效的进入半径。
         val center = next?.let { layout.itemCenters.getOrNull(it) }
@@ -1511,19 +1477,11 @@ internal class CornerRadialOverlayView(
         const val SETTLE_FRACTION = 0.6f
 
         /**
-         * Dock 隆起的影响半径：以图标直径为单位。
-         *
-         * 2.2 意味着指针正下方的图标抬得最高，隔一到两个图标的位置基本不再抬，
-         * 与 macOS Dock 的邻域范围相当。
+         * Dock 隆起的影响半径（以图标直径为单位）：指针正下方最高，隔一两格基本不再抬。
          */
         const val DOCK_REACH = 2.2f
 
-        /**
-         * Dock 隆起的最大外移量（dp）。
-         *
-         * 只作用在指针附近、按同一条衰减收敛，弧的两端保持不动——
-         * 整条弧一起平移就不像 Dock 了。8dp 约 3mm。
-         */
+        /** Dock 隆起的最大外移量（dp）：只抬指针附近，弧的两端保持不动。 */
         const val DOCK_LIFT_DP = 8f
 
         /** 拉伸：手指贴近弧线时，整圈最多外扩这么多（8%）。 */
@@ -1534,14 +1492,6 @@ internal class CornerRadialOverlayView(
 
         /** 拉伸的生效窗口：|d/R - 1| 超过这个比例后完全不拉伸，避免手指远处也变形。 */
         const val STRETCH_FALLOFF = 0.75f
-
-        /**
-         * 选中项往外顶的比例：以图标直径为基准。
-         *
-         * 1/4 个图标（默认 44dp 图标即约 11dp），够把选中格和其他格区分开，
-         * 又不至于让它飞出扇形弧线太多。
-         */
-        const val SELECTED_PUSH_RATIO = 1f / 4f
 
         /**
          * 外扩量的硬上限（dp）。
@@ -1588,10 +1538,6 @@ internal class CornerRadialOverlayView(
         const val METEOR_MIN_STAR_RADIUS_PX = 1.4f
         const val METEOR_STAR_GLOW_SCALE = 1.5f
         const val METEOR_STAR_GLOW_ALPHA = 0.55f
-        /** 选中态的投影与细边高光。 */
-        const val METEOR_SHADOW_ALPHA = 0.20f
-        const val METEOR_RIM_ALPHA = 0.28f
-        const val METEOR_RIM_WIDTH = 0.022f
         /**
          * 浮层请求的刷新率上限：流光每帧都在动，交给系统按内容猜会掉到 120 甚至 60；
          * 显式要 165Hz，让 165Hz 屏上的旋转轨迹真正跑满。
@@ -1621,6 +1567,9 @@ internal class CornerRadialOverlayView(
         const val PANEL_CONTENT_TRANSLATION_FRACTION = 0.12f
         const val TICK_INTERVAL_MS = 80L
         const val GESTURE_TIMEOUT_MS = 5_000L
+
+        /** 回拉取消：手指退回半径的这个比例以内就收起扇形。 */
+        const val CANCEL_INWARD_RATIO = 0.55f
 
         const val PANEL_TIMEOUT_MS = 15_000L
         const val DISMISS_FALLBACK_GRACE_MS = 260L

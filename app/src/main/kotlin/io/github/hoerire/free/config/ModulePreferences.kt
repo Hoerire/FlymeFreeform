@@ -160,7 +160,6 @@ internal object ModulePreferences {
      * 圈宽由选中进度驱动（0 → 环宽），与图标放大一起构成选中反馈；
      * 关掉后只剩下放大。
      */
-    const val KEY_RADIAL_SELECTION_RING = "radial_selection_ring_v1"
 
     /**
      * 流光特效：选中项外沿那圈常亮光圈、星头与运动轨迹。
@@ -230,8 +229,6 @@ internal object ModulePreferences {
     const val DEFAULT_RADIAL_KEEP_OPEN = false
     /** 扇形交互默认开启：不想要扇形菜单的用户在设置里关掉即可。 */
     const val DEFAULT_RADIAL_INTERACTION_ENABLED = true
-    /** 选中光圈默认关闭：默认只保留 20% 的选中放大，特效由用户自己开。 */
-    const val DEFAULT_RADIAL_SELECTION_RING = false
     const val DEFAULT_RADIAL_SHIMMER_ENABLED = false
     /** 解除限制默认关闭：改写的是系统级拖拽准入，由用户主动开启。 */
     const val DEFAULT_FREE_DRAG = false

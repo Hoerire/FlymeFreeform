@@ -251,7 +251,6 @@ internal class ColorOsFreeformCoordinator(
                 iconSizeDp = lastSettings.radialIconSizeDp,
                 radiusPercent = lastSettings.radialRadiusPercent,
                 keepOpen = false,
-                selectionRing = lastSettings.radialSelectionRing,
                 shimmerEnabled = lastSettings.radialShimmerEnabled,
                 shimmer = lastSettings.radialShimmer,
             )
@@ -978,7 +977,6 @@ internal class ColorOsFreeformCoordinator(
                 iconSizeDp = lastSettings.radialIconSizeDp,
                 radiusPercent = lastSettings.radialRadiusPercent,
                 keepOpen = keepOpen,
-                selectionRing = lastSettings.radialSelectionRing,
                 shimmerEnabled = lastSettings.radialShimmerEnabled,
                 shimmer = lastSettings.radialShimmer,
             )
@@ -1288,6 +1286,13 @@ internal class ColorOsFreeformCoordinator(
     override fun onDismissRequested() {
         activeEnvironmentApproved = false
         gestureEngine.cancel()
+        // 浮层关闭即本次手势收场：把抢流会话一起清掉。
+        // 不清的话，下一次按下会被当成「抢流后系统重发的 DOWN」，用上一次手势残留的
+        // 抢流信息瞬间激活一份浮层；而新流可能同样没有 UP（在底角被系统掐断），
+        // 这份浮层就只能等 5 秒超时，表现为「呼出后卡住 5 秒」。
+        pilferSessionActive = false
+        pilferActivateSide = null
+        lastPointerEventAt = 0
         // 退场动画已播完，直接移除；不再经过最小可见时长的延迟。
         removeOverlay(immediate = true)
     }
@@ -1441,6 +1446,9 @@ internal class ColorOsFreeformCoordinator(
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.FILL
+            // 主动申请高刷：扇形展开/收起、选中与流光都是逐帧动画，
+            // 不声明的话 WMS 会按内容省电策略压到 120 甚至 60。
+            preferredRefreshRate = PREFERRED_REFRESH_RATE
             layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
             setFitInsetsTypes(0)
@@ -2227,6 +2235,9 @@ internal class ColorOsFreeformCoordinator(
         /** `WindowManager.LayoutParams.FLAG_BLUR_BEHIND`；隐藏常量，值为 0x4。 */
         const val FLAG_BLUR_BEHIND = 0x00000004
         const val OVERLAY_FAILURE_LOG_INTERVAL_MS = 10_000L
+
+        /** 浮层窗口申请的刷新率：165Hz 屏上直接跑满，其它屏由系统取最接近的一档。 */
+        const val PREFERRED_REFRESH_RATE = 165f
 
         /** 浮层最小可见时长：短于该值的「呼出即收起」会造成一次画面闪烁。 */
 

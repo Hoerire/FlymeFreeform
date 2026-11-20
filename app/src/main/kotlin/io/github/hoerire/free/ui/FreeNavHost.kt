@@ -117,7 +117,6 @@ internal fun FreeNavHost(
     onRadialInteractionEnabledChange: (Boolean) -> Unit,
     onRadialKeepOpenChange: (Boolean) -> Unit,
     onSecondaryGroupSideChange: (RadialGroupSide) -> Unit,
-    onRadialSelectionRingChange: (Boolean) -> Unit,
     onRadialShimmerEnabledChange: (Boolean) -> Unit,
     onRadialShimmerChange: (RadialShimmer) -> Unit,
     onRadialRadiusPercentChange: (Int) -> Unit,
@@ -275,7 +274,6 @@ internal fun FreeNavHost(
                 RadialEffectScreen(
                     state = state,
                     onBack = popBackStack,
-                    onRadialSelectionRingChange = onRadialSelectionRingChange,
                     onRadialShimmerEnabledChange = onRadialShimmerEnabledChange,
                     onRadialShimmerChange = onRadialShimmerChange,
                     onNavigateToRadialShimmer = navigateToRadialShimmer,

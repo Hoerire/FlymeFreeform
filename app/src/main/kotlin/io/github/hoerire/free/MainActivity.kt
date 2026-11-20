@@ -88,7 +88,6 @@ class MainActivity : ComponentActivity() {
                     onRadialInteractionEnabledChange = repository::setRadialInteractionEnabled,
                     onRadialKeepOpenChange = repository::setRadialKeepOpen,
                     onSecondaryGroupSideChange = repository::setSecondaryGroupSide,
-                    onRadialSelectionRingChange = repository::setRadialSelectionRing,
                     onRadialShimmerEnabledChange = repository::setRadialShimmerEnabled,
                     onRadialShimmerChange = repository::setRadialShimmer,
                     onRadialRadiusPercentChange = repository::setRadialRadiusPercent,

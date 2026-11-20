@@ -122,9 +122,6 @@ internal class FrameworkConnectionRepository(private val context: Context) {
         updateSettings { it.copy(radialInteractionEnabled = enabled) }
 
     /** 选中光圈：滑选条目时是否绘制白色高亮圈。 */
-    fun setRadialSelectionRing(enabled: Boolean) =
-        updateSettings { it.copy(radialSelectionRing = enabled) }
-
     /** 流光特效：选中项外沿的动效，与「选中光圈」互相独立。 */
     fun setRadialShimmerEnabled(enabled: Boolean) =
         updateSettings { it.copy(radialShimmerEnabled = enabled) }

@@ -20,7 +20,6 @@ internal object RadialEntryMotion {
     const val DURATION_MILLIS = 380L
     const val SELECTION_DURATION_MILLIS = 200L
     const val HORIZONTAL_OVERSHOOT_DP = 6f
-    const val SELECTION_RING_ALPHA = 64f / 255f
 
     /** 淡入曲线：Material 3 emphasized decelerate。 */
     private val fade =

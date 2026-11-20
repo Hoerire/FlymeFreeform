@@ -94,10 +94,8 @@
     <string name="radial_interaction_summary">关闭后底角手势全部停用</string>
     <string name="radial_keep_open_title">保持挂起</string>
     <string name="radial_keep_open_summary">松手保持扇形菜单，可以继续滑动点选应用</string>
-    <string name="radial_selection_ring_title">选中光圈</string>
-    <string name="radial_selection_ring_summary">滑选到某个应用时，沿图标外沿勾一圈细白边并在下方加一层投影</string>
   <string name="radial_effect_group_title">选中特效</string>
-  <string name="radial_effect_entry_summary">选中光圈 · 流光特效 · 选中放大</string>
+  <string name="radial_effect_entry_summary">流光特效 · 选中放大 · 选中外顶</string>
   <string name="radial_size_page_title">外观细节</string>
   <string name="radial_size_entry_summary">命中范围 · 图标大小 · 扇形大小 · 背景遮罩</string>
   <string name="radial_size_preview_hint">拖动滑杆时，这张示意图会跟着变</string>
@@ -117,10 +115,10 @@
     <string name="radial_shimmer_glow_alpha_summary">图标四周柔光的峰值不透明度（百分比）</string>
     <string name="radial_shimmer_glow_radius_title">外发光半径</string>
     <string name="radial_shimmer_glow_radius_summary">柔光的扩散范围，按图标直径的百分比</string>
-    <string name="radial_ring_size_title">光圈大小</string>
-    <string name="radial_ring_size_summary">白色细边相对图标外沿的大小，100 即贴边</string>
   <string name="radial_shimmer_scale_title">选中放大</string>
-    <string name="radial_shimmer_scale_summary">选中时图标放大的比例（百分比），0 为不放大</string>
+  <string name="radial_shimmer_scale_summary">选中时图标放大的比例（百分比），默认 0 不放大</string>
+  <string name="radial_selected_push_title">选中外顶</string>
+  <string name="radial_selected_push_summary">选中格沿半径向外顶出的比例（图标直径的百分比），0 为不顶</string>
     <string name="zoom_limit_removed_title">小窗交互</string>
     <string name="zoom_interaction_title">轻量打开</string>
     <string name="zoom_launch_scenes_hint">在以下场景使用自由浮窗打开</string>

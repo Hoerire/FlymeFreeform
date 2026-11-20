@@ -90,7 +90,6 @@ class ModuleMain : XposedModule() {
                     // 底角手势总闸：关掉后抢流/防穿透/桌面接管都不参与，排查时先看这一位。
                     "_radial" + settings.cornerInteractionActive +
                     "_keep" + settings.radialKeepOpen +
-                    "_ring" + settings.radialSelectionRing +
                     "_tap" + settings.outsideTapCloseMode.storedValue +
                     "_vlog" + settings.verboseLogEnabled +
                     "_pins" + settings.pinnedTargets.size +
