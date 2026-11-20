@@ -82,7 +82,7 @@ internal class NotifBundleHook(
         }
 
         // 横幅与通知面板共用这一个启动组装入口，各自只受自己的开关约束：
-        // 之前只判「通知横幅」，于是关掉「通知中心」仍会从这里以小窗启动。
+        // 只判「通知横幅」会让关掉「通知中心」后仍从这里以小窗启动。
         val key = keyOf(entry)
         val headsUp = isHeadsUp(key)
         val allowed =

@@ -8,14 +8,14 @@
   <img src="https://img.shields.io/badge/ROM-ColorOS-00A862" alt="面向 ColorOS" />
   <img src="https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android" alt="最低 Android 15" />
   <img src="https://img.shields.io/badge/libxposed-API_102-4285F4" alt="libxposed API 102" />
-  <img src="https://img.shields.io/badge/version-3.2.1-blue" alt="版本 3.2.1" />
+  <img src="https://img.shields.io/badge/version-3.2.2-blue" alt="版本 3.2.2" />
 </p>
 
 把魅族的 Flyme 小窗交互搬到 ColorOS：从屏幕底角斜向内上滑呼出扇形菜单，滑到目标松手，当即以自由浮窗打开。
 
 这是一个 LSPosed 模块，在不改动系统分区的前提下增强 ColorOS 的自由浮窗：扇形菜单、通知与横幅小窗、侧边栏目录、更多面板、内容传送门都走系统自己的窗口与管理链路，设置改完即时生效。
 
-当前版本 **3.1.8**，改动记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **3.2.2**，改动记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 预览
 
@@ -70,6 +70,20 @@
 
 判定条件：按下的位置要落在当前浮动窗口的可见区域内，且位移不超过 40px；正常拖动、缩放窗口不会误触发。
 
+### 气泡通知
+
+白名单应用的通知变成一颗可拖动的圆形气泡，点开直接进应用，同时接管系统横幅。
+
+- **内容浮层**：气泡旁显示应用、标题与正文，停留时长随文字长度自动调整；也可只在贴边时显示
+- **队列与展开**：多条通知依次排队，上滑或长按展开一排，点哪条开哪条
+- **拖动与贴边**：拖到任意位置，松手贴边半隐藏；到点变暗留置或收起，横竖屏分别记住落点
+- **分身**：分身应用的通知独立成键，点气泡直接进对应实例，不弹「选择打开的应用」
+- **状态栏滚动**：最新通知以「应用·标题 正文」在状态栏时钟位置滚动，独立开关与白名单
+- **即时建议**：手电筒、耳机音乐、新装应用、剪贴板识别（电话/链接/地址/快递，默认关闭，全部在本机完成）
+- **免打扰**：当前正在用的应用、游戏、锁屏与息屏都可以不出气泡，三项各自独立开关
+
+外观（大小、图标、角标、动效）、停留时长、浮层、白名单都在 **设置 → 气泡通知** 里，改完即时生效。
+
 ### 自由传送
 
 两个独立开关，按需开启：
@@ -117,12 +131,14 @@
 ## 致谢
 
 - [Mangi-11/Flyna](https://github.com/Mangi-11/Flyna)：上游来源，原作者 Mangi-11
+- [congree-ci/BubbleNotify](https://github.com/congree-ci/BubbleNotify)：气泡通知的视觉与动效参考来源，气泡、堆叠、内容浮层与状态栏滚动的绘制逻辑据此转写
 - [Flyme](https://www.flyme.com/)：交互设计参考
 - [libxposed API](https://github.com/libxposed/api)：现代 Xposed API
 - [vialoyed-ctrl](https://github.com/vialoyed-ctrl)：内容传送门的分享面板与实现思路
 - [COUI](https://github.com/suqi8/coui)：ColorOS 17 风格组件库，设置页与弹层基于它实现
+- [DexKit](https://github.com/LuckyPray/DexKit)：解析桌面与侧边栏 APK 的混淆成员，目录扫描与快捷方式定位基于它实现
 
-界面层的第三方许可合规：COUI 2.0.0 以 Apache-2.0 发布，使用 Maven Central 的原始 AAR、未修改库源码，完整许可文本随 APK 附带在 `assets/licenses/coui-APACHE-2.0.txt`；COUI 构建在 [Miuix](https://github.com/compose-miuix-ui/miuix)（同为 Apache-2.0）之上。应用图标的目录扫描使用 [DexKit 2.3.0](https://github.com/LuckyPray/DexKit/tree/2.3.0)（Apache-2.0 / LGPL-3.0）。完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+第三方库只有两个：界面用的 **COUI**，以及扫描桌面/侧边栏 APK 用的 **DexKit**。Miuix、FlatBuffers 等是它们自身的依赖，随构建一起带进来，项目代码不直接使用。许可合规：COUI 2.0.0 以 Apache-2.0 发布，使用 Maven Central 的原始 AAR、未修改库源码，完整许可文本随 APK 附带在 `assets/licenses/coui-APACHE-2.0.txt`；COUI 构建在 [Miuix](https://github.com/compose-miuix-ui/miuix)（同为 Apache-2.0）之上。应用图标的目录扫描使用 [DexKit 2.3.0](https://github.com/LuckyPray/DexKit/tree/2.3.0)（Apache-2.0 / LGPL-3.0）。完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 许可
 

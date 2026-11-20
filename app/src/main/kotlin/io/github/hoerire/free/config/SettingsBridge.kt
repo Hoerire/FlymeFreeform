@@ -5,9 +5,9 @@ import android.content.SharedPreferences
 /**
  * 模块应用与 hook 进程之间的设置通道协议。
  *
- * 框架服务只在模块安装或升级后投递一次，进程重启后不再投递（实测：装完首次启动有 binder 投递，
- * 进程结束再打开则完全收不到），因此设置读写不再依赖该服务，改走常驻广播通道：
- * 模块应用把整份快照推给 system_server，system_server 落盘并发回权威快照。
+ * 框架服务只在模块安装或升级后的首次进程启动时投递，进程重启后不再投递，因此设置读写
+ * 不依赖该服务，改走常驻广播通道：模块应用把整份快照推给 system_server，
+ * system_server 落盘并发回权威快照。
  */
 internal object SettingsBridge {
     const val EXTRA_SETTINGS_MAP = "settings_map"

@@ -159,7 +159,7 @@ internal class CornerGestureEngine {
          * 角区手势必须是「斜向」的：upward 至少达到 inward 的这个比例（约 14°）。
          *
          * 挡的是"几乎水平"的内向拖动 —— 视频进度条、横向列表就在触发范围内，
-         * 拖动时 upward≈0，旧逻辑会把它当成斜推并抢流，表现为进度条拖不动。
+         * 拖动时 upward≈0，若当成斜推去抢流，表现为进度条拖不动。
          *
          * ⚠️ 抢流判定（`ColorOsFreeformCoordinator.shouldStartPilfer`、
          * `CornerInputPilferMonitor`）用的是**同一个常量**：两处必须一致，

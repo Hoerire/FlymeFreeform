@@ -18,7 +18,7 @@ import io.github.libxposed.api.XposedModule
  * | 17.3.18 | [PortalTapLegacy] | `d6.x0` | `m` / `n` / `p` | `DragEventReceiver.l` | `H(1)` / `U0()` |
  * | 17.5.4 | [PortalTapModern] | `u61` | `k` / `l` / `n` | 窗口 `c` → `zd.i`（`ml0`），回调在热区 `sz.b` | `s(String)`、`g()` / `r(Z)` |
  *
- * 旧版的完整做法（[PortalTapLegacy]，17.3.18 实测名）：
+ * 17.3.18 的完整做法（[PortalTapLegacy]，上表所列方法名）：
  *   · 绑定：`ContentPortalService.onBind` 建立会话，窗口取服务字段 `c`；
  *   · 长按即弹：钩 `DragEventReceiver.g(4)` 拿到拖动坐标，再调 `l(4)` 派发 ENTER，
  *     原厂收到 ENTER 才会把面板升到手指位置；

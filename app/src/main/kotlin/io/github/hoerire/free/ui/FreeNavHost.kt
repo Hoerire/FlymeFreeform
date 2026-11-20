@@ -63,19 +63,21 @@ internal sealed interface AppRoute {
     /** 贴边浮标二级页：贴边挂机 / 浮标数量。 */
     object ZoomEdgeFloat : AppRoute
 
+    /** 气泡通知设置页：应用 / 分身应用两组白名单 + 外观。 */
+    object Bubble : AppRoute
+
     object About : AppRoute
 }
 
 /**
  * 设置界面与各级子页面。
  *
- * **不要换回第三方导航组件。** 早期用过的导航库给每条 entry 都挂了一层全屏
+ * **不要换回第三方导航组件。** 这类组件的过场会为每条 entry 挂一层全屏
  * `pointerInput` 输入阻断，条件是
  * `blockInputDuringTransition && !isSettled && targetScene != transition.targetState`，
  * 而 settled 由内部 `SeekableTransitionState` 的 animateTo 协程推动。从二级页返回时
  * 该协程没走到位，退出的那一页就永远留在组合树里，视觉上它已经透明（看起来停在设置页），
- * 但它的阻断层把后续所有点击都吞掉 —— 表现就是「返回后界面卡住、只有输入事件、路由不变」。
- * 日志：返回后路由已变化，后续点击不再产生路由变化 —— 与「阻断层仍在树上」一致。
+ * 但它的阻断层把后续所有点击都吞掉 —— 表现为「返回后界面卡住、只有输入事件、路由不变」。
  * 因此按路由直接切页，转场交给 [RouteTransition] 用 graphicsLayer 实现：
  * 没有可拖动的转场状态机、没有残留组合、没有输入阻断，也不逐帧重排页面。
  */
@@ -84,6 +86,8 @@ internal fun FreeNavHost(
     stateFlow: kotlinx.coroutines.flow.StateFlow<FrameworkConnectionState>,
     appsFlow: kotlinx.coroutines.flow.StateFlow<List<SelectableEntry>>,
     appsLoadingFlow: kotlinx.coroutines.flow.StateFlow<Boolean>,
+    clonesFlow: kotlinx.coroutines.flow.StateFlow<List<io.github.hoerire.free.bubble.CloneApp>>,
+    onRefreshClones: () -> Unit,
     sidebarCatalogFlow: kotlinx.coroutines.flow.StateFlow<io.github.hoerire.free.apps.SidebarCatalogState>,
     onRefreshCatalog: () -> Unit,
     onCancelCatalog: () -> Unit,
@@ -123,6 +127,7 @@ internal fun FreeNavHost(
     onRequestScopes: () -> Unit,
     onPinnedTargetsChange: (RadialGroup, List<PinnedTarget>) -> Unit,
     onBlacklistChange: (List<String>) -> Unit,
+    onBubbleSettingsChange: (BubbleSettingsTransform) -> Unit,
     updateFlow: kotlinx.coroutines.flow.StateFlow<UpdateState>,
     onCheckUpdate: () -> Unit,
     onDismissUpdate: (String) -> Unit,
@@ -172,6 +177,7 @@ internal fun FreeNavHost(
     val navigateToEdgeFloat: () -> Unit =
         remember(backStack) { { pushRoute(AppRoute.ZoomEdgeFloat) } }
     val navigateToAbout: () -> Unit = remember(backStack) { { pushRoute(AppRoute.About) } }
+    val navigateToBubble: () -> Unit = remember(backStack) { { pushRoute(AppRoute.Bubble) } }
     val navigateToZoomOptions: () -> Unit =
         remember(backStack) { { pushRoute(AppRoute.ZoomOptions) } }
     val navigateToZoomLaunchScenes: () -> Unit =
@@ -191,6 +197,7 @@ internal fun FreeNavHost(
     val apps = appsFlow.collectAsState().value
     val appsLoading = appsLoadingFlow.collectAsState().value
     val sidebarCatalog = sidebarCatalogFlow.collectAsState().value
+    val clones = clonesFlow.collectAsState().value
     val update = updateFlow.collectAsState().value
 
     LaunchedEffect(route) {
@@ -222,6 +229,16 @@ internal fun FreeNavHost(
                     onNavigateToZoomOptions = navigateToZoomOptions,
                     onNavigateToFreeDrag = navigateToFreeDrag,
                     onNavigateToAbout = navigateToAbout,
+                    onNavigateToBubble = navigateToBubble,
+                )
+            AppRoute.Bubble ->
+                BubbleScreen(
+                    state = state,
+                    apps = apps,
+                    clones = clones,
+                    onRefreshClones = onRefreshClones,
+                    onBack = popBackStack,
+                    onSettingsChange = onBubbleSettingsChange,
                 )
             AppRoute.About ->
                 AboutScreen(
@@ -390,6 +407,7 @@ private fun routeOfName(name: String): AppRoute? =
         AppRoute.FreeDrag.javaClass.name -> AppRoute.FreeDrag
         AppRoute.ZoomGesture.javaClass.name -> AppRoute.ZoomGesture
         AppRoute.ZoomEdgeFloat.javaClass.name -> AppRoute.ZoomEdgeFloat
+        AppRoute.Bubble.javaClass.name -> AppRoute.Bubble
         AppRoute.About.javaClass.name -> AppRoute.About
         else -> null
     }

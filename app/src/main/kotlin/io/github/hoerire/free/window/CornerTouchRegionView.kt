@@ -42,7 +42,7 @@ internal class CornerTouchRegionView(
          * 扇形一旦激活就等于进入模态：屏幕上的触摸先由模块接住，
          *   - 落在扇形上 → 选格；
          *   - 落在扇形之外 → 关闭扇形（见 [ColorOsFreeformCoordinator.handleTouchRegionEvent]），
-         *     **不再落到下层应用**（之前只盖下半屏，点上半屏会把点击/tap 送给应用）。
+         *     **不再落到下层应用**（只盖下半屏时，点上半屏会把点击/tap 送给应用）。
          * 底部手势条仍然让给系统，从底部上滑回桌面/进多任务照常可用。
          */
         fun layoutParams(

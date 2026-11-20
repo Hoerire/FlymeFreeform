@@ -21,6 +21,7 @@ import androidx.compose.material.icons.rounded.ElectricalServices
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.SwipeRight
 import androidx.compose.material3.Icon
@@ -89,6 +90,7 @@ internal fun ControlScreen(
     onNavigateToZoomOptions: () -> Unit,
     onNavigateToFreeDrag: () -> Unit,
     onNavigateToAbout: () -> Unit,
+    onNavigateToBubble: () -> Unit,
 ) {
     val featuresEnabled = state.settingsEditable && state.settings.enabled
 
@@ -118,6 +120,7 @@ internal fun ControlScreen(
                             onNavigateToZoomOptions = onNavigateToZoomOptions,
                             onNavigateToBlacklist = onNavigateToBlacklist,
                             onNavigateToFreeDrag = onNavigateToFreeDrag,
+                            onNavigateToBubble = onNavigateToBubble,
                         )
                     }
             item(key = "about") {
@@ -135,6 +138,7 @@ private fun EntryCard(
     onNavigateToZoomOptions: () -> Unit,
     onNavigateToBlacklist: () -> Unit,
     onNavigateToFreeDrag: () -> Unit,
+    onNavigateToBubble: () -> Unit,
 ) {
     SettingsGroup(modifier = Modifier.fillMaxWidth()) {
         ArrowPreference(
@@ -160,6 +164,13 @@ private fun EntryCard(
         )
         // 自由传送原本是独立卡片（开关 + 长按时长两条），并进这张卡后只留一行入口，
         // 具体的两个功能开关与滑杆都在二级页里。
+        ArrowPreference(
+            title = stringResource(R.string.bubble_feature_title),
+            summary = stringResource(R.string.bubble_feature_summary),
+            onClick = onNavigateToBubble,
+            enabled = featuresEnabled,
+            startAction = { PreferenceIcon(Icons.Rounded.Notifications, featuresEnabled) },
+        )
         ArrowPreference(
             title = stringResource(R.string.free_drag_title),
             summary = stringResource(R.string.free_drag_summary),

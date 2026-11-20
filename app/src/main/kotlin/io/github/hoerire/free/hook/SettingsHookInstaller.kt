@@ -53,8 +53,7 @@ internal class SettingsHookInstaller(
      *
      * 基类挂点收不到回调：`OplusTopLevelSettings` 覆盖了 `onCreate` / `onCreatePreferences`
      * 且不调用基类实现。等到 `onResume` 才插入时列表已完成绑定与布局，后插入的条目
-     * 画得出内容却接不到自己的点击，命中会落到下一行（日志：点在「Free」但
-     * `SETTINGS_PERFORM_CLICK_kpersonal_assist`）。
+     * 画得出内容却接不到自己的点击，命中会落到下一行。
      */
     private fun hookConcreteHomeFragment(fragmentLoader: ClassLoader) {
         val type =
@@ -231,7 +230,7 @@ internal class SettingsHookInstaller(
      * 「操作教程」入口改道：该条目点击后进入 OperationActivity（自由浮窗的操作引导页），
      * hook 它的 onCreate，改道启动 Free 模块，原引导页不再显示。
      *
-     * 页面主体是 COUI 自绘列表，偏好框架只是壳（混淆方法表实测不走 addPreference 链路），
+     * 页面主体是 COUI 自绘列表，偏好框架只是壳（混淆方法表里没有 addPreference 链路），
      * 逐条目注入不可行；把「操作教程」作为模块入口是用户选定的方案。
      */
     private fun hookOperationRedirect(fragmentLoader: ClassLoader) {

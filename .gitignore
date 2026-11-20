@@ -44,8 +44,17 @@ Thumbs.db
 
 # 本地运维：交接文档、约束、token、本地脚本与临时/发布目录，一律不入库
 /HANDOFF.md
+/HANDOFF_NEXT.md
 /CONSTRAINTS.md
+/FLOW_JUMP_HANDOFF.md
 /PUSH_TOKEN.txt
+# 气泡子系统的工作文档（模块地图、待办、设计、开关速查）：本地维护用，不进公开仓库。
+# 对外说明只保留 README 与 THIRD_PARTY_NOTICES.md。
+/BUBBLE_HANDOFF.md
+/BUBBLE_MODULE.md
+/BUBBLE_TODO.md
+/BUBBLE_DESIGN.md
+/BUBBLE_SWITCHES.md
 /*.js
 /*.sh
 /tmp/

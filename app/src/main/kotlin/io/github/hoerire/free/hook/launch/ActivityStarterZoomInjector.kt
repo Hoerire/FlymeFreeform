@@ -563,7 +563,7 @@ internal class ActivityStarterZoomInjector(
         // 注入的参数会让窗口创建在锁屏之下，或表现为「小窗悬浮在全屏之上」。
         //
         // 这条判定在 preemptWithZoomWindow（lane1）里一直有，本方法（lane2 补参数）
-        // 之前漏了，于是即使 SystemUI 侧的 NotifBundleHook 拒绝改写，这里仍会把
+        // 也必须同样拦截，否则即使 SystemUI 侧的 NotifBundleHook 拒绝改写，这里仍会把
         // 锁屏下拉通知中心点开的通知补成小窗。
         if (environment?.isDeviceUnlocked(refreshKeyguard = true) == false) {
             ModuleLog.debug(TAG) { "ZOOM_SKIP_KEYGUARD" }
@@ -631,7 +631,7 @@ internal class ActivityStarterZoomInjector(
         // 应用锁放行：系统在 ActivityStarter 之前就拦掉了用户那次启动，解锁成功后由安全
         // 中心拿被拦截的原意图（MAIN + resultTo）把目标重新拉起。它不属于应用互跳，而是
         // 「用户点进来的那次启动」被守卫接手后继续执行，形态必须跟原入口一致——密码页本身
-        // 不改写，此处再开成小窗会让同一流程前后形态不一致（日志：解锁后邮件变成小窗）。
+        // 不改写，此处再开成小窗会让同一流程前后形态不一致（表现为解锁后直接进了小窗）。
         if (callingPackage != null && callingPackage in GUARD_CALLERS) {
             ModuleLog.debug(TAG) { "ZOOM_SKIP_GUARD_LAUNCH_cp" + callingPackage + "_tg" + target }
             return null

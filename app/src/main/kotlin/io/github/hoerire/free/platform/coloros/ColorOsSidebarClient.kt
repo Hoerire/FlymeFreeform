@@ -252,7 +252,7 @@ internal class ColorOsSidebarClient(
         }
     }
 
-    /** 先让系统弹原生面板；失败再走原来的 fallback。 */
+    /** 先让系统弹原生面板；失败再走兜底 fallback。 */
     private fun applyOrNative(request: Request, effect: MorePanelSession.Effect) {
         if (effect != MorePanelSession.Effect.Fallback) {
             apply(request, effect)

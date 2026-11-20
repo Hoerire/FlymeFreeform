@@ -202,7 +202,7 @@ internal class FloatKeepAliveHook(
             }
     }
 
-    // ==================== 分应用策略：非游戏拒绝可见，游戏保持旧逻辑 ====================
+    // ==================== 分应用策略：非游戏拒绝可见，游戏保持原有判定 ====================
 
     /**
      * 判断包名是否游戏（按应用类别，不维护包名表）。
@@ -275,12 +275,10 @@ internal class FloatKeepAliveHook(
                             Int::class.javaPrimitiveType,
                             Int::class.javaPrimitiveType,
                         ).invoke(pm, pkg, 0, 0)
-                val category = info?.javaClass?.getField("category")?.getInt(info) ?: 0
+                val category = info?.javaClass?.getField("category")?.getInt(info) ?: CATEGORY_UNDEFINED
                 if (category == CATEGORY_GAME) result = true
-                // 引擎库兜底：大量小游戏既不声明 appCategory，也不在厂商云表里。
-                // Bouncemasters（com.joybits.bouncemasters）就是这种：Unity IL2CPP，
-                // appCategory=0、云表未收录，于是被判成普通应用，贴边后退化成视频类行为，
-                // 窗口被拒绝抬成可见，画面停住 —— 挂机不生效。
+                // 引擎库兜底：大量小游戏既不声明 appCategory，也不在厂商云表里，
+                // 会被判成普通应用；贴边后按非游戏处理，窗口被拒绝抬成可见，画面停住。
                 if (!result && info != null) result = hasGameEngineLibrary(info)
             }
         }
@@ -516,14 +514,9 @@ internal class FloatKeepAliveHook(
     /**
      * 暂停请求不发给客户端：服务端照常进入 PAUSING，再由这里补一次 activityPaused
      * 让 AMS 完成暂停并继续恢复下一个应用；客户端收不到 onPause，画面与逻辑继续跑。
-     */
-    /**
-     * 暂停请求不发给客户端：服务端照常进入 PAUSING，再由这里补一次 activityPaused
-     * 让 AMS 完成暂停并继续恢复下一个应用；客户端收不到 onPause，画面与逻辑继续跑。
      *
-     * 注意：只挂「一个固定签名」会漏。实测出现过这样的一个事件：
-     * `wm_pause_activity … pauseInRecentsAnim`，走的不是常规那条重载，
-     * 首次贴边时 pause 就从这个口子漏过去，游戏当场停（第二次贴边已暂停，才显得正常）。
+     * 只挂「一个固定签名」会漏：`schedulePauseActivity` 在 TaskFragment 上还有带
+     * `pauseInRecentsAnim` 等参数的重载，首次贴边时 pause 会从这些重载漏过去，应用当场暂停。
      * 这里按方法名把 TaskFragment 上所有带 ActivityRecord 参数的重载全挂上。
      */
 
@@ -701,7 +694,7 @@ internal class FloatKeepAliveHook(
                 .setId("free.float_keep_alive.unfloat_" + index)
                 .intercept { chain ->
                     if (configuration.snapshot.floatKeepAliveEffective) {
-                        // FloatHandleInfo 里不一定有 mTaskId（实测拿不到），所以这里整段放行：
+                        // FloatHandleInfo 里不一定带 mTaskId，这里整段放行：
                         // 放行窗只覆盖「刚点开浮标」这几秒，短剧换集不受影响。
                         val taskId = taskIdFromArgs(chain.args)
                         markUnfloating(taskId)
@@ -743,9 +736,9 @@ internal class FloatKeepAliveHook(
     /**
      * 贴边动作本身同步白名单。
      *
-     * 实测 `sweepExemptions` 会因为一次 `resetFlexibleTaskToFullScreen` 把包当成
+     * `sweepExemptions` 会因为一次 `resetFlexibleTaskToFullScreen` 把包当成
      * 「已离开浮标」撤掉白名单，而重新贴边时没有任何 ActivityRecord 钩子被触发，
-     * `shouldKeep` 不会重跑 —— 结果下次息屏 Hans 照冻。
+     * `shouldKeep` 不会重跑 —— 下次息屏 Hans 仍会冻结。
      * 所以白名单在 `addFloatHandle*` 上补挂、在 `removeFloatHandle*` 上撤掉，不依赖状态变化。
      */
     private fun installFloatHandleSync(classLoader: ClassLoader) {
@@ -1029,8 +1022,8 @@ internal class FloatKeepAliveHook(
      * 对保活中的浮标应用伪装成「亮屏、没进省电」。
      *
      * 视频类应用在换下一集前普遍会看 `PowerManager.isInteractive()`，息屏就不自动连播，
-     * 于是浮标里的播放停在换集那一刻（日志：音轨 started 三分半，换集时应用自行 stopped）。
-     * 这里只对「正在被保活的浮标应用」按调用 uid 返回亮屏，其它进程不受影响。
+     * 于是浮标里的播放停在换集那一刻。这里只对「正在被保活的浮标应用」按调用 uid
+     * 返回亮屏，其它进程不受影响。
      */
     private fun installAwakeGuard(classLoader: ClassLoader) {
         val binderClass = runCatching { classLoader.loadClass(POWER_BINDER_CLASS) }.getOrNull() ?: return
@@ -1070,8 +1063,7 @@ internal class FloatKeepAliveHook(
      * 不把息屏广播投给正在保活的浮标应用。
      *
      * 视频类应用收到 `ACTION_SCREEN_OFF` 后会把自己标成「熄屏」，当前这集照播，但换下一集时
-     * 就不会自动连播（日志：锁屏后播 3 分半，换集时应用自行 pause 并停止申请播放）。
-     * 亮屏时同样的换集就正常，所以判断依据是屏幕状态而不是焦点或进程档位。
+     * 就不会自动连播。亮屏时同样的换集就正常，所以判断依据是屏幕状态而不是焦点或进程档位。
      *
      * 做法只在这一条广播上把保活应用的包名加进 `excludedPackages`，其它应用照常收到。
      */
@@ -1143,8 +1135,8 @@ internal class FloatKeepAliveHook(
      *
      * 窗口管理器侧该任务照旧是不可见的（不会在锁屏上显示），这里只改下发给应用的那一个标志：
      * 应用侧 `onWindowVisibilityChanged(true)` / `View.isShown()` 保持可见。
-     * 对视频类应用是关键路径：日志显示锁屏后播完当前集、准备连播下一集时，窗口被判为
-     * 不可见就不连播；亮屏贴边时（窗口可见）完全正常。
+     * 对视频类应用是关键路径：锁屏后播完当前集、准备连播下一集时，窗口被判为
+     * 不可见就不连播；亮屏贴边时（窗口可见）则正常。
      */
     private fun installClientVisibleKeepOn(classLoader: ClassLoader) {
         val tokenClass = runCatching { classLoader.loadClass(TOKEN_CLASS) }.getOrNull() ?: return
@@ -1383,7 +1375,7 @@ internal class FloatKeepAliveHook(
     /**
      * ColorOS 自己的 Hans（`OplusHansManager`）冻结不看 doze 白名单。
      *
-     * 实测：贴边后息屏，Hans 直接 `freeze uid: … scene: LcdOff`，应用「一息屏就停」。
+     * 贴边后息屏，Hans 会以 `LcdOff` 场景冻结应用，表现为「一息屏就停」。
      * 贴边期间把它挂进 Hans 自己的「自定义白名单」，离开浮标即撤。
      * 找不到这类（非 OPlus ROM）就静默跳过，不影响原有保活。
      */
@@ -1430,17 +1422,16 @@ internal class FloatKeepAliveHook(
 
 
     /**
-     * 直接挡 Hans 冻结（白名单那条在 ColorOS 17 上实测无效）。
+     * 直接挡 Hans 冻结（自定义白名单与 `secure no_frozen` 在 ColorOS 17 上不足以保证不冻结）。
      *
-     * 实测日志：贴边 + 息屏后 Hans 仍然 `freeze uid: 10401 … scene: LcdOff`，
-     * 尽管自定义白名单已挂上、`secure no_frozen` 也加过。这里把 Hans 管理器里所有
+     * 贴边 + 息屏后 Hans 仍可能带着 uid 走 `freeze` 场景 `LcdOff`。这里把 Hans 管理器里所有
      * `freeze*` 方法挂一遍，参数里出现保活浮标应用的 uid/pid 就跳过这一次冻结。
      */
 
     /**
      * 兜底：直接拦住真正执行冻结的底层入口。
      *
-     * Hans 那层判断（白名单 / wakelock 豁免）在这台机器上都没命中，但冻结最终要落到
+     * Hans 那层判断（白名单 / wakelock 豁免）不足以保证不冻结，冻结最终要落到
      * `Process.setProcessFrozen` 或 `CachedAppOptimizer.freezeProcess`。这里按 pid/uid
      * 识别保活应用，命中就跳过这一次冻结。
      */
@@ -1840,6 +1831,12 @@ internal class FloatKeepAliveHook(
     private companion object {
         const val TAG = "Free"
 
+        /**
+         * 基线自带回归：`eeea93b` 误删了这一行，导致 `loadClass(RECORD_CLASS)` 无法解析。
+         * 补回即可，语义与 3.2.0 一致（不参与气泡改动）。
+         */
+        const val RECORD_CLASS = OemClasses.ACTIVITY_RECORD
+
         /** 点开/摘掉浮标后多久内，展开引起的可见性请求一律放行。 */
         const val UNFLOAT_PERMIT_MS = 3_000L
 
@@ -1906,8 +1903,11 @@ internal class FloatKeepAliveHook(
         /** ColorOS 的游戏识别入口（云端包名表）。 */
         const val GAME_MANAGER_EXT = "com.android.server.app.GameManagerServiceExtImpl"
 
+        /** ApplicationInfo.CATEGORY_UNDEFINED：未声明 appCategory。 */
+        const val CATEGORY_UNDEFINED = -1
+
         /** ApplicationInfo.CATEGORY_GAME */
-        const val CATEGORY_GAME = 2
+        const val CATEGORY_GAME = 0
 
         /**
          * 游戏引擎的 native 库。

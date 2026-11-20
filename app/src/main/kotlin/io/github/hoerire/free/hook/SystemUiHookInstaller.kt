@@ -40,14 +40,24 @@ internal class SystemUiHookInstaller(
                     if (context != null && bound.compareAndSet(false, true)) {
                         // 通知点击小窗：改 Bundle（含剥离 remote 转场），让窗口不被横幅压住。
                         NotifBundleHook(module, configuration, context).install(classLoader)
+                        // 气泡通知：独立子系统，任何失败都不影响 SystemUI 自身启动。
+                        runCatching {
+                            io.github.hoerire.free.bubble.BubbleCoordinator(
+                                module,
+                                context,
+                                configuration,
+                            ).start(classLoader)
+                        }.onFailure {
+                            ModuleLog.warn("SYSTEMUI_BUBBLE_INSTALL_FAILED", it)
+                        }
                         installSettingsObserver(context)
                         // 角区抢流（SystemUI 侧 InputMonitor + pilferPointers）**只在 ColorOS 17+ 启用**。
                         //
-                        // 这条通道是 3.1.3 引入的（3.1.2 没有它），之后低版系统陆续出现 SystemUI
-                        // 崩溃循环；而 17 上的角区抢流已经改由 system_server 内建 monitor 承担
-                        // （本通道在 17 上整场收不到事件，实测 0 条 CORNER_TRACK）。所以低版直接不启动它：
-                        // 角区手势退回 WMS 旁观者（= 3.1.2 行为：扇形可用、左滑穿透存在）——
-                        // 宁可保留这个旧缺陷，也不能让低版用户的系统界面崩。
+                        // 这条通道在低版系统上会引起 SystemUI 崩溃循环；17 上角区抢流已改由
+                        // system_server 内建 monitor 承担，本通道在 17 上整场收不到事件
+                        //（日志可见 CORNER_TRACK 一直为 0）。所以低版直接不启动它：
+                        // 角区手势退回 WMS 旁观者（扇形可用、左滑穿透存在）——
+                        // 宁可保留这个缺陷，也不能让低版用户的系统界面崩。
                         if (RomFlavor.isColorOs17OrNewer) {
                             runCatching {
                                 CornerInputPilferMonitor(module, configuration).start(context)

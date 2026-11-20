@@ -148,6 +148,14 @@ internal class FrameworkConnectionRepository(private val context: Context) {
     fun setDragLongPressMs(ms: Int) =
         updateSettings { it.copy(dragLongPressMs = ModulePreferences.coerceDragLongPressMs(ms)) }
 
+    /**
+     * 气泡设置：整页只提交「下一个快照」，具体字段由页面决定。
+     *
+     * 这样新增气泡开关时不用在仓库里加十几个 setter；写入仍走统一的乐观上屏 + 回执校正。
+     */
+    fun setBubbleSettings(transform: (ModuleSettingsSnapshot) -> ModuleSettingsSnapshot) =
+        updateSettings(transform)
+
     fun setRadialIconSizeDp(value: Int) =
         updateSettings {
             it.copy(radialIconSizeDp = ModulePreferences.coerceRadialIconSizeDp(value))
@@ -396,7 +404,13 @@ internal class FrameworkConnectionRepository(private val context: Context) {
         )
         extras.putBoolean(ModulePreferences.EXTRA_PINS_SAVED, settings.pinsSaved)
         extras.putBoolean(ModulePreferences.EXTRA_MODULE_ENABLED, settings.enabled)
-        listOf("android", "com.android.launcher", "com.coloros.smartsidebar", "com.oplus.contentportal").forEach { target ->
+        listOf(
+            "android",
+            "com.android.launcher",
+            "com.android.systemui",
+            "com.coloros.smartsidebar",
+            "com.oplus.contentportal",
+        ).forEach { target ->
             val intent =
                 Intent(ModulePreferences.ACTION_PINNED_TARGETS_CHANGED).apply {
                     setPackage(target)

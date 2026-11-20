@@ -30,7 +30,7 @@ import java.util.WeakHashMap
 import kotlin.math.ceil
 import kotlin.math.floor
 
-/** 扩展 ColorOS 自有全局指针监听，只处理已验证的普通小窗窗外短点击。 */
+/** 扩展 ColorOS 自有全局指针监听，只处理普通小窗的窗外短点击。 */
 @SuppressLint("PrivateApi")
 internal class OutsideTapCloseHookInstaller(
     private val module: XposedModule,
@@ -486,7 +486,7 @@ internal class OutsideTapCloseHookInstaller(
         //   3. 拿不到活跃时间（字段缺失，或任务刚建好还是 0）的按"最新"处理，
         //      否则新窗口会被当成最旧的那个。
         // 不要用"上一次 addFlexibleTask 记录"来做保护：系统的驱逐发生在 addFlexibleTask
-        // 之前（日志显示早约 20ms），此时记录里仍是上一个窗口，反而会把新窗推到尾部被判驱逐。
+        // 之前，此时记录里仍是上一个窗口，反而会把新窗推到尾部被判驱逐。
         // 只按活跃时间排：取不到活跃时间的（刚建好还是 0）按"最新"处理，自然排在最前。
         val sorted = tasks.sortedWith(
             compareByDescending<Any?> { if (isMiniZoomTask(it)) 1 else 0 }
@@ -997,7 +997,7 @@ internal class OutsideTapCloseHookInstaller(
         }
 
         /**
-         * 关闭小窗，按系统自己的链路（已验证稳定）：
+         * 关闭小窗，按系统自己的链路：
          *
          * 1. 去重：同一窗口短时间内只关一次；
          * 2. handleCloseEventForLightOpenIfNeed(caption)：先让"轻量打开"状态结清；

@@ -196,6 +196,166 @@ internal object ModulePreferences {
 
     fun coerceDragLongPressMs(value: Int): Int =
         value.coerceIn(MIN_DRAG_LONG_PRESS_MS, MAX_DRAG_LONG_PRESS_MS)
+
+    // ---- 气泡通知 ----------------------------------------------------------
+    //
+    // 白名单分两组：主应用键是包名，分身键是 `包名#userId`。两组各自存盘，
+    // 勾选互不牵连；匹配只看键，不做任何别名/目录推断。
+
+    const val KEY_BUBBLE_ENABLED = "bubble_enabled_v1"
+    const val KEY_BUBBLE_WHITELIST = "bubble_whitelist_v1"
+    const val KEY_BUBBLE_CLONE_WHITELIST = "bubble_clone_whitelist_v1"
+    const val KEY_BUBBLE_SIZE_PERCENT = "bubble_size_percent_v1"
+    const val KEY_BUBBLE_ICON_PERCENT = "bubble_icon_percent_v1"
+    const val KEY_BUBBLE_BADGE_PERCENT = "bubble_badge_percent_v1"
+    const val KEY_BUBBLE_TIMEOUT_SECONDS = "bubble_timeout_seconds_v1"
+    /**
+     * 到点变暗留置。v2 把默认改成 false：到点默认「贴边收起」而不是原地变暗。
+     * 旧的 v1 值不再读取，首次保存时清掉，避免升级用户继续停在变暗状态。
+     */
+    const val KEY_BUBBLE_DIM_ON_TIMEOUT = "bubble_dim_on_timeout_v2"
+    const val LEGACY_KEY_BUBBLE_DIM_ON_TIMEOUT = "bubble_dim_on_timeout_v1"
+    const val KEY_BUBBLE_PREVIEW_ENABLED = "bubble_preview_enabled_v1"
+    const val KEY_BUBBLE_PREVIEW_SUPPRESS_BANNER = "bubble_preview_suppress_banner_v1"
+    const val KEY_BUBBLE_PREVIEW_EDGE_ONLY = "bubble_preview_edge_only_v1"
+    const val KEY_BUBBLE_PREVIEW_ALPHA = "bubble_preview_alpha_v1"
+    const val KEY_BUBBLE_PREVIEW_TIMEOUT_SECONDS = "bubble_preview_timeout_seconds_v1"
+    const val KEY_BUBBLE_PREVIEW_DYNAMIC_TIMEOUT = "bubble_preview_dynamic_timeout_v1"
+    const val KEY_BUBBLE_AUTO_DISMISS = "bubble_auto_dismiss_v1"
+    const val KEY_BUBBLE_MOTION_CONTINUOUS = "bubble_motion_continuous_v1"
+    /** 状态栏滚动：最新通知在状态栏时钟位置滚动显示。 */
+    const val KEY_STATUS_SCROLL_ENABLED = "status_scroll_enabled_v1"
+    const val KEY_STATUS_SCROLL_ROUNDS = "status_scroll_rounds_v1"
+    /** 空 = 全部应用；否则只滚这些包名。 */
+    const val KEY_STATUS_SCROLL_WHITELIST = "status_scroll_whitelist_v1"
+    /**
+     * 免打扰：三种场景下不出气泡与建议。
+     *
+     * - 当前应用：通知/建议指向正在使用的应用时没有信息增量；
+     * - 游戏：全屏游戏里弹气泡会打断操作；
+     * - 锁屏与息屏：锁屏上气泡被挡在后面，息屏时更不该有任何浮层。
+     */
+    const val KEY_BUBBLE_SKIP_FOREGROUND = "bubble_skip_foreground_v1"
+    const val KEY_BUBBLE_SKIP_GAME = "bubble_skip_game_v1"
+    const val KEY_BUBBLE_SKIP_LOCKED = "bubble_skip_locked_v1"
+    // ---- 即时建议 ----------------------------------------------------------
+    const val KEY_SUGGESTIONS_ENABLED = "suggestions_enabled_v1"
+    const val KEY_SUGGESTION_FLASHLIGHT = "suggestion_flashlight_v1"
+    const val KEY_SUGGESTION_MUSIC = "suggestion_music_v1"
+    const val KEY_SUGGESTION_APP_INSTALL = "suggestion_app_install_v1"
+    /** 剪贴板建议默认关闭：涉及读取剪贴板，由用户主动开启。 */
+    const val KEY_SUGGESTION_CLIPBOARD = "suggestion_clipboard_v1"
+    /** 常亮建议：屏幕即将休眠时建议保持常亮。 */
+    const val KEY_SUGGESTION_KEEP_AWAKE = "suggestion_keep_awake_v1"
+    const val KEY_SUGGESTION_NO_EDGE = "suggestion_no_edge_v1"
+
+    /**
+     * system_server → SystemUI：屏幕进入即将休眠的半暗阶段。
+     *
+     * 写进 `Settings.Global`：1 = 半暗或即将息屏，0 = 已回到常亮。两个进程之间
+     * 不需要额外通道，SystemUI 侧按固定间隔轮询。
+     */
+    const val KEY_PRE_SLEEP_ARMED = "free_pre_sleep_armed"
+
+    /** system_server → SystemUI：剪贴板分类结果（即时建议）。 */
+    const val ACTION_CLIPBOARD_SUGGESTION =
+        "io.github.hoerire.free.action.CLIPBOARD_SUGGESTION"
+    const val EXTRA_CLIP_KINDS = "clip_kinds"
+    const val EXTRA_CLIP_VALUES = "clip_values"
+    const val EXTRA_CLIP_DISPLAYS = "clip_displays"
+    const val EXTRA_CLIP_APPS = "clip_apps"
+
+    const val DEFAULT_BUBBLE_ENABLED = false
+    const val DEFAULT_BUBBLE_SIZE_PERCENT = 100
+    const val MIN_BUBBLE_SIZE_PERCENT = 60
+    const val MAX_BUBBLE_SIZE_PERCENT = 140
+    const val DEFAULT_BUBBLE_ICON_PERCENT = 100
+    const val MIN_BUBBLE_ICON_PERCENT = 60
+    const val MAX_BUBBLE_ICON_PERCENT = 150
+    const val DEFAULT_BUBBLE_BADGE_PERCENT = 100
+    const val MIN_BUBBLE_BADGE_PERCENT = 50
+    const val MAX_BUBBLE_BADGE_PERCENT = 180
+    const val DEFAULT_BUBBLE_TIMEOUT_SECONDS = 7
+    const val MIN_BUBBLE_TIMEOUT_SECONDS = 3
+    const val MAX_BUBBLE_TIMEOUT_SECONDS = 60
+    const val DEFAULT_BUBBLE_DIM_ON_TIMEOUT = false
+    const val DEFAULT_BUBBLE_PREVIEW_ENABLED = true
+    const val DEFAULT_BUBBLE_PREVIEW_SUPPRESS_BANNER = true
+    const val DEFAULT_BUBBLE_PREVIEW_EDGE_ONLY = false
+    const val DEFAULT_BUBBLE_PREVIEW_ALPHA = 88
+    const val MIN_BUBBLE_PREVIEW_ALPHA = 35
+    const val MAX_BUBBLE_PREVIEW_ALPHA = 100
+    const val DEFAULT_BUBBLE_PREVIEW_TIMEOUT_SECONDS = 5
+    const val MIN_BUBBLE_PREVIEW_TIMEOUT_SECONDS = 2
+    const val MAX_BUBBLE_PREVIEW_TIMEOUT_SECONDS = 15
+    const val DEFAULT_BUBBLE_PREVIEW_DYNAMIC_TIMEOUT = true
+    const val DEFAULT_BUBBLE_AUTO_DISMISS = true
+    const val DEFAULT_BUBBLE_MOTION_CONTINUOUS = true
+    const val DEFAULT_STATUS_SCROLL_ENABLED = false
+    const val DEFAULT_STATUS_SCROLL_ROUNDS = 1
+    const val DEFAULT_SUGGESTIONS_ENABLED = false
+    const val DEFAULT_SUGGESTION_FLASHLIGHT = true
+    const val DEFAULT_SUGGESTION_MUSIC = true
+    const val DEFAULT_SUGGESTION_APP_INSTALL = true
+    const val DEFAULT_SUGGESTION_CLIPBOARD = false
+    const val DEFAULT_SUGGESTION_KEEP_AWAKE = false
+    const val DEFAULT_SUGGESTION_NO_EDGE = false
+    const val DEFAULT_BUBBLE_SKIP_FOREGROUND = true
+    const val DEFAULT_BUBBLE_SKIP_GAME = true
+    const val DEFAULT_BUBBLE_SKIP_LOCKED = true
+    const val MIN_STATUS_SCROLL_ROUNDS = 1
+    const val MAX_STATUS_SCROLL_ROUNDS = 5
+    private const val MAX_BUBBLE_WHITELIST = 200
+
+    fun coerceBubbleSizePercent(value: Int): Int =
+        value.coerceIn(MIN_BUBBLE_SIZE_PERCENT, MAX_BUBBLE_SIZE_PERCENT)
+
+    fun coerceBubbleIconPercent(value: Int): Int =
+        value.coerceIn(MIN_BUBBLE_ICON_PERCENT, MAX_BUBBLE_ICON_PERCENT)
+
+    fun coerceBubbleBadgePercent(value: Int): Int =
+        value.coerceIn(MIN_BUBBLE_BADGE_PERCENT, MAX_BUBBLE_BADGE_PERCENT)
+
+    fun coerceBubbleTimeoutSeconds(value: Int): Int =
+        value.coerceIn(MIN_BUBBLE_TIMEOUT_SECONDS, MAX_BUBBLE_TIMEOUT_SECONDS)
+
+    fun coerceBubblePreviewAlpha(value: Int): Int =
+        value.coerceIn(MIN_BUBBLE_PREVIEW_ALPHA, MAX_BUBBLE_PREVIEW_ALPHA)
+
+    fun coerceBubblePreviewTimeoutSeconds(value: Int): Int =
+        value.coerceIn(MIN_BUBBLE_PREVIEW_TIMEOUT_SECONDS, MAX_BUBBLE_PREVIEW_TIMEOUT_SECONDS)
+
+    fun coerceStatusScrollRounds(value: Int): Int =
+        value.coerceIn(MIN_STATUS_SCROLL_ROUNDS, MAX_STATUS_SCROLL_ROUNDS)
+
+    /**
+     * 气泡白名单键：包名，或 `包名#userId`。
+     *
+     * 解析与编码只在这里做一次，UI 和 hook 都调它，避免两边各拼一份字符串。
+     */
+    fun decodeBubbleKeys(raw: String?): List<String> =
+        raw.orEmpty()
+            .lineSequence()
+            .map { it.trim() }
+            .filter { BUBBLE_KEY_PATTERN.matches(it) }
+            .distinct()
+            .take(MAX_BUBBLE_WHITELIST)
+            .toList()
+
+    fun encodeBubbleKeys(keys: List<String>): String =
+        keys.filter { BUBBLE_KEY_PATTERN.matches(it) }
+            .distinct()
+            .take(MAX_BUBBLE_WHITELIST)
+            .joinToString("\n")
+
+    /** 分身键的 userId 部分；主应用键返回 null。 */
+    fun bubbleKeyUserId(key: String): Int? =
+        key.substringAfter('#', "").toIntOrNull()?.takeIf { it > 0 }
+
+    fun bubbleKeyPackage(key: String): String = key.substringBefore('#')
+
+    private val BUBBLE_KEY_PATTERN = Regex("[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)+(?:#[1-9][0-9]{0,5})?")
+
     const val DEFAULT_ENABLED = false
     const val DEFAULT_CORNER_ENABLED = true
     const val DEFAULT_CORNER_TRIGGER_RANGE_DP = 84

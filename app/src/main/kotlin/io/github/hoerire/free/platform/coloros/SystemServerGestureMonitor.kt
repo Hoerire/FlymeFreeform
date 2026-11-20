@@ -18,8 +18,8 @@ import java.lang.reflect.Method
  *
  * 为什么必须在本进程：`pilferPointers()` 抢下的只是"这一个 monitor 通道"，事件继续投递给
  * 本进程。monitor 如果建在 SystemUI，抢完之后 MOVE 全落在另一个进程，system_server 里的
- * [ColorOsFreeformCoordinator] 只收到 DOWN，`gestureEngine` 停在 Armed，扇形永远不激活
- * （现场表现为角区手势间歇性无法激活）。
+ * [ColorOsFreeformCoordinator] 只收到 DOWN，`gestureEngine` 停在 Armed，扇形不激活
+ * （表现为角区手势间歇性无法激活）。
  *
  * 硬性约束：
  * 1. 每个事件分支都必须 finishInputEvent，否则这条通道会被判 not responsive；

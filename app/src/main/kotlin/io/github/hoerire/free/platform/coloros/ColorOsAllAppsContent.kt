@@ -142,12 +142,12 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
         // 先用上一份结果立刻上屏，算完再原地回写新顺序。
         FavoriteGroupInjector.prepareAsync(context, adapter.javaClass.classLoader, force = true)
         FavoriteGroupInjector.apply(adapter, context)
-        // 系统会在面板显示后再次灌入原厂数据（日志：0 → 模块顺序 → 121 条原厂列表）。
+        // 系统会在面板显示后再次灌入原厂数据，覆盖先前写入的顺序。
         // 监听 adapter 变化，原地改写为模块顺序，不 notify、不重建。
         attachDataObserver(adapter)
         val h = android.os.Handler(android.os.Looper.getMainLooper())
         // 兜底：面板显示后系统可能再灌一次数据，几个时间点再原地校验一次（数据相同则完全不做事）。
-        // 首次打开时系统在面板显示后才灌数据（日志：0 → 模块顺序 → 121），
+        // 首次打开时系统在面板显示后才灌数据，覆盖先前写入的顺序，
         // 这几个点只做廉价比对，命中直接返回，未命中才重排。
         listOf(300L, 700L, 1200L, 2000L, 3000L).forEach { d ->
             h.postDelayed({
@@ -176,7 +176,7 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
                         val aligned =
                             index != null && item != null && list != null &&
                                 index in list.indices && list[index] === item
-                        // 详细日志：还原一次点击的完整现场。搜索后索引与 currentDataList
+                        // 详细日志：还原一次点击的完整上下文。搜索后索引与 currentDataList
                         // 对不上时按索引分发会打开错误条目（点搜索结果却打开收藏组第一条），
                         // 这里把 index / 实际条目 / 是否对齐 / 当前搜索词全部打出来。
                         val query = currentQuery()

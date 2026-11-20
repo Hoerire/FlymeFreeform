@@ -4,10 +4,10 @@ package io.github.hoerire.free.config
  * 扇形应用的分组。
  *
  * 两组数据完全独立，同一个条目只能出现在其中一组。默认组始终生效；第二组由
- * [RadialGroupSide] 决定是否启用、以及只替换哪一侧底角，因此默认行为与旧版一致。
+ * [RadialGroupSide] 决定是否启用、以及只替换哪一侧底角，未启用时的行为与单组一致。
  */
 internal enum class RadialGroup(val storedValue: Int) {
-    /** 默认组：旧版唯一的固定项列表，始终存在。 */
+    /** 默认组：固定的基础项列表，始终存在。 */
     Primary(0),
 
     /** 第二组：默认不启用，启用后只替换一侧底角。 */

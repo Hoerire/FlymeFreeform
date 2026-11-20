@@ -1,5 +1,22 @@
 # 第三方资源声明
 
+## 概览
+
+项目代码直接依赖的第三方库只有两个：
+
+| 库 | 用途 | 许可 |
+|---|---|---|
+| COUI 2.0.0（4 个模块：ui / preference / icons / blur） | 设置页与弹层的界面组件 | Apache-2.0 |
+| DexKit 2.3.0 | 在桌面与侧边栏 APK 里定位混淆成员 | Apache-2.0 / LGPL-3.0 |
+
+其余条目（Miuix、FlatBuffers、libcxx-prefab）是上面两个库自身的依赖，随构建传递进来，
+项目代码不直接引用；它们仍按各自的许可随 APK 附带许可文本。AndroidX / Compose 等
+标准 Android 组件同样以 Apache-2.0 分发，属于常规平台依赖。
+
+## BubbleNotify
+
+气泡通知的视觉与动效层转写自 congree-ci 的 [BubbleNotify](https://github.com/congree-ci/BubbleNotify)（GPL-3.0）：主气泡 `BubbleSurfaceView`、堆叠层 `BubbleStackOverlay`、内容浮层 `NotificationPreviewView`、状态栏滚动 `StatusScrollOverlay`、调色板 `MaterialPalette`、图标透镜 `BubbleIconRenderer` 与即时建议字形 `MaterialSuggestionIcon` 的形状、色值与动画曲线均取自该项目，按本项目的进程/设置架构重新接入。本项目同以 GPL-3.0 发布，完整协议文本见仓库根目录的 `LICENSE`。
+
 ## DexKit
 
 本项目使用 LuckyPray 的 [DexKit 2.3.0](https://github.com/LuckyPray/DexKit/tree/2.3.0) 定位桌面 APK 中的混淆输入成员，使用 Maven Central 发布的原始 AAR，未修改库源码。

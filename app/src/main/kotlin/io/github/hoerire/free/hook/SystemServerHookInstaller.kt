@@ -59,6 +59,21 @@ internal class SystemServerHookInstaller(
         // 系统 Home 手势的指针监听器不认挖角，也不受抢流影响，单独在入口吞掉角区按下。
         SystemGestureSuppressor(module, configuration).install(classLoader)
 
+        // 剪贴板即时建议：实际写剪贴板的进程才能读到内容（Android 10+ 焦点限制）。
+        ClipboardSuggestionHook(
+            module = module,
+            enabled = {
+                val snapshot = configuration.snapshot
+                snapshot.suggestionsActive && snapshot.suggestionClipboard
+            },
+            logger = { priority, code, throwable -> module.log(priority, TAG, code, throwable) },
+        ).install(classLoader)
+        // 常亮建议：屏幕进入半暗阶段时把状态写给 SystemUI（它的点按层在那里）。
+        PreSleepDetectionHook(
+            module = module,
+            configuration = configuration,
+            logger = { priority, code, throwable -> module.log(priority, TAG, code, throwable) },
+        ).install(classLoader)
         installForegroundObserver(classLoader)
         try {
             // 厂商初始化入口只能反射定位；缺失时保留系统启动流程。

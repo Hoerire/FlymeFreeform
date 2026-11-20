@@ -42,7 +42,7 @@ internal data class ModuleSettingsSnapshot(
     /** 小窗扩展·解除应用准入：isSupportFlexibleWindow 一律放行。 */
     val zoomAllowAnyApp: Boolean = ModulePreferences.DEFAULT_ZOOM_ALLOW_ANY_APP,
     // 小窗跳转按入口拆成几项，各自独立存盘、独立判定。
-    // 全部默认关闭：未写入时取 false，不继承旧版那个已被移除的单一开关。
+    // 全部默认关闭：未写入时取 false。
 
     /** 通知中心：点通知以小窗打开。 */
     val zoomLaunchNotice: Boolean = false,
@@ -90,6 +90,53 @@ internal data class ModuleSettingsSnapshot(
     val quickShareEnabled: Boolean = ModulePreferences.DEFAULT_QUICK_SHARE,
     /** 拖拽触发延迟：系统长按阈值（毫秒），400 即官方行为。 */
     val dragLongPressMs: Int = ModulePreferences.DEFAULT_DRAG_LONG_PRESS_MS,
+
+    // ---- 气泡通知 ----------------------------------------------------------
+    /** 气泡通知总开关；与模块总开关取与，见 [bubbleActive]。 */
+    val bubbleEnabled: Boolean = ModulePreferences.DEFAULT_BUBBLE_ENABLED,
+    /** 主应用白名单键（包名）。 */
+    val bubbleWhitelist: List<String> = emptyList(),
+    /** 分身白名单键（`包名#userId`），与 [bubbleWhitelist] 各存各的。 */
+    val bubbleCloneWhitelist: List<String> = emptyList(),
+    val bubbleSizePercent: Int = ModulePreferences.DEFAULT_BUBBLE_SIZE_PERCENT,
+    val bubbleIconPercent: Int = ModulePreferences.DEFAULT_BUBBLE_ICON_PERCENT,
+    val bubbleBadgePercent: Int = ModulePreferences.DEFAULT_BUBBLE_BADGE_PERCENT,
+    val bubbleTimeoutSeconds: Int = ModulePreferences.DEFAULT_BUBBLE_TIMEOUT_SECONDS,
+    val bubbleDimOnTimeout: Boolean = ModulePreferences.DEFAULT_BUBBLE_DIM_ON_TIMEOUT,
+    /** 内容浮层：点气泡后展开的预览卡。 */
+    val bubblePreviewEnabled: Boolean = ModulePreferences.DEFAULT_BUBBLE_PREVIEW_ENABLED,
+    /** 命中气泡白名单时，接管系统横幅（不再弹横幅，只留气泡）。 */
+    val bubblePreviewSuppressBanner: Boolean =
+        ModulePreferences.DEFAULT_BUBBLE_PREVIEW_SUPPRESS_BANNER,
+    /** 浮层只在贴边时出现（不贴边时点气泡直接打开）。 */
+    val bubblePreviewEdgeOnly: Boolean = ModulePreferences.DEFAULT_BUBBLE_PREVIEW_EDGE_ONLY,
+    val bubblePreviewAlpha: Int = ModulePreferences.DEFAULT_BUBBLE_PREVIEW_ALPHA,
+    val bubblePreviewTimeoutSeconds: Int =
+        ModulePreferences.DEFAULT_BUBBLE_PREVIEW_TIMEOUT_SECONDS,
+    val bubblePreviewDynamicTimeout: Boolean =
+        ModulePreferences.DEFAULT_BUBBLE_PREVIEW_DYNAMIC_TIMEOUT,
+    /** 到点后气泡自动消失；关闭则只变暗，等用户处理。 */
+    val bubbleAutoDismiss: Boolean = ModulePreferences.DEFAULT_BUBBLE_AUTO_DISMISS,
+    /** 装饰动效是否常驻（贴边呼吸、色散边）；关闭后只在交互时重绘。 */
+    val bubbleMotionContinuous: Boolean = ModulePreferences.DEFAULT_BUBBLE_MOTION_CONTINUOUS,
+    /** 状态栏滚动：最新通知在时钟位置滚动显示。 */
+    val statusScrollEnabled: Boolean = ModulePreferences.DEFAULT_STATUS_SCROLL_ENABLED,
+    val statusScrollRounds: Int = ModulePreferences.DEFAULT_STATUS_SCROLL_ROUNDS,
+    val statusScrollWhitelist: List<String> = emptyList(),
+    /** 免打扰：当前应用 / 游戏 / 锁屏与息屏三种场景各自独立。 */
+    val bubbleSkipForeground: Boolean = ModulePreferences.DEFAULT_BUBBLE_SKIP_FOREGROUND,
+    val bubbleSkipGame: Boolean = ModulePreferences.DEFAULT_BUBBLE_SKIP_GAME,
+    val bubbleSkipLocked: Boolean = ModulePreferences.DEFAULT_BUBBLE_SKIP_LOCKED,
+    /** 即时建议总开关。 */
+    val suggestionsEnabled: Boolean = ModulePreferences.DEFAULT_SUGGESTIONS_ENABLED,
+    val suggestionFlashlight: Boolean = ModulePreferences.DEFAULT_SUGGESTION_FLASHLIGHT,
+    val suggestionMusic: Boolean = ModulePreferences.DEFAULT_SUGGESTION_MUSIC,
+    val suggestionAppInstall: Boolean = ModulePreferences.DEFAULT_SUGGESTION_APP_INSTALL,
+    val suggestionClipboard: Boolean = ModulePreferences.DEFAULT_SUGGESTION_CLIPBOARD,
+    /** 常亮建议：屏幕即将休眠时可点气泡保持常亮。 */
+    val suggestionKeepAwake: Boolean = ModulePreferences.DEFAULT_SUGGESTION_KEEP_AWAKE,
+    /** 建议气泡不贴边（保持自由位置）。 */
+    val suggestionNoEdge: Boolean = ModulePreferences.DEFAULT_SUGGESTION_NO_EDGE,
 ) {
 
     /**
@@ -132,6 +179,29 @@ internal data class ModuleSettingsSnapshot(
 
     /** 快速分享是否生效：模块总开关 ×「快速分享」。 */
     val quickShareActive: Boolean get() = enabled && quickShareEnabled
+
+    /** 气泡通知是否生效：模块总开关 ×「气泡通知」。 */
+    val bubbleActive: Boolean get() = enabled && bubbleEnabled
+
+    /** 内容浮层是否生效：气泡生效 ×「内容浮层」。 */
+    val bubblePreviewActive: Boolean get() = bubbleActive && bubblePreviewEnabled
+
+    /** 状态栏滚动是否生效：随气泡功能总闸。 */
+    val statusScrollActive: Boolean get() = bubbleActive && statusScrollEnabled
+
+    /** 即时建议总闸：随气泡功能总闸。 */
+    val suggestionsActive: Boolean get() = bubbleActive && suggestionsEnabled
+
+    /** 该身份是否在气泡白名单里；主应用与分身各查各的组。 */
+    fun acceptsBubble(packageName: String?, userId: Int): Boolean {
+        if (!bubbleActive || packageName == null) return false
+        val key = if (userId > 0) "$packageName#$userId" else packageName
+        return if (userId > 0) {
+            bubbleCloneWhitelist.any { it == key }
+        } else {
+            bubbleWhitelist.any { it == key }
+        }
+    }
     /** 贴边互切打开时，小窗数量交还默认值（1）。 */
     val zoomMaxWindowCountEffective: Int
         get() = if (zoomInteractionActive) zoomMaxWindowCount else ModulePreferences.DEFAULT_ZOOM_MAX_WINDOW_COUNT
@@ -222,6 +292,72 @@ internal data class ModuleSettingsSnapshot(
                 ModulePreferences.KEY_DRAG_LONG_PRESS_MS,
                 ModulePreferences.coerceDragLongPressMs(dragLongPressMs),
             )
+            .putBoolean(ModulePreferences.KEY_BUBBLE_ENABLED, bubbleEnabled)
+            .putString(
+                ModulePreferences.KEY_BUBBLE_WHITELIST,
+                ModulePreferences.encodeBubbleKeys(bubbleWhitelist),
+            )
+            .putString(
+                ModulePreferences.KEY_BUBBLE_CLONE_WHITELIST,
+                ModulePreferences.encodeBubbleKeys(bubbleCloneWhitelist),
+            )
+            .putInt(
+                ModulePreferences.KEY_BUBBLE_SIZE_PERCENT,
+                ModulePreferences.coerceBubbleSizePercent(bubbleSizePercent),
+            )
+            .putInt(
+                ModulePreferences.KEY_BUBBLE_ICON_PERCENT,
+                ModulePreferences.coerceBubbleIconPercent(bubbleIconPercent),
+            )
+            .putInt(
+                ModulePreferences.KEY_BUBBLE_BADGE_PERCENT,
+                ModulePreferences.coerceBubbleBadgePercent(bubbleBadgePercent),
+            )
+            .putInt(
+                ModulePreferences.KEY_BUBBLE_TIMEOUT_SECONDS,
+                ModulePreferences.coerceBubbleTimeoutSeconds(bubbleTimeoutSeconds),
+            )
+            .putBoolean(ModulePreferences.KEY_BUBBLE_DIM_ON_TIMEOUT, bubbleDimOnTimeout)
+            .remove(ModulePreferences.LEGACY_KEY_BUBBLE_DIM_ON_TIMEOUT)
+            .putBoolean(ModulePreferences.KEY_BUBBLE_PREVIEW_ENABLED, bubblePreviewEnabled)
+            .putBoolean(
+                ModulePreferences.KEY_BUBBLE_PREVIEW_SUPPRESS_BANNER,
+                bubblePreviewSuppressBanner,
+            )
+            .putBoolean(ModulePreferences.KEY_BUBBLE_PREVIEW_EDGE_ONLY, bubblePreviewEdgeOnly)
+            .putInt(
+                ModulePreferences.KEY_BUBBLE_PREVIEW_ALPHA,
+                ModulePreferences.coerceBubblePreviewAlpha(bubblePreviewAlpha),
+            )
+            .putBoolean(ModulePreferences.KEY_BUBBLE_MOTION_CONTINUOUS, bubbleMotionContinuous)
+            .putBoolean(ModulePreferences.KEY_SUGGESTIONS_ENABLED, suggestionsEnabled)
+            .putBoolean(ModulePreferences.KEY_SUGGESTION_FLASHLIGHT, suggestionFlashlight)
+            .putBoolean(ModulePreferences.KEY_SUGGESTION_MUSIC, suggestionMusic)
+            .putBoolean(ModulePreferences.KEY_SUGGESTION_APP_INSTALL, suggestionAppInstall)
+            .putBoolean(ModulePreferences.KEY_SUGGESTION_CLIPBOARD, suggestionClipboard)
+            .putBoolean(ModulePreferences.KEY_SUGGESTION_KEEP_AWAKE, suggestionKeepAwake)
+            .putBoolean(ModulePreferences.KEY_SUGGESTION_NO_EDGE, suggestionNoEdge)
+            .putBoolean(ModulePreferences.KEY_BUBBLE_SKIP_FOREGROUND, bubbleSkipForeground)
+            .putBoolean(ModulePreferences.KEY_BUBBLE_SKIP_GAME, bubbleSkipGame)
+            .putBoolean(ModulePreferences.KEY_BUBBLE_SKIP_LOCKED, bubbleSkipLocked)
+            .putBoolean(ModulePreferences.KEY_STATUS_SCROLL_ENABLED, statusScrollEnabled)
+            .putInt(
+                ModulePreferences.KEY_STATUS_SCROLL_ROUNDS,
+                ModulePreferences.coerceStatusScrollRounds(statusScrollRounds),
+            )
+            .putString(
+                ModulePreferences.KEY_STATUS_SCROLL_WHITELIST,
+                ModulePreferences.encodePackages(statusScrollWhitelist),
+            )
+            .putInt(
+                ModulePreferences.KEY_BUBBLE_PREVIEW_TIMEOUT_SECONDS,
+                ModulePreferences.coerceBubblePreviewTimeoutSeconds(bubblePreviewTimeoutSeconds),
+            )
+            .putBoolean(
+                ModulePreferences.KEY_BUBBLE_PREVIEW_DYNAMIC_TIMEOUT,
+                bubblePreviewDynamicTimeout,
+            )
+            .putBoolean(ModulePreferences.KEY_BUBBLE_AUTO_DISMISS, bubbleAutoDismiss)
             .putString(
                 ModulePreferences.KEY_BLACKLIST_PACKAGES,
                 blacklistPackages.joinToString("\n"),
@@ -501,6 +637,133 @@ internal data class ModuleSettingsSnapshot(
                 dragLongPressMs = preferences.getInt(
                     ModulePreferences.KEY_DRAG_LONG_PRESS_MS,
                     ModulePreferences.DEFAULT_DRAG_LONG_PRESS_MS,
+                ),
+                bubbleEnabled = preferences.getBoolean(
+                    ModulePreferences.KEY_BUBBLE_ENABLED,
+                    ModulePreferences.DEFAULT_BUBBLE_ENABLED,
+                ),
+                bubbleWhitelist = ModulePreferences.decodeBubbleKeys(
+                    preferences.getString(ModulePreferences.KEY_BUBBLE_WHITELIST, null),
+                ),
+                bubbleCloneWhitelist = ModulePreferences.decodeBubbleKeys(
+                    preferences.getString(ModulePreferences.KEY_BUBBLE_CLONE_WHITELIST, null),
+                ),
+                bubbleSizePercent = ModulePreferences.coerceBubbleSizePercent(
+                    preferences.getInt(
+                        ModulePreferences.KEY_BUBBLE_SIZE_PERCENT,
+                        ModulePreferences.DEFAULT_BUBBLE_SIZE_PERCENT,
+                    ),
+                ),
+                bubbleIconPercent = ModulePreferences.coerceBubbleIconPercent(
+                    preferences.getInt(
+                        ModulePreferences.KEY_BUBBLE_ICON_PERCENT,
+                        ModulePreferences.DEFAULT_BUBBLE_ICON_PERCENT,
+                    ),
+                ),
+                bubbleBadgePercent = ModulePreferences.coerceBubbleBadgePercent(
+                    preferences.getInt(
+                        ModulePreferences.KEY_BUBBLE_BADGE_PERCENT,
+                        ModulePreferences.DEFAULT_BUBBLE_BADGE_PERCENT,
+                    ),
+                ),
+                bubbleTimeoutSeconds = ModulePreferences.coerceBubbleTimeoutSeconds(
+                    preferences.getInt(
+                        ModulePreferences.KEY_BUBBLE_TIMEOUT_SECONDS,
+                        ModulePreferences.DEFAULT_BUBBLE_TIMEOUT_SECONDS,
+                    ),
+                ),
+                bubbleDimOnTimeout = preferences.getBoolean(
+                    ModulePreferences.KEY_BUBBLE_DIM_ON_TIMEOUT,
+                    ModulePreferences.DEFAULT_BUBBLE_DIM_ON_TIMEOUT,
+                ),
+                bubblePreviewEnabled = preferences.getBoolean(
+                    ModulePreferences.KEY_BUBBLE_PREVIEW_ENABLED,
+                    ModulePreferences.DEFAULT_BUBBLE_PREVIEW_ENABLED,
+                ),
+                bubblePreviewSuppressBanner = preferences.getBoolean(
+                    ModulePreferences.KEY_BUBBLE_PREVIEW_SUPPRESS_BANNER,
+                    ModulePreferences.DEFAULT_BUBBLE_PREVIEW_SUPPRESS_BANNER,
+                ),
+                bubblePreviewEdgeOnly = preferences.getBoolean(
+                    ModulePreferences.KEY_BUBBLE_PREVIEW_EDGE_ONLY,
+                    ModulePreferences.DEFAULT_BUBBLE_PREVIEW_EDGE_ONLY,
+                ),
+                bubblePreviewAlpha = ModulePreferences.coerceBubblePreviewAlpha(
+                    preferences.getInt(
+                        ModulePreferences.KEY_BUBBLE_PREVIEW_ALPHA,
+                        ModulePreferences.DEFAULT_BUBBLE_PREVIEW_ALPHA,
+                    ),
+                ),
+                bubbleMotionContinuous = preferences.getBoolean(
+                    ModulePreferences.KEY_BUBBLE_MOTION_CONTINUOUS,
+                    ModulePreferences.DEFAULT_BUBBLE_MOTION_CONTINUOUS,
+                ),
+                statusScrollEnabled = preferences.getBoolean(
+                    ModulePreferences.KEY_STATUS_SCROLL_ENABLED,
+                    ModulePreferences.DEFAULT_STATUS_SCROLL_ENABLED,
+                ),
+                statusScrollRounds = ModulePreferences.coerceStatusScrollRounds(
+                    preferences.getInt(
+                        ModulePreferences.KEY_STATUS_SCROLL_ROUNDS,
+                        ModulePreferences.DEFAULT_STATUS_SCROLL_ROUNDS,
+                    ),
+                ),
+                statusScrollWhitelist = ModulePreferences.decodePackages(
+                    preferences.getString(ModulePreferences.KEY_STATUS_SCROLL_WHITELIST, null),
+                ),
+                suggestionsEnabled = preferences.getBoolean(
+                    ModulePreferences.KEY_SUGGESTIONS_ENABLED,
+                    ModulePreferences.DEFAULT_SUGGESTIONS_ENABLED,
+                ),
+                suggestionFlashlight = preferences.getBoolean(
+                    ModulePreferences.KEY_SUGGESTION_FLASHLIGHT,
+                    ModulePreferences.DEFAULT_SUGGESTION_FLASHLIGHT,
+                ),
+                suggestionMusic = preferences.getBoolean(
+                    ModulePreferences.KEY_SUGGESTION_MUSIC,
+                    ModulePreferences.DEFAULT_SUGGESTION_MUSIC,
+                ),
+                suggestionAppInstall = preferences.getBoolean(
+                    ModulePreferences.KEY_SUGGESTION_APP_INSTALL,
+                    ModulePreferences.DEFAULT_SUGGESTION_APP_INSTALL,
+                ),
+                suggestionClipboard = preferences.getBoolean(
+                    ModulePreferences.KEY_SUGGESTION_CLIPBOARD,
+                    ModulePreferences.DEFAULT_SUGGESTION_CLIPBOARD,
+                ),
+                suggestionKeepAwake = preferences.getBoolean(
+                    ModulePreferences.KEY_SUGGESTION_KEEP_AWAKE,
+                    ModulePreferences.DEFAULT_SUGGESTION_KEEP_AWAKE,
+                ),
+                suggestionNoEdge = preferences.getBoolean(
+                    ModulePreferences.KEY_SUGGESTION_NO_EDGE,
+                    ModulePreferences.DEFAULT_SUGGESTION_NO_EDGE,
+                ),
+                bubbleSkipForeground = preferences.getBoolean(
+                    ModulePreferences.KEY_BUBBLE_SKIP_FOREGROUND,
+                    ModulePreferences.DEFAULT_BUBBLE_SKIP_FOREGROUND,
+                ),
+                bubbleSkipGame = preferences.getBoolean(
+                    ModulePreferences.KEY_BUBBLE_SKIP_GAME,
+                    ModulePreferences.DEFAULT_BUBBLE_SKIP_GAME,
+                ),
+                bubbleSkipLocked = preferences.getBoolean(
+                    ModulePreferences.KEY_BUBBLE_SKIP_LOCKED,
+                    ModulePreferences.DEFAULT_BUBBLE_SKIP_LOCKED,
+                ),
+                bubblePreviewTimeoutSeconds = ModulePreferences.coerceBubblePreviewTimeoutSeconds(
+                    preferences.getInt(
+                        ModulePreferences.KEY_BUBBLE_PREVIEW_TIMEOUT_SECONDS,
+                        ModulePreferences.DEFAULT_BUBBLE_PREVIEW_TIMEOUT_SECONDS,
+                    ),
+                ),
+                bubblePreviewDynamicTimeout = preferences.getBoolean(
+                    ModulePreferences.KEY_BUBBLE_PREVIEW_DYNAMIC_TIMEOUT,
+                    ModulePreferences.DEFAULT_BUBBLE_PREVIEW_DYNAMIC_TIMEOUT,
+                ),
+                bubbleAutoDismiss = preferences.getBoolean(
+                    ModulePreferences.KEY_BUBBLE_AUTO_DISMISS,
+                    ModulePreferences.DEFAULT_BUBBLE_AUTO_DISMISS,
                 ),
             )
         }

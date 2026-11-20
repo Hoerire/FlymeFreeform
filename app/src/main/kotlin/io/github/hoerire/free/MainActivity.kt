@@ -36,12 +36,14 @@ class MainActivity : ComponentActivity() {
         val appRepository =
             (application as FreeApplication).launcherAppRepository
         val sidebarRepository = (application as FreeApplication).sidebarEntryRepository
+        val cloneCatalogRepository = (application as FreeApplication).cloneCatalogRepository
         val updateChecker = (application as FreeApplication).updateChecker
         setContent {
             // 设置页可能以浮窗形式显示，此时生命周期不一定是 RESUMED：
             // 用 collectAsState 直接跟随组合，避免状态收集不启动、界面永远停在初始值。
             val state = repository.state.collectAsState().value
             val sidebarCatalog = sidebarRepository.state.collectAsState().value
+            val clones = cloneCatalogRepository.clones.collectAsState().value
             val apps = appRepository.apps.collectAsState().value
             val appsLoading = appRepository.loading.collectAsState().value
             val update = updateChecker.state.collectAsState().value
@@ -49,6 +51,7 @@ class MainActivity : ComponentActivity() {
             // 应用列表固定包含全部已安装应用（含没有桌面图标的组件），不再按开关筛选。
             androidx.compose.runtime.LaunchedEffect(Unit) {
                 appRepository.refresh()
+                cloneCatalogRepository.refresh()
             }
             FreeTheme {
                 FreeNavHost(
@@ -56,6 +59,8 @@ class MainActivity : ComponentActivity() {
                     appsFlow = appRepository.apps,
                     appsLoadingFlow = appRepository.loading,
                     sidebarCatalogFlow = sidebarRepository.state,
+                    clonesFlow = cloneCatalogRepository.clones,
+                    onRefreshClones = cloneCatalogRepository::refresh,
                     onRefreshCatalog = sidebarRepository::refresh,
                     onCancelCatalog = sidebarRepository::cancel,
                     onModuleEnabledChange = repository::setModuleEnabled,
@@ -94,6 +99,7 @@ class MainActivity : ComponentActivity() {
                     onRequestScopes = repository::requestMissingScopes,
                     onPinnedTargetsChange = repository::setPinnedTargets,
                     onBlacklistChange = repository::setBlacklistPackages,
+                    onBubbleSettingsChange = repository::setBubbleSettings,
                     onZoomExcludedChange = repository::setZoomExcludedPackages,
                     updateFlow = updateChecker.state,
                     onCheckUpdate = { updateChecker.check(force = true) },
@@ -106,9 +112,8 @@ class MainActivity : ComponentActivity() {
     /**
      * 把页面顶部的左右两端从系统返回手势里排除出去。
      *
-     * 顶部返回按钮的落点在屏幕左边缘 24dp 的返回手势区里（日志：action_down is in
-     * interception region {[gesture…][0,141][84,2800]}，点按坐标 x=78），系统会把它当成
-     * 一次返回手势直接退出应用或把任务切到后台，页面看起来就"卡住"了。
+     * 顶部返回按钮的落点位于屏幕左边缘 24dp 的返回手势区内，系统会把这里的点按当成
+     * 一次返回手势处理，直接退出应用或把任务切到后台，页面表现为「卡住」。
      * 声明手势排除区后，这一带的触摸只交给应用自己的按钮处理。
      */
     private fun installGestureExclusion() {

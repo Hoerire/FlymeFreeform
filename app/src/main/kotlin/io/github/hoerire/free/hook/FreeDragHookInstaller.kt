@@ -156,10 +156,10 @@ internal class FreeDragHookInstaller(
                 runCatching { it.javaClass.getMethod("getWhiteList").invoke(it) as? List<*> }
                     .getOrNull()
             }
-        // 原厂已经把这个包登记得很全（微信这类大包有 30 多个 Activity）时不再追加：
+        // 原厂已经把这个包登记得很全（大型应用常有 30 多个 Activity）时不再追加：
         // 追加是「每个 Activity 补一份 web 控件 + 末尾再挂一份通用条目」，条目数按
-        // Activity 数线性膨胀，而 bind 载荷跟随 ApplicationInfo 一起下发。日志中出现过
-        // 微信在 bindApplication 阶段反复被杀（error during bind）的案例，载荷 1.44MB。
+        // Activity 数线性膨胀，而 bind 载荷跟随 ApplicationInfo 一起下发。载荷达到 MB 级时
+        // 应用会在 bindApplication 阶段反复被杀（error during bind）。
         // 这类大包的原厂规则本身已够用，追加的收益远小于风险。
         if (originalWhite != null && originalWhite.size > MAX_APPEND_ACTIVITIES) {
             if (VerboseLog.enabled) {
@@ -268,7 +268,7 @@ internal class FreeDragHookInstaller(
      * 小于 0x2000 则只当作字符串存着，配置对象是唯一的匹配依据。
      *
      * 所以这里刻意不把控件表写进 XML：写进去必然超过 8KB，等于把匹配交给解析器
-     * （空属性 → null，之前就是这么崩的）。保持短小，配置对象说了算。
+     * （属性缺失会被解析成 null，匹配必然失效）。保持短小，配置对象说了算。
      */
     private fun buildGenericXml(packageName: String): String = buildString {
         append("<packageConfig><whiteList><package name=\"")
@@ -294,7 +294,7 @@ internal class FreeDragHookInstaller(
          *
          * 注入侧的追加是「每个 Activity 补一份 web 控件表 + 末尾再挂一份通用条目」，
          * 条目数随 Activity 数线性膨胀；这些条目随 ApplicationInfo 进 binder，
-         * 超过 1MB 时应用会绑定失败（日志中出现过微信因此无法启动的案例）。原厂登记了
+         * 超过 1MB 时应用会绑定失败。原厂登记了
          * 这么多 Activity 的包，本身覆盖已经很全，兜底收益远小于风险。
          */
         const val MAX_APPEND_ACTIVITIES = 8

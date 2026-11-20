@@ -29,7 +29,7 @@ internal object ScreenIdentifyAppOps {
             context.packageManager.getApplicationInfo(HOST_PACKAGE, 0).uid
         }.getOrNull()
         if (uid == null) {
-            // 这台设备没有识屏宿主，什么都不做。
+            // 无识屏宿主，什么都不做。
             ModuleLog.debug(TAG) { "SCREEN_IDENTIFY_APPOPS_NO_HOST" }
             return
         }

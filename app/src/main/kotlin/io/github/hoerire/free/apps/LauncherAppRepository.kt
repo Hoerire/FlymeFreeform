@@ -35,7 +35,7 @@ internal class LauncherAppRepository(private val context: Context) {
     private val mutableApps = MutableStateFlow<List<SelectableEntry>>(emptyList())
     private val mutableLoading = MutableStateFlow(false)
 
-    /** 上一轮结果：重新打开开关时先按缓存立即生效，再在后台补齐。 */
+    /** 上一次扫描的结果：重新打开开关时先按缓存立即生效，再在后台补齐。 */
     private var cachedNonLauncherEntries: List<SelectableEntry>? = null
     private var cachedLauncherEntries: List<SelectableEntry> = emptyList()
     val apps: StateFlow<List<SelectableEntry>> = mutableApps.asStateFlow()
@@ -70,7 +70,7 @@ internal class LauncherAppRepository(private val context: Context) {
      * 按包名去重，保留先出现的（带启动入口的那条）。
      */
     fun refresh() {
-        // 上一轮结果先顶上：首次扫描要重建数百个图标，期间不能只让界面停在空列表。
+        // 上一次扫描的结果先顶上：首次扫描要重建数百个图标，期间不能只让界面停在空列表。
         cachedNonLauncherEntries?.let { emit(cachedLauncherEntries, it) }
         mutableLoading.value = true
         worker.execute {

@@ -206,8 +206,8 @@ internal class LauncherHookInstaller(
         event: MotionEvent,
     ): CornerGestureConfig? {
         if (event.actionMasked != MotionEvent.ACTION_DOWN) return null
-        // 无条件挂上设置通道：之前只在「模块未启用」时才注册广播接收器，
-        // 导致桌面进程开着模块时永远收不到后续设置推送 —— 关掉「启用交互」
+        // 无条件挂上设置通道：只在「模块未启用」时注册广播接收器，会让桌面进程
+        // 开着模块时收不到后续设置推送 —— 关掉「启用交互」
         // 它仍然拿着启动时的旧快照继续抢底角输入。方法内部有幂等保护，重复调用无代价。
         installSettingsSync(owner)
         val settings = configuration.snapshot

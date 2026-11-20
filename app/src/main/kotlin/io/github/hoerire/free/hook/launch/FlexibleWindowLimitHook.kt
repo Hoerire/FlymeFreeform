@@ -216,7 +216,7 @@ internal class FlexibleWindowLimitHook(
         // getMaxWinNum 是"总可见窗口上限"（全屏任务也算），系统的超限判定里
         // shouldChangeToFloatSize = max(0, allVisibleWindowSize - maxNum) 即由它计算。
         // 把它改成设置值会让「一个全屏应用 + 一个合规小窗」立刻判定超限，
-        // 于是扇形菜单一出现就收掉小窗——之前那个"无条件加一"用于抵消该偏差。
+        // 于是扇形菜单一出现就收掉小窗；「无条件加一」只是抵消该偏差的补丁。
         // 这里只改浮动上限，总可见上限保持系统默认。
         // 16 的数量判据就是 getMaxWinNum（2.2 版正是接管它才生效）；
         // 17 改成「总可见窗口上限」，把全屏任务也算进去，改它会让

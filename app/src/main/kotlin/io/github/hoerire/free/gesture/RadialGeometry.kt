@@ -70,7 +70,7 @@ internal object RadialGeometry {
         }
         // 命中范围以「屏幕直角（扇形原点）」为基准：离原点的距离落在圆弧半径
         // ±enterRadius 的环带内就算命中，再按角度取最近的那一格。
-        // 之前按「图标圆心」判距离，手指必须先精确滑到某个图标附近才响应，
+        // 不能按「图标圆心」判距离：那样手指必须先精确滑到某个图标附近才响应，
         // 圈看起来很大、实际却要越过圈才选中。
         val fromOrigin = hypot(x - layout.origin.x, y - layout.origin.y)
         if (kotlin.math.abs(fromOrigin - layout.radius) > enterRadius) return null

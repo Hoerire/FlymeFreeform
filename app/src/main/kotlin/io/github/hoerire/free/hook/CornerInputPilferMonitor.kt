@@ -18,11 +18,11 @@ import io.github.hoerire.free.gesture.CornerSide
 import io.github.hoerire.free.gesture.CornerTriggerRegion
 
 /**
- * 角区“抢流”监听者：用 InputMonitor 取代原来的 SystemUI SPY 窗口。
+ * 角区“抢流”监听者：用 InputMonitor 替代 SystemUI SPY 窗口方案。
  *
- * 原来的做法是在底角放两个 294×294 的可触摸窗口，靠 `pilferPointers` 抢流。
- * 窗口会盖住应用底部的按钮（语音、加号），在这台 ColorOS 上 `INPUT_FEATURE_SPY`
- * 也没有做到“只旁听不消费”，点按会被窗口吃掉。
+ * SPY 窗口方案在底角放两个 294×294 的可触摸窗口，靠 `pilferPointers` 抢流；
+ * 这些窗口会盖住应用底部的按钮（语音、加号），而 `INPUT_FEATURE_SPY` 在 ColorOS 上
+ * 也无法做到“只旁听不消费”，点按会被窗口吃掉。
  *
  * InputMonitor 不需要窗口：它收到所有触摸的副本、不消费事件，点击照常落到应用；
  * 只在位移超过 [PILFER_SLOP_DP]（确认是滑动）时调 `pilferPointers`，把流抢过来，
@@ -61,8 +61,8 @@ internal class CornerInputPilferMonitor(
         appContext = context.applicationContext ?: context
         environmentState.start(context)
         // 设置一变就换快照：关掉「启用交互」必须**立刻**停止抢流。
-        // 之前只在 environmentState 变化（锁屏/横竖屏/游戏模式）时才刷新，
-        // 结果开关关了、哨兵还拿着旧快照继续吞底角触摸。
+        // 只在 environmentState 变化（锁屏/横竖屏/游戏模式）时刷新，会让开关失效：
+        // 哨兵仍拿着旧快照继续吞底角触摸。
         settings = configuration.snapshot
         configuration.observe { next -> settings = next }
 
@@ -252,7 +252,7 @@ internal class CornerInputPilferMonitor(
         /**
          * 位移到这个量就抢流。
          *
-         * 原来取 3dp，实测仍会"有概率滑到下层应用"：抢流要过一轮 InputDispatcher 才生效，
+         * 取 3dp 时仍有概率漏到下层应用：抢流要过一轮 InputDispatcher 才生效，
          * 手指快的时候这几帧已经让应用越过自己的 touchSlop（约 8dp）开始滚动。
          * 1.5dp 把这段窗口压掉一半；点按（几乎不位移）仍然放行。
          */

@@ -71,8 +71,7 @@ internal class UahInputSuppressor(
                 // 吞掉事件时必须自己把事件结算掉：这个接收器是输入监控通道，
                 // 跳过 onInputEvent 就等于永不 finishInputEvent，系统等 5 秒后判
                 // 「OplusUAHInputChannel is not responding」，整条输入流水线随之卡死
-                // （日志：AnrLogEnhancement:onAnrLocked ... Waited 5000ms for MotionEvent，
-                // 落点 x=1176.9 y=2754.8 正好在底角触发区与 home 手势条的交叠处）。
+                // （触发条件：按下点落在底角触发区与 home 手势条的交叠处）。
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         if (!insideTrigger(event)) {

@@ -15,7 +15,7 @@ import io.github.hoerire.free.log.ModuleLog
  *
  * 这里在它的 onPointerEvent 入口把「落在扇形角区里的按下」整条吞掉：拿不到 DOWN，
  * 它就记不下起点，后续 MOVE/UP 也不会触发任何系统手势。扇形本身走的是模块自己的
- * gesture monitor，不经过这里，行为和之前一致。
+ * gesture monitor，不经过这里，系统手势的其余行为不受影响。
  */
 internal class SystemGestureSuppressor(
     private val module: XposedModule,

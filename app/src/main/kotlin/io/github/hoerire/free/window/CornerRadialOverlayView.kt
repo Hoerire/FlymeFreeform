@@ -772,8 +772,8 @@ internal class CornerRadialOverlayView(
                 ((motion.radialProgress - 0.85f) / 0.15f).coerceIn(0f, 1f)
             }
         layout.itemCenters.forEachIndexed { index, destination ->
-            // 所有格共用同一条展开进度（不做错峰：错峰会让图标拉开距离、
-            // 连成一串残影，实测观感更差）。展开/收起都由这条进度驱动。
+            // 所有格共用同一条展开进度（不做错峰：错峰会拉开图标间距，
+            // 视觉上连成一串残影）。展开/收起都由这条进度驱动。
             val localProgress = motion.radialProgress.coerceIn(0f, 1f)
             // 拉伸：整圈按 proximity 外扩，正对手指的那一格再额外外推一点，
             // 观感上是"被手指拉起一角"，而不是整块等比放大。
@@ -1362,7 +1362,7 @@ internal class CornerRadialOverlayView(
         if (pendingCommit != null) {
             commitNotified = true
             // 协调器在这里决定：取屏工具/动画关闭 -> 立即移除；应用/快捷方式 ->
-            // 调 retractAnimated() 让我们播完缩回再移除（启动本身已经并行开始）。
+            // 调 retractAnimated() 播完缩回再移除（启动本身已经并行开始）。
             listener.onEntryCommitted(pendingCommit)
             if (disposed) return
             if (!retracting.value) completeRadialExit()

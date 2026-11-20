@@ -165,7 +165,7 @@ internal class ColorOsFreeformLauncher(
         // flags 必须是 0，不能用 MATCH_DEFAULT_ONLY：
         // 改名/图标包类应用的启动入口是 activity-alias，filter 只有 MAIN+LAUNCHER、
         // 不带 CATEGORY_DEFAULT，而 DEFAULT 匹配语义会把它整个过滤掉——隐式按包名
-        // startActivity 对这类入口天生解析不到（实测 am start 同样报 unable to resolve）。
+        // startActivity 对这类入口解析不到。
         // 桌面点得开是因为桌面拿显式组件启动，从不走隐式解析；这里 flags=0 枚举出
         // 启用中的入口再显式启动，与桌面对齐。
         runCatching {
@@ -173,15 +173,15 @@ internal class ColorOsFreeformLauncher(
         }.onSuccess { results ->
             // 信任枚举结果：getLaunchIntentForPackage / queryIntentActivities / LauncherApps
             // 三个同源枚举认可的入口，就是桌面会启动的那个。不要再用 unavailableReason
-            // （getActivityInfo.enabled）否决它——实测 Salt Player 改名后，枚举唯一入口
-            // 恰好就是扇形记录的组件，getActivityInfo 却误报 ACTIVITY_DISABLED，
-            // 「候选必须 != requested」的过滤把唯一可用入口排除掉，启动必然失败。
+            // （getActivityInfo.enabled）否决它——改名类应用的枚举唯一入口恰好就是
+            // 扇形记录的组件，getActivityInfo 却可能误报 ACTIVITY_DISABLED，
+            // 「候选必须 != requested」的过滤会把唯一可用入口排除掉，启动必然失败。
             // 就算组件真不可用，startActivity 的失败与不过滤时相同，不会更糟。
             val first = results?.firstOrNull()?.activityInfo ?: return null
             return ComponentName(first.packageName, first.name)
         }.onFailure { _ -> }
-        // LauncherApps 只返回当前启用、可被桌面启动的入口；部分系统环境下 system_server
-        // 里调用会拿不到结果（实测 Salt Player 改名后此路为空），只作最后一级。
+        // LauncherApps 只返回当前启用、可被桌面启动的入口；部分系统环境下这条路
+        // 对改名类应用返回空，只作最后一级。
         val launcherApps = context.getSystemService(android.content.pm.LauncherApps::class.java) ?: return null
         return try {
             val activities = launcherApps
@@ -200,7 +200,7 @@ internal class ColorOsFreeformLauncher(
                 .getActivityInfo(component, PackageManager.ComponentInfoFlags.of(0))
             // 不再要求 exported：本模块在 system_server（uid 1000）内启动，
             // 具备 START_ANY_ACTIVITY，系统应用把启动 Activity 标成 exported=false 也能拉起；
-            // 之前按 exported 拦截，会把这类应用一律判成"目标不可用"而根本不去启动。
+            // 按 exported 拦截会把这类应用一律判成"目标不可用"而根本不去启动。
             when {
                 !info.applicationInfo.enabled -> "APP_DISABLED"
                 !info.enabled -> "ACTIVITY_DISABLED"

@@ -771,7 +771,7 @@ internal class PortalTapModern(
     }
 }
 
-/** 单个系统版本的接管配置。混淆名逐版本实测，不跨版本复用。 */
+/** 单个系统版本的接管配置。混淆名按版本区分，不跨版本复用。 */
 internal data class PortalProfile(
     val portalVersion: String,
     val serviceClass: String,

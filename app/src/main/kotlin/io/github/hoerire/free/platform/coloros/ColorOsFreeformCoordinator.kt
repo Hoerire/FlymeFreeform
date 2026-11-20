@@ -228,8 +228,8 @@ internal class ColorOsFreeformCoordinator(
     /**
      * 预热浮层：把 Compose 的一次性成本（类加载、Skia、字体、首次组合与布局）挪到开机后的空闲时段。
      *
-     * 首次呼出时现创建的话，首帧约 400ms 才出来（日志：SHOWN → 第一条 HIT_ENTER 间隔 457ms），
-     * 表现为一张冻住的图：不能选、不能滑，只能等抬手后点空白关掉。
+     * 首次呼出时现创建的话，首帧要几百毫秒才出来，表现为一张冻住的图：不能选、不能滑，
+     * 只能等抬手后点空白关掉。
      * 这里拿一个 1×1、几乎全透明、不可触摸的窗口把整条链路走一遍，400ms 后移除。
      * 只是优化，任何一步失败都吞掉，不影响真手势。
      */
@@ -375,14 +375,14 @@ internal class ColorOsFreeformCoordinator(
         if (pointerRegistered) return
         val generation = pointerGeneration
         // 抢流（system_server InputMonitor）**只在 ColorOS 17+ 启用**：
-        // 该路径在 Android 16 / ColorOS 16（API 36）上会导致系统界面崩溃（发版前实测），
+        // 该路径在 Android 16 / ColorOS 16（API 36）上会导致系统界面崩溃，
         // 而 16 的原厂输入分发不需要这层抢流补偿。旧代一律走 WMS 旁观者，
-        // 与 3.1.5 的已发布行为完全一致（代价是旧代的左滑穿透问题依然存在，
-        // 那是既有状态、不是本次回归；宁可保留旧问题也不能让 16 用户系统界面崩）。
+        // 与已发布版本行为一致（代价是旧代的左滑穿透问题依然存在：
+        // 宁可保留该问题也不能让 16 用户的系统界面崩）。
         //
-        // ColorOS 17 现场日志：原 SystemUI 侧 monitor 通道整场收不到事件
-        // （0 条 CORNER_TRACK），抢流环节缺失导致触发范围内左滑穿透到下层应用。
-        // 改成 system_server 内建 monitor（收到全部事件副本、不消费）后，
+        // ColorOS 17 的 SystemUI 侧 monitor 通道收不到事件（CORNER_TRACK 恒为 0），
+        // 抢流环节缺失会让触发范围内的左滑穿透到下层应用。
+        // 改用 system_server 内建 monitor（收到全部事件副本、不消费）后，
         // 在首个有效 MOVE（6px 阈值）调 pilferPointers 抢流，穿透消失。
         if (RomFlavor.isColorOs17OrNewer && startSystemGestureMonitor(generation)) return
         // 退路：WMS 指针监听（只观察，不抢流）。扇形能用，但左滑会穿透到下层应用。
@@ -641,7 +641,7 @@ internal class ColorOsFreeformCoordinator(
                     if (upward > inward * VERTICAL_ABORT_RATIO) return false
                     // 另一头：几乎纯水平的内向拖动也不是角区手势。
                     // 视频进度条、横向滑动的列表就在触发范围内，拖动时 upward≈0 而 inward 很大；
-                    // 旧逻辑只挡"过于垂直"，于是拖进度条的第一帧（6px）就被抢流，
+                    // 只挡"过于垂直"不足以排除它们，拖进度条的第一帧（6px）就会被抢流，
                     // 表现为进度条拖不动、视频没法快进后退。
                     // 同样只让这一帧、不 cancel：手指后续转成斜向时仍会正常抢流。
                     // 比例必须与 CornerGestureEngine.MIN_UPWARD_RATIO 一致，
@@ -652,8 +652,8 @@ internal class ColorOsFreeformCoordinator(
                     logFirstPilfer(moved)
                     // 抢流即激活：抢流判定已确认这是角区斜推手势（非上滑方向），
                     // 记下方向与原始落点，等重发 DOWN 到达 UI 引擎时直接进入 Revealing，
-                    // 不再等后续 MOVE 攒位移。快速轻扫（抢流后 1~25ms 抬手）的 MOVE 流
-                    // 太短，等 MOVE 判定永远来不及，表现为扇形划不出来（实测 25% 失败率）。
+                    // 不再等后续 MOVE 攒位移。快速轻扫（抢流后数毫秒内抬手）的 MOVE 流
+                    // 太短，等 MOVE 判定来不及，表现为扇形划不出来。
                     pilferActivateSide = if (isLeftSide) CornerSide.Left else CornerSide.Right
                     pilferActivateX = pilferDownX
                     pilferActivateY = pilferDownY
@@ -721,8 +721,8 @@ internal class ColorOsFreeformCoordinator(
             // 相对原落点的位移才是手势的真实位移。也不 reset：会把引擎打回 Armed，
             // 接着 CANCEL 一来整条流就断了，菜单定格。
             // 抢流即激活：抢流判定已经确认这是角区斜推（方向闸门在抢流时已过），
-            // 快速轻扫的 MOVE 流在抢流后 1~25ms 就被 UP/CANCEL 掐断，等 MOVE 攒到
-            // 14dp 激活阈值永远来不及（实测 25% 手势失败）。这里直接消费抢流时
+            // 快速轻扫的 MOVE 流在抢流后数毫秒就被 UP/CANCEL 掐断，等 MOVE 攒到
+            // 14dp 激活阈值来不及。这里直接消费抢流时
             // 记下的方向与原始落点，立即弹出扇形——激活与抢流合并成同一事件。
             val pendingSide = pilferActivateSide
             if (pendingSide != null && overlay == null) {
@@ -1116,7 +1116,7 @@ internal class ColorOsFreeformCoordinator(
         val tasks = taskSnapshot()
         // 「前台全屏 → 小窗」就地切换：走系统的 switchFocusedTaskToZoom，不启动 Activity、
         // 不建新任务、不出起始窗口，只是同一个窗口改形态。重新拉起要走 ActivityStarter
-        // 加 OPEN 转场（实测到转场结束约 700 ms），差别就在这里。
+        // 加 OPEN 转场（转场结束前不可交互，约数百毫秒），差别就在这里。
         if (switchFocusedFullscreenToZoom(tasks, target.packageName)) {
             debug("SYSTEM_SWITCH_TO_ZOOM_" + target.packageName + "_" + (SystemClock.uptimeMillis() - startedAt))
             return
@@ -1151,7 +1151,7 @@ internal class ColorOsFreeformCoordinator(
             "SYSTEM_DECISION_" + target.packageName + "_form" + form +
                 "_restorable" + restorable.size,
         )
-        // 迷你窗/浮标都不该"新建任务"（每点一次多一个任务，日志中出现过累积到 25 个的情况）。
+        // 迷你窗/浮标都不该"新建任务"（每点一次多一个任务，任务栈会持续累积）。
         // 系统自己点迷你窗走的是 FlexibleTaskCaptionView.onSingleTapConfirmed →
         //   controller.switchState(task, 1, "onSingleTapConfirmed")
         // 这里调同一个方法、同一个目标状态，动画与状态机完全一致。
@@ -1175,8 +1175,8 @@ internal class ColorOsFreeformCoordinator(
             debug("SYSTEM_LAUNCH_BALL_OPENED_" + target.packageName + "_" + ballTaskId)
             return
         }
-        // 后台任务不走 startActivityFromRecents：这台 ROM 上它只把任务提到前台，
-        // 完全忽略 extra_window_mode 那套小窗参数（实测：只会变成全屏）。
+        // 后台任务不走 startActivityFromRecents：ColorOS 上它只把任务提到前台，
+        // 完全忽略 extra_window_mode 那套小窗参数（结果变成全屏）。
         // 后台任务仍走 launcher.launch → startZoomWindow。
         val launchResult = launcher.launch(
             android.content.ComponentName(target.packageName, target.className),
@@ -1356,7 +1356,7 @@ internal class ColorOsFreeformCoordinator(
      * 挂上"接住触摸"的窗口：覆盖整屏，底部让出手势条。
      *
      * 扇形激活之后屏幕上的触摸一律先由模块接住：落在扇形上选格，落在扇形之外则是
-     * 「点空白关闭」。之前这块只盖下半屏，点上半屏会直接落到下面的应用（点进按钮、
+     * 「点空白关闭」。只盖下半屏会让上半屏的触摸直接落到下面的应用（点进按钮、
      * 拖动列表），表现为"划着划着划到下层应用"。
      */
     private fun attachTouchRegion() {
@@ -1601,9 +1601,8 @@ internal class ColorOsFreeformCoordinator(
 
     /** 输入法窗口此刻是否可见；状态拿不到时按「不可见」处理，避免误拦手势。 */
     private fun isInputMethodVisible(): Boolean {
-        // 主判据：WMS 里那个 IME 窗口。窗外关闭（OutsideTapClose）用的就是这条链路，
-        // 已验证可用；早期版本只读 IMMS 的 mImeWindowVis，取到 0 就当作没弹键盘，
-        // 结果「屏蔽键盘」永远不生效。
+        // 主判据：WMS 里那个 IME 窗口。窗外关闭（OutsideTapClose）用的就是这条链路。
+        // 只读 IMMS 的 mImeWindowVis 不够：取到 0 会当作没弹键盘，结果「屏蔽键盘」永远不生效。
         inputMethodWindowState()?.let { window ->
             (OemReflection.callNoArg(window, "isVisible") as? Boolean)?.let { return it }
         }
@@ -1799,9 +1798,9 @@ internal class ColorOsFreeformCoordinator(
      * 「前台全屏 → 小窗」就地切换：`FlexibleWindowManagerService#switchFocusedTaskToZoom(Task)`。
      *
      * 与 [ColorOsFreeformLauncher] 走的 `OplusZoomWindowManager.startZoomWindow` 区别在于：
-     * 后者是一次**启动**（ActivityStarter、新建任务、起始窗口、OPEN 转场，实测到转场结束约
-     * 700 ms）；前者只是把已经在前台的全屏任务改成小窗形态，同一个窗口和 Surface 直接变形，
-     * 所以点下去几乎立刻可见。
+     * 后者是一次**启动**（ActivityStarter、新建任务、起始窗口、OPEN 转场，转场结束前不可
+     * 交互，约数百毫秒）；前者只是把已经在前台的全屏任务改成小窗形态，同一个窗口和
+     * Surface 直接变形，所以点下去几乎立刻可见。
      *
      * 只在「目标包的全屏任务此刻就是焦点任务」时使用 —— 该方法的语义就是切换*聚焦*任务；
      * 可见小窗、迷你窗、贴边浮标、后台任务一律交回原有分支，保证行为可预期。
