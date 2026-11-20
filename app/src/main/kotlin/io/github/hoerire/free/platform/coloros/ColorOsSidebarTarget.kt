@@ -20,7 +20,7 @@ internal object ColorOsSidebarTarget {
      * 侧边栏应用的 uid；不可用时返回 null。
      *
      * 这里只校验"是不是那个应用、有没有那套权限"，**不再要求
-     * provider.applicationInfo.uid == service.applicationInfo.uid**。
+     * 判据 provider.applicationInfo.uid == service.applicationInfo.uid**。
      * 原因：ColorOS 侧边栏可能同时存在系统预装版（/product/app/SmartSideBar）与
      * 更新版（/data/app/...）两条 Package 记录，getServiceInfo 与 resolveContentProvider
      * 会各自命中不同实例，uid 必然对不上，于是整条链路被判成"不可用"，

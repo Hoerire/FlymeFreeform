@@ -164,7 +164,7 @@ internal class BubbleCoordinator(
             val identity = BubbleIdentity(packageName, sbn.userId, sbn.key)
             val wantsBubble = settings.accepts(identity)
             val wantsTicker =
-                settings.statusScrollActive && settings.acceptsStatusScroll(packageName)
+                settings.statusScrollActive && settings.acceptsStatusScroll(identity)
             if (!wantsBubble && !wantsTicker) return
             environment.suppressionReason(packageName, sbn.userId, settings)?.let { reason ->
                 log("BUBBLE_SKIP_" + reason + "_" + packageName, null)
@@ -172,7 +172,7 @@ internal class BubbleCoordinator(
             }
             if (wantsBubble && isDuplicate(sbn.key)) return
             val payload = payloads.build(sbn)
-            // 状态栏滚动独立于气泡白名单：没开气泡的应用也可以只滚状态栏。
+            // 状态栏滚动与气泡共用「应用范围」的名单（开关仍各自独立）。
             if (wantsTicker) statusTicker?.onPosted(sbn, payload)
             if (!wantsBubble) return
             val item = BubbleItem(identity, payload, notification.contentIntent)

@@ -13,13 +13,13 @@ import android.animation.ValueAnimator
  * 进场用 decelerate（先快后慢，快速铺开再稳稳停住），退场用 accelerate（先蓄势再快速收回）。
  */
 internal object SystemMotion {
-    /** Material 3 emphasized decelerate。 */
+    /** Material 3 强调型减速曲线。 */
     const val EMPHASIZED_DECELERATE_X1 = 0.05f
     const val EMPHASIZED_DECELERATE_Y1 = 0.7f
     const val EMPHASIZED_DECELERATE_X2 = 0.1f
     const val EMPHASIZED_DECELERATE_Y2 = 1f
 
-    /** Material 3 emphasized accelerate。 */
+    /** Material 3 强调型加速曲线。 */
     const val EMPHASIZED_ACCELERATE_X1 = 0.3f
     const val EMPHASIZED_ACCELERATE_Y1 = 0f
     const val EMPHASIZED_ACCELERATE_X2 = 0.8f

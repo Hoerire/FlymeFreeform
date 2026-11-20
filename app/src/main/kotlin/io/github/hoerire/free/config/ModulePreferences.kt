@@ -226,8 +226,6 @@ internal object ModulePreferences {
     /** 状态栏滚动：最新通知在状态栏时钟位置滚动显示。 */
     const val KEY_STATUS_SCROLL_ENABLED = "status_scroll_enabled_v1"
     const val KEY_STATUS_SCROLL_ROUNDS = "status_scroll_rounds_v1"
-    /** 空 = 全部应用；否则只滚这些包名。 */
-    const val KEY_STATUS_SCROLL_WHITELIST = "status_scroll_whitelist_v1"
     /**
      * 免打扰：三种场景下不出气泡与建议。
      *

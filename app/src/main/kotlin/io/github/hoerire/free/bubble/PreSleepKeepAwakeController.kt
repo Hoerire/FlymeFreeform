@@ -61,6 +61,8 @@ internal class PreSleepKeepAwakeController(
     private var baselineForeground: String? = null
     private var lastForegroundCheck = 0L
     private var polling = false
+    /** 用户点过一次之后本进程内不再自动弹。 */
+    private var consumedThisProcess = false
     private var receiverRegistered = false
 
     private val pollAction = Runnable { poll() }
@@ -82,6 +84,9 @@ internal class PreSleepKeepAwakeController(
         if (enabled) {
             registerReceiver()
             clearArmed()
+            // 关掉再打开视为重新要这个功能：把「已经用过」的标记清掉。
+            consumedThisProcess = false
+            lastSuggestionAt = 0L
             polling = true
             handler.post(pollAction)
             host.log("PRE_SLEEP_WATCH_STARTED", null)
@@ -117,8 +122,12 @@ internal class PreSleepKeepAwakeController(
      * 早先的实现是铺一层透明点按层、等用户点一下再弹气泡；实际使用里用户会等气泡自己出现，
      * 反而以为功能没生效。现在改为进入变暗就弹气泡：气泡本身开着不自动消失，
      * 用户点它才把屏幕钉住，不点就照常熄灭。
+     *
+     * 用户点过一次之后，本进程内不再自动弹：这是「用过了」而不是「每次变暗都提醒」，
+     * 要恢复需要重启 SystemUI / 系统框架，或在设置里关掉再打开这一项。
      */
     private fun onDimDetected() {
+        if (consumedThisProcess) return
         val now = SystemClock.elapsedRealtime()
         if (now - lastSuggestionAt < SUGGESTION_COOLDOWN_MS) return
         lastSuggestionAt = now
@@ -135,6 +144,7 @@ internal class PreSleepKeepAwakeController(
         if (keepAwake) return
         runCatching {
             keepAwake = true
+            consumedThisProcess = true
             baselineForeground = host.foregroundPackage()
             lastForegroundCheck = 0L
             pokeUserActivity()
@@ -270,10 +280,10 @@ internal class PreSleepKeepAwakeController(
 
         const val KEEP_WINDOW_TITLE = "FreeKeepScreenOn"
 
-        /** 同一轮变暗重复触发的最小间隔。 */
-        const val SUGGESTION_COOLDOWN_MS = 20_000L
+        /** 两次自动弹出之间的最小间隔：忽略掉的那一次之后，十分钟内不再打扰。 */
+        const val SUGGESTION_COOLDOWN_MS = 10 * 60_000L
 
-        /** PowerManager.USER_ACTIVITY_EVENT_TOUCH */
+        /** 触摸事件：PowerManager.USER_ACTIVITY_EVENT_TOUCH */
         const val USER_ACTIVITY_EVENT_TOUCH = 2
     }
 }

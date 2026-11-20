@@ -245,7 +245,7 @@ internal class ColorOsAllAppsContent(loader: ClassLoader, target: ColorOsSidebar
 
     /**
      * 直接按“屏幕上被点的那一行”分发：等价于系统实现里的
-     * `entry.setClickType(type); handler.onAppItemClicked(data, false)`，
+     * 原厂写法 `entry.setClickType(type); handler.onAppItemClicked(data, false)`，
      * 只是不再经过 currentDataList 的索引。
      */
     private fun dispatchDisplayed(item: Any?, clickType: Int?): Boolean = try {

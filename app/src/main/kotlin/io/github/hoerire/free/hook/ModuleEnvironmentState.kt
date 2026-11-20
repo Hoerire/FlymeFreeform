@@ -146,8 +146,8 @@ internal class ModuleEnvironmentState(
      * 手势被拦截的具体原因，供详细日志使用；返回 null 表示允许。
      *
      * 与 [isGestureAllowed] 判定顺序一致，只是把布尔结果拆成可读原因：
-     * MODULE_OFF / ENV_UNAVAILABLE / NO_DISPLAY / GESTURE_NAV_OFF / KEYGUARD /
-     * PAUSED_LANDSCAPE / PAUSED_GAME_MODE。
+     * 可能取值：MODULE_OFF / ENV_UNAVAILABLE / NO_DISPLAY / GESTURE_NAV_OFF / KEYGUARD /
+     * 其余取值 PAUSED_LANDSCAPE / PAUSED_GAME_MODE。
      */
     fun gestureBlockReason(refreshKeyguard: Boolean = false): String? {
         if (refreshKeyguard && keyguardRecheckNeeded) refreshKeyguardState()

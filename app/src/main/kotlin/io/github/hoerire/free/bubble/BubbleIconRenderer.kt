@@ -7,7 +7,7 @@ import android.graphics.Path
 import android.graphics.drawable.Drawable
 import java.util.WeakHashMap
 
-/** Draws notification icons through a subtle convex-bubble lens. */
+/** 通过一层轻微凸起的玻璃透镜绘制通知图标。 */
 internal object BubbleIconRenderer {
     private const val MESH = 8
     private val PAINT = Paint(

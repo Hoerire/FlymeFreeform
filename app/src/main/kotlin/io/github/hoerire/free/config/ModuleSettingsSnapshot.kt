@@ -122,7 +122,6 @@ internal data class ModuleSettingsSnapshot(
     /** 状态栏滚动：最新通知在时钟位置滚动显示。 */
     val statusScrollEnabled: Boolean = ModulePreferences.DEFAULT_STATUS_SCROLL_ENABLED,
     val statusScrollRounds: Int = ModulePreferences.DEFAULT_STATUS_SCROLL_ROUNDS,
-    val statusScrollWhitelist: List<String> = emptyList(),
     /** 免打扰：当前应用 / 游戏 / 锁屏与息屏三种场景各自独立。 */
     val bubbleSkipForeground: Boolean = ModulePreferences.DEFAULT_BUBBLE_SKIP_FOREGROUND,
     val bubbleSkipGame: Boolean = ModulePreferences.DEFAULT_BUBBLE_SKIP_GAME,
@@ -344,10 +343,6 @@ internal data class ModuleSettingsSnapshot(
             .putInt(
                 ModulePreferences.KEY_STATUS_SCROLL_ROUNDS,
                 ModulePreferences.coerceStatusScrollRounds(statusScrollRounds),
-            )
-            .putString(
-                ModulePreferences.KEY_STATUS_SCROLL_WHITELIST,
-                ModulePreferences.encodePackages(statusScrollWhitelist),
             )
             .putInt(
                 ModulePreferences.KEY_BUBBLE_PREVIEW_TIMEOUT_SECONDS,
@@ -707,9 +702,6 @@ internal data class ModuleSettingsSnapshot(
                         ModulePreferences.KEY_STATUS_SCROLL_ROUNDS,
                         ModulePreferences.DEFAULT_STATUS_SCROLL_ROUNDS,
                     ),
-                ),
-                statusScrollWhitelist = ModulePreferences.decodePackages(
-                    preferences.getString(ModulePreferences.KEY_STATUS_SCROLL_WHITELIST, null),
                 ),
                 suggestionsEnabled = preferences.getBoolean(
                     ModulePreferences.KEY_SUGGESTIONS_ENABLED,

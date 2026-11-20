@@ -74,7 +74,7 @@ internal sealed interface AppRoute {
  *
  * **不要换回第三方导航组件。** 这类组件的过场会为每条 entry 挂一层全屏
  * `pointerInput` 输入阻断，条件是
- * `blockInputDuringTransition && !isSettled && targetScene != transition.targetState`，
+ * 触发条件是 `blockInputDuringTransition && !isSettled && targetScene != transition.targetState`，
  * 而 settled 由内部 `SeekableTransitionState` 的 animateTo 协程推动。从二级页返回时
  * 该协程没走到位，退出的那一页就永远留在组合树里，视觉上它已经透明（看起来停在设置页），
  * 但它的阻断层把后续所有点击都吞掉 —— 表现为「返回后界面卡住、只有输入事件、路由不变」。

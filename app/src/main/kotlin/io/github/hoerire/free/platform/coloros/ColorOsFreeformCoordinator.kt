@@ -1165,7 +1165,7 @@ internal class ColorOsFreeformCoordinator(
         )
         // 迷你窗/浮标都不该"新建任务"（每点一次多一个任务，任务栈会持续累积）。
         // 系统自己点迷你窗走的是 FlexibleTaskCaptionView.onSingleTapConfirmed →
-        //   controller.switchState(task, 1, "onSingleTapConfirmed")
+        //   原厂调用 controller.switchState(task, 1, "onSingleTapConfirmed")
         // 这里调同一个方法、同一个目标状态，动画与状态机完全一致。
         if (restorable.isNotEmpty()) {
             var restored = 0
@@ -1178,7 +1178,7 @@ internal class ColorOsFreeformCoordinator(
             }
         }
         // 贴边浮标里的任务：手指点浮标走的是 FloatHandleView.onSingleTapUp →
-        // FloatHandleController.startActivityByFloatInfo(info, "onSingleTapUp")，
+        // 原厂入口 FloatHandleController.startActivityByFloatInfo(info, "onSingleTapUp")，
         // 由它把任务从浮标展开成小窗（SurfaceControl 动画 + startActivityFromRecents）。
         // 这里直接调同一个入口：走"提到前台"对浮标无效——保活让这个任务在 AMS 里
         // 仍然是"已恢复/聚焦"状态，系统会判定无需处理，表现就是点了没有任何反应。
@@ -1989,7 +1989,7 @@ internal class ColorOsFreeformCoordinator(
      * 和"手指点迷你窗/浮标"完全相同的一次调用。
      *
      * FlexibleTaskCaptionView.onSingleTapConfirmed 在全局锁内执行：
-     *     mFlexibleTaskController.switchState(mTask, 1, "onSingleTapConfirmed")
+     *     原厂调用 mFlexibleTaskController.switchState(mTask, 1, "onSingleTapConfirmed")
      * 这里复刻它：同一个方法、同一个目标状态（1 = 普通浮动窗）。
      */
     private fun switchTaskToDefault(task: Any): Boolean =

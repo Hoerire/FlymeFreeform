@@ -15,7 +15,7 @@ import io.github.libxposed.api.XposedModule
  *
  * | 版本 | 实现 | 面板窗口 | 面板/列表/截图 | 状态回调 | 显示/收起 |
  * |---|---|---|---|---|---|
- * | 17.3.18 | [PortalTapLegacy] | `d6.x0` | `m` / `n` / `p` | `DragEventReceiver.l` | `H(1)` / `U0()` |
+ * | 版本 17.3.18 | [PortalTapLegacy] | `d6.x0` | `m` / `n` / `p` | `DragEventReceiver.l` | `H(1)` / `U0()` |
  * | 17.5.4 | [PortalTapModern] | `u61` | `k` / `l` / `n` | 窗口 `c` → `zd.i`（`ml0`），回调在热区 `sz.b` | `s(String)`、`g()` / `r(Z)` |
  *
  * 17.3.18 的完整做法（[PortalTapLegacy]，上表所列方法名）：

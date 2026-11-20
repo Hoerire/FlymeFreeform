@@ -20,6 +20,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
@@ -30,7 +31,7 @@ import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 
-/** Full-screen-overlay hosted notification bubble with a soft landing animation. */
+/** 承载在通屏浮层里的通知气泡，落地动画柔和。 */
 @SuppressLint("ViewConstructor")
 internal class BubbleSurfaceView(
     context: Context,
@@ -49,8 +50,8 @@ internal class BubbleSurfaceView(
     private val childRingPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val burstPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val refractionPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    // Static chromatic edges approximate glass dispersion without sampling the
-    // screen behind the overlay or running a continuous blur effect.
+    // 静态色散描边用来近似玻璃色散：既不采样浮层背后的画面，
+    // 也不跑实时模糊效果。
     private val dispersionPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val badgeShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val badgeCorePaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -72,10 +73,10 @@ internal class BubbleSurfaceView(
 
     private var notificationIcon: Drawable? = null
 
-    /** Scale applied to the notification icon radius inside the bubble (1.0 = 20dp). */
+    /** 气泡内通知图标的半径缩放（1.0 对应 20dp）。 */
     private var iconScale = 1f
 
-    /** Scale applied to the corner app badge (1.0 = 16dp). */
+    /** 右下角应用角标的缩放（1.0 对应 16dp）。 */
     private var badgeSizeScale = 1f
     private var clickAction: (() -> Unit)? = null
     private var dismissedAction: (() -> Unit)? = null
@@ -108,10 +109,10 @@ internal class BubbleSurfaceView(
     private var shownError: Throwable? = null
     private var viewSize = 0
 
-    /** Whole-bubble scale (60..140 percent); all geometry is drawn in design space and scaled. */
+    /** 整颗气泡的缩放（60–140%）；所有几何都在设计空间绘制后统一缩放。 */
     private var bubbleScale = 0f
 
-    /** The unscaled 92dp design window; drawing always happens in this coordinate space. */
+    /** 未缩放的 92dp 设计窗口；绘制始终在这个坐标系里进行。 */
     private val designSize: Int
     private val touchSlop: Int
     private var screenWidth = 0
@@ -124,7 +125,7 @@ internal class BubbleSurfaceView(
     private var safeBottom = 0
     private var dockedEdge = 0
 
-    /** When false the bubble never docks to the screen edge (temporary suggestions). */
+    /** 为 false 时气泡永不吸附屏幕边缘（即时建议的临时气泡）。 */
     private var dockingAllowed = true
     private var timeoutSeconds = 0
     private var dimOnTimeout = false
@@ -133,6 +134,8 @@ internal class BubbleSurfaceView(
     private var landscape = false
     private var pointerDown = false
     private var dragging = false
+    /** 本次拖动开始的时刻：抬手时用来区分「随手一甩」与「认真拖动」。 */
+    private var dragStartedAt = 0L
     private var downRawX = 0f
     private var downRawY = 0f
     private var orbitPhase = 0f
@@ -257,8 +260,8 @@ internal class BubbleSurfaceView(
     }
 
     /**
-     * Resizes the notification icon inside the bubble. [percent] is relative to the
-     * historical 20dp radius, so 100 keeps the original look.
+     * 调整气泡内通知图标的尺寸。[percent] 相对历史上的 20dp 半径，
+     * 取 100 即保持原观感。
      */
     fun setIconScalePercent(percent: Int) {
         val next = clampIconPercent(percent) / 100f
@@ -280,9 +283,9 @@ internal class BubbleSurfaceView(
     fun getBubbleSizePx(): Int = viewSize
 
     /**
-     * Resizes the whole bubble (glass core, notification icon and app badge) around its
-     * current center. 100 keeps the original 92dp window. Applied live when the bubble is
-     * already attached, and used by the settings preview for an unattached view.
+     * 以当前中心缩放整颗气泡（玻璃核心、通知图标与应用角标）。
+     * 100 保持原来的 92dp 窗口。气泡已挂出时即时生效，
+     * 设置页预览则用未挂出的实例。
      */
     fun setBubbleSizePercent(percent: Int) {
         val next = clampBubblePercent(percent) / 100f
@@ -309,17 +312,16 @@ internal class BubbleSurfaceView(
                 wm.updateViewLayout(this, params)
                 if (dockedEdge != 0) startDockBreathing()
             } catch (ignored: Throwable) {
-                // The window may be between recreation passes; the next show re-applies it.
+                // 窗口可能正处于重建间隙；下一次 show 会重新应用。
             }
         }
         requestLayout()
         invalidate()
-        // Let attached overlays (the notification content panel) re-anchor and re-fit
-        // themselves to the new diameter immediately.
+        // 让已挂出的浮层（通知内容卡）立刻按新的直径重新锚定、重新适配。
         layoutChangedAction?.invoke()
     }
 
-    /** Resizes the corner app badge; 100 keeps the original 16dp. */
+    /** 调整右下角应用角标；100 保持原来的 16dp。 */
     fun setBadgeScalePercent(percent: Int) {
         val next = clampBadgePercent(percent) / 100f
         if (Math.abs(next - badgeSizeScale) < 0.001f) return
@@ -384,7 +386,7 @@ internal class BubbleSurfaceView(
         animator.start()
     }
 
-    /** Small inward response as the notification preview is absorbed. */
+    /** 内容卡被吸收时的一点点回缩反馈。 */
     fun playPreviewAbsorb() {
         if (!attached || dismissing || bursting) return
         animate().cancel()
@@ -436,8 +438,8 @@ internal class BubbleSurfaceView(
         }
         badgeAnimator = animator
         animator.start()
-        // The expanded fan owns the screen, so the source bubble freezes: no landing bounce,
-        // no orbit decoration and no auto-dismiss deadline while it is open.
+        // 展开的扇环占满屏幕，源气泡在此期间冻结：不做落地回弹、
+        // 不做环绕装饰，也不自动收起。
         if (expanded) {
             stopLandingAnimation()
             stopOrbitAnimation()
@@ -491,17 +493,17 @@ internal class BubbleSurfaceView(
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // Window metrics and system-bar insets change with rotation. Re-resolve the
-        // persisted position for the new orientation instead of retaining stale bounds.
+        // 旋转会改变窗口尺寸与系统栏内边距：按新方向重新解析落点，
+        // 不要沿用旧边界。
         if (!attached || windowManager == null || dismissing) return
         val previousDock = dockedEdge
         mainHandler.postDelayed({
             if (!attached || dismissing) return@postDelayed
             try {
                 resolvePosition(visual)
-                // A dock is a physical edge choice, so carry it across orientation changes
-                // for the currently attached window. Avoid writing remote preferences from
-                // SystemUI's configuration callback, which can restart SystemUI on some ROMs.
+                // 贴边是物理边缘的选择，方向切换时带给当前这颗气泡；
+                // 但不要在 SystemUI 的配置回调里写远端偏好——
+                // 部分 ROM 上这会直接重启 SystemUI。
                 if (previousDock != 0) {
                     dockedEdge = previousDock
                     params.x = if (dockedEdge < 0) -viewSize / 2 else screenWidth - viewSize / 2
@@ -510,8 +512,8 @@ internal class BubbleSurfaceView(
                 if (dockedEdge != 0) startDockBreathing()
                 configurationChangedAction?.invoke()
             } catch (ignored: Throwable) {
-                // Rotation can briefly expose invalid WindowMetrics while SystemUI is
-                // recreating its display context. Leave the existing window untouched.
+                // SystemUI 重建显示上下文时，WindowMetrics 会短暂非法。
+                // 此时保持现有窗口不动。
             }
         }, 80L)
     }
@@ -529,7 +531,7 @@ internal class BubbleSurfaceView(
         return Rect(params.x, logicalY, params.x + viewSize, logicalY + viewSize)
     }
 
-    /** Bounds of the visible main bubble, excluding the transparent overlay padding. */
+    /** 可见主体气泡的边界（不含浮层的透明内边距）。 */
     fun getCoreBounds(): Rect {
         val radius = Math.round(dp(CORE_RADIUS_DP) * bubbleScale)
         val centerX = params.x + viewSize / 2
@@ -537,7 +539,7 @@ internal class BubbleSurfaceView(
         return Rect(centerX - radius, centerY - radius, centerX + radius, centerY + radius)
     }
 
-    /** Screen-space bounds of the drawn glass circle, not the requested window origin. */
+    /** 玻璃圆在屏幕坐标系里的边界，而不是请求的窗口原点。 */
     fun previewAnchorBounds(): Rect {
         if (!isLaidOut || !isAttachedToWindow) return getCoreBounds()
         val location = IntArray(2)
@@ -548,8 +550,8 @@ internal class BubbleSurfaceView(
             center - radius, center - radius,
             center + radius, center + radius,
         )
-        // The screen origin returned above already includes the View transform.
-        // Map only the offset from that origin, including any animated scale.
+        // 上面拿到的屏幕原点已经包含 View 变换；
+        // 这里只映射相对该原点的偏移，并带上缩放动画。
         val origin = floatArrayOf(0f, 0f)
         matrix.mapPoints(origin)
         matrix.mapRect(circle)
@@ -578,7 +580,7 @@ internal class BubbleSurfaceView(
 
     fun getChildIcons(): List<Drawable> = ArrayList(childIconDrawables)
 
-    /** Applies the persisted position before the overlay is attached. */
+    /** 在浮层挂出之前应用已保存的落点。 */
     fun applyPersistedPosition(xPercent: Int, yPercent: Int, edge: Int) {
         val horizontalRange = Math.max(0, visibleRight - visibleLeft)
         val verticalRange = Math.max(0, safeBottom - safeTop)
@@ -595,7 +597,7 @@ internal class BubbleSurfaceView(
         }
     }
 
-    /** Recomputes the draggable bounds for the current window size without moving the bubble. */
+    /** 按当前窗口尺寸重算可拖动范围，不移动气泡。 */
     private fun refreshSafeBounds() {
         val bounds = windowManager!!.currentWindowMetrics.bounds
         val insets = windowManager!!.currentWindowMetrics.windowInsets
@@ -649,9 +651,8 @@ internal class BubbleSurfaceView(
         this.dimOnTimeout = dimOnTimeout
         timeoutDimmed = false
         mainHandler.removeCallbacks(timeoutAction)
-        // Restore the resting alpha for both docked and free bubbles: the entrance animation
-        // may never have completed while the display was off, which would otherwise leave the
-        // bubble invisible when the screen wakes up.
+        // 恢复常态透明度（贴边与浮动都适用）：息屏期间入场动画可能没跑完，
+        // 否则点亮后气泡会停在不可见状态。
         if (attached && !dismissing && !bursting) {
             animate().alpha(if (dockedEdge == 0) 1f else 0.5f).setDuration(160L).start()
         }
@@ -795,8 +796,8 @@ internal class BubbleSurfaceView(
                     distanceY < -dp(EXPAND_SWIPE_DP) &&
                     Math.abs(distanceY) > Math.abs(distanceX) * 1.15f
                 ) {
-                    // Long press, then swipe up: fan out the queued bubbles instead of
-                    // dragging this one. Any other direction keeps the drag behaviour.
+                    // 长按后上滑：展开排队的气泡，而不是拖动这一颗。
+                    // 其它方向仍按拖动处理。
                     longPressHandled = false
                     pointerDown = false
                     mainHandler.removeCallbacks(longPressAction)
@@ -808,8 +809,10 @@ internal class BubbleSurfaceView(
                 if (!dragging && distanceX * distanceX + distanceY * distanceY >
                     touchSlop * touchSlop
                 ) {
+                    // 移动超过触摸阈值就直接开始拖动：气泡挡住内容时随手就能挪开，
+                    // 不再要求先长按。长按仍然是「展开排队」的入口（见 ACTION_UP）。
                     mainHandler.removeCallbacks(longPressAction)
-                    if (longPressHandled) beginDrag()
+                    beginDrag()
                 }
                 if (dragging) updateDrag(distanceX, distanceY)
             }
@@ -817,7 +820,7 @@ internal class BubbleSurfaceView(
                 mainHandler.removeCallbacks(longPressAction)
                 pointerDown = false
                 if (dragging) {
-                    finishDrag()
+                    finishDrag(event.rawX, event.rawY)
                 } else if (longPressHandled) {
                     longPressHandled = false
                     val longPress = longPressCallback
@@ -848,9 +851,9 @@ internal class BubbleSurfaceView(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        // Everything is laid out in the fixed 92dp design space and scaled once here, so
-        // the glass core, notification icon, app badge and decorations stay proportional
-        // at every bubble size. The window itself is viewSize = designSize * bubbleScale.
+        // 全部在固定的 92dp 设计空间里布局、最后统一缩放一次，
+        // 这样玻璃核心、通知图标、应用角标与装饰在任何气泡尺寸下都保持等比。
+        // 窗口本身是 viewSize = designSize * bubbleScale。
         val cx = designSize / 2f
         val cy = designSize / 2f
         val mainAlpha = if (bursting) {
@@ -914,9 +917,9 @@ internal class BubbleSurfaceView(
         if (badge == null || appBadgeScale <= 0.001f) return
         val size = dp(BADGE_BASE_DP) * badgeSizeScale
         val half = size / 2f
-        // The app badge's geometric centre sits exactly on the bubble rim instead of
-        // floating inside the glass. The diagonal is kept from the historical offset,
-        // normalised so half the badge pokes outside the circle at every badge size.
+        // 角标的圆心正好落在气泡边缘上，而不是浮在玻璃里。
+        // 对角线偏移沿用历史上的取值并做归一化，
+        // 使任何角标尺寸下都有一半露在圆外。
         val rim = dp(CORE_RADIUS_DP).toFloat()
         val dirLength = Math.hypot(
             BADGE_CENTER_X_DP.toDouble(),
@@ -928,15 +931,15 @@ internal class BubbleSurfaceView(
         val y = cy + rim * dirY
         canvas.save()
         canvas.scale(appBadgeScale, appBadgeScale, x, y)
-        // The app's own launcher icon is drawn as-is: no extra circle mask and no background
-        // disc, so the badge looks exactly like the icon in the launcher / recent tasks.
+        // 应用自身的桌面图标原样绘制：不加圆形遮罩、不加背景圆盘，
+        // 让角标与桌面、最近任务里的图标一致。
         setBadgeBounds(badge, x - half, y - half, x + half, y + half)
         badge.alpha = 255
         badge.draw(canvas)
         canvas.restore()
     }
 
-    /** Fits a drawable into the badge square while preserving its intrinsic aspect ratio. */
+    /** 把图片按原比例放进角标方块。 */
     private fun setBadgeBounds(
         drawable: Drawable,
         left: Float,
@@ -970,7 +973,7 @@ internal class BubbleSurfaceView(
     }
 
     private fun stackBadgeCenterX(): Float =
-        // Design-space coordinate; the whole canvas is scaled by bubbleScale in onDraw.
+        // 设计空间坐标；整个画布在 onDraw 里按 bubbleScale 缩放。
         designSize / 2f + (if (dockedEdge > 0) -dp(22f) else dp(22f))
 
     private fun drawMainBubble(canvas: Canvas, cx: Float, cy: Float) {
@@ -979,16 +982,16 @@ internal class BubbleSurfaceView(
         shadowPaint.shader = shadowGradient
         canvas.drawCircle(cx, cy + dp(3f), coreRadius + dp(7f), shadowPaint)
 
-        // Translucent glass core: the radial gradient keeps the bubble see-through.
+        // 半透明玻璃核心：径向渐变让气泡保持通透。
         corePaint.shader = coreGradient
         canvas.drawCircle(cx, cy, coreRadius, corePaint)
         canvas.drawCircle(cx, cy, coreRadius - dp(1f), ringPaint)
 
-        // Frosted refraction / edge highlight, the layer that reads as "glass".
+        // 磨砂折射与边缘高光，这一层读起来才像玻璃。
         drawBackgroundRefraction(canvas, cx, cy, coreRadius)
 
-        // The icon may be configured larger than the glass core (up to 150%); clip it to the
-        // core so a full-bleed icon can never paint over the bubble rim.
+        // 图标可能被配置得比玻璃核心更大（最高 150%）；裁剪到核心范围，
+        // 满幅图标就不会画到边缘之外。
         val iconSave = canvas.save()
         coreClip.reset()
         coreClip.addCircle(cx, cy, coreRadius - dp(0.6f), Path.Direction.CW)
@@ -1000,7 +1003,7 @@ internal class BubbleSurfaceView(
         canvas.drawArc(highlightArc, 205f, 74f, false, highlightPaint)
     }
 
-    /** Frosted-glass refraction and edge dispersion drawn on top of the translucent core. */
+    /** 画在半透明核心之上的磨砂折射与边缘色散。 */
     private fun drawBackgroundRefraction(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
         val save = canvas.save()
         iconClip.reset()
@@ -1039,8 +1042,8 @@ internal class BubbleSurfaceView(
     private fun drawChildBubbles(canvas: Canvas, cx: Float, cy: Float) {
         val count = childIconDrawables.size
         if (count == 0 || landingFrameProgress < 0f) return
-        // At rest there is a single clean bubble. During landing, mostly-covered
-        // staggered rims briefly reveal that more notifications are queued.
+        // 静止时只有一颗干净的气泡；落地过程中，
+        // 被大部分遮住的错落边缘会短暂露出「后面还有排队的通知」。
         for (index in (Math.min(count, 3) - 1) downTo 0) {
             val phase = landingFrameProgress * Math.PI.toFloat() * 4f - index * 0.52f
             val pulse = Math.max(0f, Math.sin(phase.toDouble()).toFloat())
@@ -1091,7 +1094,7 @@ internal class BubbleSurfaceView(
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
-        // Shaders live in the design space; onDraw applies bubbleScale to the canvas.
+        // Shader 都在设计空间里；onDraw 对画布施加 bubbleScale。
         val cx = designSize / 2f
         val cy = designSize / 2f
         val coreRadius = dp(CORE_RADIUS_DP).toFloat()
@@ -1371,8 +1374,8 @@ internal class BubbleSurfaceView(
     private fun beginDrag() {
         if (!pointerDown || dismissing || !attached) return
         dragging = true
-        // A long-press that turns into movement is a drag, never a deferred
-        // expand action when the finger is released.
+        dragStartedAt = SystemClock.uptimeMillis()
+        // 拖动不再需要长按：指针一移动就进入拖动，抬手时不再追补「展开」动作。
         longPressHandled = false
         mainHandler.removeCallbacks(timeoutAction)
         stopBreathingAnimation()
@@ -1413,8 +1416,31 @@ internal class BubbleSurfaceView(
         }
     }
 
-    private fun finishDrag() {
+    /**
+     * 结束拖动。
+     *
+     * 拖动已改为「随手可拖」，但保留了旧的快速甩动语义：抬手时如果是一次很快的纵向甩动，
+     * 就还原到拖动前的位置，按老手势处理（上甩展开、下甩收起），
+     * 避免随手拖一下就误以为要展开/收起；其余情况按拖动落点收尾。
+     */
+    private fun finishDrag(rawX: Float? = null, rawY: Float? = null) {
         dragging = false
+        val elapsed = SystemClock.uptimeMillis() - dragStartedAt
+        if (rawX != null && rawY != null) {
+            val distanceX = rawX - downRawX
+            val distanceY = rawY - downRawY
+            val flick =
+                elapsed <= FLICK_MAX_MS &&
+                    Math.abs(distanceY) > dp(FLICK_MIN_DP) &&
+                    Math.abs(distanceY) > Math.abs(distanceX) * 1.25f
+            if (flick) {
+                params.x = downWindowX
+                params.y = downWindowY
+                updateWindowLayout()
+                dispatchSwipe(distanceX, distanceY)
+                return
+            }
+        }
         params.y = Math.round(
             clamp(params.y.toFloat(), safeTop.toFloat(), safeBottom.toFloat()),
         )
@@ -1424,10 +1450,12 @@ internal class BubbleSurfaceView(
         }
         val centerX = params.x + viewSize / 2f
         val snapDistance = dp(52f)
-        if (centerX <= snapDistance) {
-            animateToDock(-1)
-        } else if (centerX >= screenWidth - snapDistance) {
-            animateToDock(1)
+        val nearEdge = centerX <= snapDistance || centerX >= screenWidth - snapDistance
+        // 关掉吸附（即时建议的「建议不贴边」）时，靠边松手也要留在浮动位置：
+        // 直接走下面那段收尾（夹到可见范围 + 记落点），不能交给 animateToDock——
+        // 它会在内部提前返回，位置既没夹紧、也没通知协调器。
+        if (nearEdge && dockingAllowed) {
+            animateToDock(if (centerX <= snapDistance) -1 else 1)
         } else {
             stopDockBreathing()
             dockedEdge = 0
@@ -1489,9 +1517,9 @@ internal class BubbleSurfaceView(
     }
 
     /**
-     * Temporary-notification setting: keep the bubble floating instead of docking to an edge.
-     * Must be safe to call before the window is attached (showQueueHead configures the bubble
-     * before show()), otherwise WindowManager.updateViewLayout throws and takes SystemUI down.
+     * 临时通知的设置：让气泡保持浮动、不吸附屏幕边缘。
+     * 必须在窗口挂出之前调用也安全（showQueueHead 会在 show() 之前配置气泡），
+     * 否则 WindowManager.updateViewLayout 会抛异常、把 SystemUI 一起带走。
      */
     fun setDockingEnabled(enabled: Boolean) {
         dockingAllowed = enabled
@@ -1668,8 +1696,8 @@ internal class BubbleSurfaceView(
             animateImeTo(targetY, !visible && imeAvoiding)
         } catch (ignored: Throwable) {
         }
-        // Visibility changes are polled, while the actual movement is frame-paced
-        // by ValueAnimator to avoid the old 25fps stepped motion.
+        // 可见性变化靠轮询，实际位移由 ValueAnimator 逐帧推进，
+        // 避免过去 25fps 的阶梯感。
         if (attached) mainHandler.postDelayed(imeAvoidanceAction, 100L)
     }
 
@@ -1784,7 +1812,7 @@ internal class BubbleSurfaceView(
     }
 
     internal fun interface SwipeListener {
-        /** true for an upward swipe; false for a downward swipe. */
+        /** 上滑为 true，下滑为 false。 */
         fun onSwipe(up: Boolean)
     }
 
@@ -1798,10 +1826,16 @@ internal class BubbleSurfaceView(
         private const val CORE_RADIUS_DP = 29f
         private const val ICON_RADIUS_DP = 20f
 
-        /** Upward travel after a long press that turns the gesture into "fan out the stack". */
+        /** 长按后转为「展开队列」的上滑位移。 */
         private const val EXPAND_SWIPE_DP = 22f
 
-        /** Base size of the corner app badge; the user setting scales this. */
+        /** 快速甩动判定：从按下到抬手的最大时长（毫秒）。 */
+        private const val FLICK_MAX_MS = 220L
+
+        /** 快速甩动判定：纵向位移至少这么多 dp 才算甩动，而不是拖动。 */
+        private const val FLICK_MIN_DP = 80f
+
+        /** 右下角应用角标的基准尺寸，用户设置在此基础上缩放。 */
         private const val BADGE_BASE_DP = 16f
         private const val BADGE_CENTER_X_DP = 13.5f
         private const val BADGE_CENTER_Y_DP = 14.5f

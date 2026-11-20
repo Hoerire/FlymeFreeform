@@ -29,7 +29,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import java.util.Locale
 
-/** A compact Material notification panel that expands from and collapses into its bubble. */
+/** 紧凑的 Material 通知面板：从气泡展开，也收回气泡里。 */
 @SuppressLint("ViewConstructor")
 internal class NotificationPreviewView(
     context: Context,
@@ -59,7 +59,7 @@ internal class NotificationPreviewView(
     private val horizontalPadding: Int
     private var iconView: ImageView? = null
 
-    /** Icon column width; recalculated per show so it follows the bubble-sized panel. */
+    /** 图标列宽度；每次显示重算，跟随气泡尺寸的面板。 */
     private var iconSlotWidth: Int = 0
 
     private val darkMode: Boolean =
@@ -176,8 +176,8 @@ internal class NotificationPreviewView(
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT,
         )
-        // Position in display coordinates, like the bubble. Apply safe insets once,
-        // in the placement solver, rather than letting WM offset this window again.
+        // 与气泡一样用显示坐标定位。安全内边距只在
+        // 落点求解里加一次，不让 WMS 再偏移这个窗口。
         params.gravity = Gravity.TOP or Gravity.LEFT
         params.setFitInsetsTypes(0)
         params.layoutInDisplayCutoutMode =
@@ -199,7 +199,7 @@ internal class NotificationPreviewView(
         if (attached) invalidate()
     }
 
-    /** Fit the contents without changing the height chosen by the placement solver. */
+    /** 适配内容，但不改变落点求解器定下的高度。 */
     private fun applyPanelMetrics(finalWidth: Int, finalHeight: Int) {
         val iconSize = if (iconView == null) {
             0
@@ -223,8 +223,8 @@ internal class NotificationPreviewView(
         var appHeight = configureText(appView, appView.text.toString(), 10f, 10f, available, false)
         var contentHeight =
             configureText(contentView, contentView.text.toString(), 13f, 12f, available, true)
-        // Keep the text block inside the bubble-sized panel: fall back to one line,
-        // then proportionally shrink both lines if the content is still too tall.
+        // 让文本块留在气泡尺寸的面板内：先退成一行，
+        // 仍然超高就按比例缩小两行。
         val innerHeight = Math.max(dp(18f), finalHeight - dp(4f))
         if (appHeight + dp(2f) + contentHeight > innerHeight) {
             contentHeight =
@@ -322,7 +322,7 @@ internal class NotificationPreviewView(
         return true
     }
 
-    /** Keeps the panel anchored to a moving bubble while the IME changes its Y. */
+    /** 输入法改变纵向位置时，让面板继续锚在移动中的气泡上。 */
     fun updateAnchor(bubbleBounds: Rect?) {
         if (!attached || dismissing || bubbleBounds == null) return
         val changed = lastBubbleBounds != bubbleBounds
@@ -340,7 +340,7 @@ internal class NotificationPreviewView(
         anchorY = lastBubbleBounds.centerY()
         val resized = params.width != bounds.width() || params.height != bounds.height()
         if (!resized && params.x == bounds.left && params.y == bounds.top) {
-            // The entrance animation already delivered the final window bounds.
+            // 入场动画已经送达最终窗口边界。
             currentCornerRadius =
                 Math.min(dp(PANEL_RADIUS_DP).toFloat(), bounds.height() / 2f)
             panelDrawable.setCornerRadius(currentCornerRadius)
@@ -462,8 +462,8 @@ internal class NotificationPreviewView(
         if (width > dp(24f) && height > dp(20f)) {
             val inset = dp(1.05f).toFloat()
             val radius = Math.max(1f, currentCornerRadius - inset)
-            // One restrained glass edge reflection replaces the old separated
-            // red/cyan strokes and the distant white sheen.
+            // 一条克制的玻璃边缘反光，替代过去彼此分离的
+            // 红/青描边与远处那层白色高光。
             canvas.drawRoundRect(
                 inset, inset, width - inset,
                 height - inset, radius, radius, glassEdgePaint,
@@ -472,7 +472,7 @@ internal class NotificationPreviewView(
         canvas.restoreToCount(save)
     }
 
-    /** Morphs the near edge from a pointed, horizontal wedge into the full panel. */
+    /** 把靠气泡那一侧的边缘从尖楔形过渡成完整面板。 */
     private fun applyMorphClip(canvas: Canvas) {
         if (shapeProgress >= 0.999f || width <= 1 || height <= 1) return
         val halfW = width * 0.5f * shapeProgress
@@ -530,7 +530,7 @@ internal class NotificationPreviewView(
 
     private fun desiredPanelWidth(): Int {
         if (!autoWidth) return dp(configuredWidthDp.toFloat())
-        // Measure at the original type sizes, independent of the previous fitted layout.
+        // 按原始字号测量，不受上一次适配布局影响。
         val textPaint = Paint(appView.paint)
         textPaint.setTextSize(
             TypedValue.applyDimension(
@@ -607,7 +607,7 @@ internal class NotificationPreviewView(
 
     private class Placement(val bounds: Rect, val side: Int)
 
-    /** Choose a complete candidate; never clamp away alignment or the rim gap. */
+    /** 选一个完整候选，不要用夹取抹掉对齐关系或与边缘的间隙。 */
     private fun resolvePlacement(anchor: Rect): Placement? {
         if (anchor.isEmpty) return null
         val metrics = windowManager.currentWindowMetrics
@@ -670,7 +670,7 @@ internal class NotificationPreviewView(
         return null
     }
 
-    /** Fluid Cloud or the IME can change without moving the bubble itself. */
+    /** 流体云或输入法可能在气泡不动的情况下变化。 */
     private fun pollFluidCloudPosition() {
         if (!attached || dismissing) return
         if (entranceAnimator == null) updateRestingPlacement()
@@ -678,10 +678,10 @@ internal class NotificationPreviewView(
     }
 
     /**
-     * ColorOS fluid-cloud implementations vary by release and plugin. They
-     * are all hosted as visible SystemUI views with capsule/fluid/seedling
-     * names, so use their real screen bounds instead of a hard-coded notch
-     * height. Hidden or tiny helper views are ignored.
+     * ColorOS 的流体云实现随版本与插件而变。
+     * 它们都以可见的 SystemUI 视图存在，名字里带 capsule / fluid / seedling，
+     * 因此用它们的真实屏幕边界，而不是写死一个刘海
+     * 高度；隐藏或过小的辅助视图一律忽略。
      */
     private fun findFluidCloudBounds(): Rect? {
         fluidCloudBounds.setEmpty()

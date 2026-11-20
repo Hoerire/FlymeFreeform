@@ -3,7 +3,7 @@ package io.github.hoerire.free.window
 internal data class RadialEntryVisuals(
     val contentAlpha: Float,
     val radialProgress: Float,
-    /** Multiplier for the horizontal, inward overshoot distance; may become negative. */
+    /** 水平向内过冲距离的倍数；可以为负。 */
     val horizontalOvershoot: Float,
     val rotationDegrees: Float,
     val iconScale: Float,
@@ -77,7 +77,7 @@ internal object RadialEntryMotion {
     fun selectionProgress(linearProgress: Float): Float = selection.sample(linearProgress)
 }
 
-/** Evaluates time-based cubic motion while preserving values outside the unit interval. */
+/** 求值基于时间的三次曲线，同时保留单位区间之外的取值。 */
 internal class CubicMotionCurve(
     private val x1: Float,
     private val y1: Float,
@@ -97,7 +97,7 @@ internal class CubicMotionCurve(
                 high = parameter
             }
         }
-        // Time is bounded, but the curve's output must retain its overshoot.
+        // 时间是有界的，但曲线输出必须保留它的过冲。
         return coordinate((low + high) * 0.5f, y1, y2)
     }
 

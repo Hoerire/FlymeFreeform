@@ -260,7 +260,7 @@
 
     <string name="bubble_status_scroll_title">状态栏滚动</string>
     <string name="bubble_status_scroll_enabled_title">滚动显示通知</string>
-    <string name="bubble_status_scroll_enabled_summary">独立开关：只滚状态栏、不出气泡也可以</string>
+    <string name="bubble_status_scroll_enabled_summary">与应用范围共用名单：名单内的应用才滚；开关独立，可以只滚不出气泡</string>
     <string name="bubble_status_scroll_rounds_title">滚动轮数</string>
     <string name="bubble_status_scroll_rounds_summary">1–5 轮；文字过长时自动分页</string>
 

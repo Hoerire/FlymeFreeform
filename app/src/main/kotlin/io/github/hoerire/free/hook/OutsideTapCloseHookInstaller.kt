@@ -1003,7 +1003,7 @@ internal class OutsideTapCloseHookInstaller(
          * 2. handleCloseEventForLightOpenIfNeed(caption)：先让"轻量打开"状态结清；
          * 3. 构造 ExitFlexibleTaskToBackStrategy(task, true) 并 setSourceFrom(1)——
          *    告诉系统这次退出的来源，否则会落到强制动画分支；
-         * 4. exitFlexibleTaskWindowInnerLocked(strategy)；
+         * 4. 真正退出窗口：exitFlexibleTaskWindowInnerLocked(strategy)；
          * 5/6. 失败时退回 View 层：mCloseView.performClick()，再失败合成点击。
          *
          * 缺 2、3 两步直接调 WMS，窗口状态会和系统不一致，反复关闭会拖垮 system_server。

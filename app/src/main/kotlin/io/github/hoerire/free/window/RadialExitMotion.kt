@@ -6,7 +6,7 @@ internal data class RadialExitVisuals(
     val contentScale: Float,
 )
 
-/** Keeps radial items in place while their content and scrim leave on separate timelines. */
+/** 让扇形条目留在原地，内容与遮罩各自按不同时间线退出。 */
 internal object RadialExitMotion {
     /**
      * 取消手势时的「缩回」时长。

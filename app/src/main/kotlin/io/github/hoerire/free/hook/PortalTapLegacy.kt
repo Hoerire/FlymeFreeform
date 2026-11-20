@@ -22,7 +22,7 @@ import io.github.libxposed.api.XposedModule
 import java.lang.reflect.Method
 import kotlin.math.roundToInt
 
-/** ColorOS Content Portal 17.3.18. The stock service owns the clip, ranking, and dispatch. */
+/** ColorOS 内容传送门 17.3.18：裁剪、排序与派发都由原厂服务负责。 */
 internal class PortalTapLegacy(
     private val module: XposedModule,
     private val configuration: ProcessConfiguration,
@@ -123,8 +123,8 @@ internal class PortalTapLegacy(
                     current.originY = location[1] + event.y.roundToInt()
                     current.anchored = true
                     chain.proceed()
-                    // Incoming coordinates are local to the stock hot zone. Report ENTER
-                    // through the same callback used when a finger reaches that zone.
+                    // 传入坐标是原厂热区的局部坐标：走与手指进入该区域时
+                    // 相同的回调上报 ENTER。
                     notifyDragState.invoke(chain.getArg(0), enter, event.x, event.y, chain.getArg(1))
                     true
                 } else {

@@ -148,7 +148,7 @@ internal class PreSleepDetectionHook(
         /** 用户活动汇总里的 DIMMED 位。 */
         const val DIMMED_BIT = 2
 
-        /** PowerManagerInternal.WAKEFULNESS_AWAKE */
+        /** 亮屏唤醒态：PowerManagerInternal.WAKEFULNESS_AWAKE */
         const val WAKEFULNESS_AWAKE = 1
     }
 }

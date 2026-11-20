@@ -42,8 +42,8 @@ internal data class BubbleItem(
 internal object BubbleRemovalPolicy {
     fun shouldDrop(reason: Int): Boolean =
         when (reason) {
-            // REASON_CLICK / CANCEL / CANCEL_ALL / USER_STOPPED / PACKAGE_BANNED /
-            // LISTENER_CANCEL(_ALL) / GROUP_SUMMARY_CANCELED / CLEAR_DATA / CHANNEL_BANNED /
+            // 用户主动清除类原因码：REASON_CLICK / CANCEL / CANCEL_ALL / USER_STOPPED / PACKAGE_BANNED /
+            // 其余清除类原因码：LISTENER_CANCEL(_ALL) / GROUP_SUMMARY_CANCELED / CLEAR_DATA / CHANNEL_BANNED /
             // SNOOZED / TIMEOUT / OEM 变体
             1, 2, 3, 6, 7, 10, 11, 12, 15, 16, 18, 19, 20, 21 -> true
             // 负数来自没有 reason 的回调（原生流体云那条），按用户清除处理。

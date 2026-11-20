@@ -1,6 +1,6 @@
 package io.github.hoerire.free.window
 
-/** Maps panel enter progress to a bottom-corner reveal without scaling its contents. */
+/** 把面板的入场进度映射成从底角展开的形状，不缩放内容。 */
 internal object PanelRevealMotion {
     fun extent(
         containerExtent: Float,

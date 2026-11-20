@@ -9,7 +9,7 @@ internal data class RadialHandoffVisuals(
     val scrimProgress: Float,
 )
 
-/** Keeps the released radial geometry fixed while the panel takes over its visual state. */
+/** 面板接手视觉状态时，让刚松手的扇形几何保持不动。 */
 internal object RadialHandoffMotion {
     const val DURATION_MILLIS = 160L
 

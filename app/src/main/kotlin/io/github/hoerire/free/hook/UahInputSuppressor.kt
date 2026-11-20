@@ -13,7 +13,7 @@ import io.github.libxposed.api.XposedModule
  * 在 system_server 的 UAH 输入通道上拦截底角触摸。
  *
  * ColorOS 17.5.4 起，桌面侧的 OplusBaseTouchInteractionService 被移除，手势判定搬到：
- * com.android.server.oplus.uah.util.OplusUAwareInputHelper$UahExInputEventReceiver
+ * 目标类：com.android.server.oplus.uah.util.OplusUAwareInputHelper$UahExInputEventReceiver
  * → dealWithInputEvent(InputEvent)。这个类在 16 上也存在，一套实现可覆盖两版。
  * 落点在触发区内时跳过原方法，UAH 收不到这次触摸，系统的上滑/返回就不会启动。
  */

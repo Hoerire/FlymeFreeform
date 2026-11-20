@@ -57,7 +57,7 @@ internal class StatusTickerController(
     fun onPosted(sbn: StatusBarNotification, payload: BubblePayload) {
         val config = settings()
         if (!config.statusScrollActive) return
-        if (!config.acceptsStatusScroll(sbn.packageName)) return
+        if (!config.acceptsStatusScroll(BubbleIdentity(sbn.packageName, sbn.userId))) return
         val text = buildText(payload)
         if (text.isBlank()) return
         val icon = runCatching { tickerIcon(sbn) }.getOrNull()
@@ -181,7 +181,7 @@ internal class StatusTickerController(
             }
         }
         if (host != null) return host
-        // ROM 改名时按 clock 反查父容器，与参考实现一致。
+        // ROM 改名时按时钟视图反查父容器，与参考实现一致。
         val clock = findClockView(candidate)
         return clock?.parent as? ViewGroup ?: candidate
     }

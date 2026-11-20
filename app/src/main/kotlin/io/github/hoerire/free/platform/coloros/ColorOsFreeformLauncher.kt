@@ -214,7 +214,7 @@ internal class ColorOsFreeformLauncher(
 
     /**
      * 启动参数，逐项对齐原生侧边栏（按抓包结果）：
-     * `launchDisplayId=0`、`splashScreenStyle=1`、`mZoomLaunchFlags=0`、
+     * 参数 `launchDisplayId=0`、`splashScreenStyle=1`、`mZoomLaunchFlags=0`、
      * `extra_window_mode=100`、`start_zoom_at_other_side`（13 左 / 14 右）。
      *
      * 关键：原生**不传** `android.activity.windowingMode`。多传这一项时，

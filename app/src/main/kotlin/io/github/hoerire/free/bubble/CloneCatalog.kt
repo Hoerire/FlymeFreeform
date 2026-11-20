@@ -24,7 +24,7 @@ internal data class CloneApp(
  * 分身目录的跨进程协议。
  *
  * system_server 扫不到模块应用能读的位置，所以把结果编成字符串行随广播带过来：
- * `pkg \u0001 uid \u0001 label(Base64) \u0001 iconPng(Base64)`。
+ * 每行形如 `pkg \u0001 uid \u0001 label(Base64) \u0001 iconPng(Base64)`。
  * 标签与图标都走 Base64，避免应用名里的分隔符破坏协议。
  */
 internal object CloneCatalogProtocol {

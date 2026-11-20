@@ -10,9 +10,9 @@ import io.github.hoerire.free.log.VerboseLog
  * 小窗摆放：掐掉 ColorOS 17 新加的"避让已有小窗"，让新窗永远落在系统自己的默认位置上。
  *
  * 反编译结论（oplus-services.jar → com.android.server.wm.OplusFlexibleTaskLayoutPolicy）：
- *   FlexibleTaskController.calcDefaultLaunchBounds
- *     → OplusFlexibleTaskLayoutPolicy.calcLaunchBounds
- *       → offsetBounds(...)
+ *   调用链：FlexibleTaskController.calcDefaultLaunchBounds
+ *     → 转到 OplusFlexibleTaskLayoutPolicy.calcLaunchBounds
+ *       → 最终落在 offsetBounds(...)
  *         · 列表为空（第一个窗）  → offsetSingleFlexibleBounds(rect, ...)
  *         · 列表非空（已有小窗）  → adjustDisplayBoundsList + offsetSingleFlexibleBounds
  *                                   + avoidOverlappingAreas(rect, list, ...)   ← 把 rect 推走

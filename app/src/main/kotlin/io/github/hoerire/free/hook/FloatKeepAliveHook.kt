@@ -1856,7 +1856,7 @@ internal class FloatKeepAliveHook(
         /** 显示服务的 Binder 实现：`Display.getState()` 等查询都从这里过。 */
         const val DISPLAY_BINDER_CLASS = "com.android.server.display.DisplayManagerService\$BinderService"
 
-        /** Display.STATE_ON */
+        /** 亮屏状态：Display.STATE_ON */
         const val DISPLAY_STATE_ON = 2
 
         /** 窗口管理服务：应用的 KeyguardManager.isKeyguardLocked() 最终落到这里。 */
@@ -1879,7 +1879,7 @@ internal class FloatKeepAliveHook(
         /** 解锁过渡期间复查浮标是否被顶出来的时间点（毫秒），最后一个点后收回守卫。 */
         val UNLOCK_CHECK_DELAYS_MS = longArrayOf(800L, 1600L, 2600L)
 
-        /** Display.STATE_OFF */
+        /** 熄屏状态：Display.STATE_OFF */
         const val DISPLAY_STATE_OFF = 1
 
         /** 复查白名单豁免的时间间隔（毫秒）。 */
@@ -1906,7 +1906,7 @@ internal class FloatKeepAliveHook(
         /** ApplicationInfo.CATEGORY_UNDEFINED：未声明 appCategory。 */
         const val CATEGORY_UNDEFINED = -1
 
-        /** ApplicationInfo.CATEGORY_GAME */
+        /** 游戏分类：ApplicationInfo.CATEGORY_GAME */
         const val CATEGORY_GAME = 0
 
         /**

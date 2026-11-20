@@ -4,12 +4,12 @@ import java.util.Locale
 import kotlin.math.abs
 
 /**
- * Pure text classifier for clipboard suggestions.
+ * 剪贴板建议用的纯文本分类器。
  *
- * Shared by the injected SystemUI process (which builds the bubble) and by the system_server
- * clipboard hook (which is the only reliable clipboard source on Android 10+, because clipboard
- * reads are focus-gated). Keeping the classification in one place means both paths agree, and the
- * hook only ever forwards the actionable token instead of the whole clipboard text.
+ * 注入在 SystemUI 的进程（负责弹气泡）与 system_server 的剪贴板钩子共用这一份实现。
+ * system_server 侧是 Android 10 以上唯一可靠的剪贴板来源——剪贴板读取受焦点限制。
+ * 分类只有一处实现，两条来路结论一致；
+ * 钩子也只会转发可执行的那一小段文本，而不是整段剪贴板。
  */
 internal object ClipboardClassifier {
     const val KIND_PHONE = 1
@@ -20,10 +20,10 @@ internal object ClipboardClassifier {
     const val KIND_ADDRESS = 6
     const val KIND_COORDINATES = 7
 
-    /** At most this many bubbles for one copied text. */
+    /** 一次复制最多给出这么多条建议气泡。 */
     const val MAX_RESULTS = 4
 
-    /** Stable tag for a kind, used in suggestion ids and logs (`clipboard:phone`). */
+    /** 建议类型的稳定标签，用于建议 id 与日志（如 `clipboard:phone`）。 */
     fun kindTag(kind: Int): String =
         when (kind) {
             KIND_PHONE -> "phone"
@@ -38,22 +38,22 @@ internal object ClipboardClassifier {
 
     data class Result(
         val kind: Int,
-        /** Normalized payload: dialable number, URL, deep link, tracking code or address. */
+        /** 规整后的载荷：可拨号码、URL、app 深链、快递单号或地址。 */
         val value: String,
-        /** Original clipboard text, shortened, used for the bubble body. */
+        /** 原始剪贴板文本（已截短），用作气泡正文。 */
         val display: String,
-        /** Package guessed from the host/scheme, may be null. */
+        /** 按域名或 scheme 猜出的包名，可能为空。 */
         val appPackage: String?,
     )
 
-    /** Shopping sites: always offered as "open shopping app". */
+    /** 购物站点：一律按「打开购物应用」处理。 */
     private val SHOPPING_HOSTS = arrayOf(
         "taobao.com", "tmall.com", "tb.cn", "tmall.hk", "jd.com", "jd.hk", "3.cn",
         "pinduoduo.com", "yangkeduo.com", "suning.com", "vip.com", "kaola.com",
         "you.163.com", "mogujie.com", "dangdang.com", "smzdm.com",
     )
 
-    /** Hosts that belong to a specific app (opened with it when it is installed). */
+    /** 属于某个特定应用的域名：该应用已安装时用它打开。 */
     private val HOST_APPS: Map<String, String> = linkedMapOf(
         "mp.weixin.qq.com" to "com.tencent.mm",
         "weixin.qq.com" to "com.tencent.mm",
@@ -84,7 +84,7 @@ internal object ClipboardClassifier {
         "maps.yandex.com" to "ru.yandex.yandexmaps",
     )
 
-    /** Deep-link schemes mapped to their app. */
+    /** 深链 scheme 与其对应应用的映射。 */
     private val SCHEME_APPS: Map<String, String?> = linkedMapOf<String, String?>(
         "androidamap" to "com.autonavi.minimap",
         "baidumap" to "com.baidu.BaiduMap",
@@ -106,7 +106,7 @@ internal object ClipboardClassifier {
         "mqqapi" to "com.tencent.mobileqq",
     )
 
-    // --- phone -------------------------------------------------------------------------
+    // --- 电话 -------------------------------------------------------------------------
     private val PHONE_TEXT = Regex("(?i)^(?:tel:)?[+]?[\\d\\s()\\-—–]{5,28}$")
     private val PHONE_SEPARATORS = Regex("[\\s()\\-—–]")
     private val CN_MOBILE = Regex("^1[3-9]\\d{9}$")
@@ -115,7 +115,7 @@ internal object ClipboardClassifier {
     private val CN_SERVICE = Regex("^(?:[48]00\\d{3,7}|\\d{5})$")
     private val INTL_PHONE = Regex("^\\+\\d{8,15}$")
 
-    // --- links -------------------------------------------------------------------------
+    // --- 链接 -------------------------------------------------------------------------
     private val HTTP_URL = Regex("(?i)https?://[^\\s<>\"'，。；、）】》〉」』]+")
     private val URL_TRAILING = Regex("[.,;:!?)\\]}>]+$")
     private val BARE_HOST = Regex(
@@ -124,7 +124,7 @@ internal object ClipboardClassifier {
     private val DEEP_LINK = Regex("^([a-zA-Z][a-zA-Z0-9+.-]*)://(\\S{3,})$")
     private val SCHEME_ONLY = Regex("^([a-zA-Z][a-zA-Z0-9+.-]*):.*")
 
-    // --- express -----------------------------------------------------------------------
+    // --- 快递 -------------------------------------------------------------------------
     private val UPU_CODE = Regex("^[A-Z]{2}\\d{9}[A-Z]{2}$")
     private val PREFIXED_EXPRESS = Regex(
         "^(?:SF|YT|YD|ZTO|STO|JT|JD|DPK|EMS|CNS|CN|LP|RB|1Z)[A-Z0-9]{6,22}$",
@@ -135,7 +135,7 @@ internal object ClipboardClassifier {
         "快递|物流|包裹|运单|揽收|派送|派件|签收|驿站|菜鸟|顺丰|中通|圆通|申通|韵达|极兔|德邦|邮政|京东物流",
     )
 
-    // --- address / coordinates ---------------------------------------------------------
+    // --- 地址 / 坐标 ---------------------------------------------------------
     private val SENTENCE_END = Regex("[。！？!?；;]")
     private val HAS_CJK = Regex("[\\u4e00-\\u9fa5]")
     private val HAS_DIGIT = Regex("\\d")
@@ -146,32 +146,32 @@ internal object ClipboardClassifier {
         "胡同", "大道", "号楼", "座", "栋", "中心", "商场", "酒店", "公寓", "产业园", "科技园",
     )
 
-    /** House number / building number, i.e. the part that makes a line an address. */
+    /** 门牌号 / 楼栋号，即让一行文本成为地址的关键部分。 */
     private val HOUSE_NUMBER = Regex("\\d+\\s*(?:号|栋|座|楼|层|室|弄)")
 
-    /** Leading labels map apps put before the address. */
+    /** 地图应用在地址前面加的引导词。 */
     private val ADDRESS_LABEL = Regex(
         "(?i)^(?:详细)?(?:地址|位置|地点|导航到|目的地|收货地址|所在位置)\\s*[:：]\\s*",
     )
 
-    /** Leading label of a phone line in a shared place card. */
+    /** 分享地点卡片里电话行的引导词。 */
     private val PHONE_LABEL = Regex(
         "(?i)^(?:联系)?(?:电话|手机|手机号|手机号码|座机|热线|tel|phone)\\s*[:：]?\\s*",
     )
 
-    /** Metadata lines of a shared place card: they are never part of the address. */
+    /** 分享地点卡片的元数据行：永远不属于地址。 */
     private val MAP_METADATA_LINE = Regex(
         "电话|营业时间|人均|评分|点评|距离|距您|公里|千米|导航|路线|公交|驾车|步行|骑行|" +
             "分享|复制|收藏|来源|打开|查看|停车场|停车场入口|出入口|楼层|营业中|休息|" +
             "地图|高德|百度地图|腾讯地图|Google Maps|Apple 地图",
     )
 
-    /** "116.481028,39.989643" style coordinate pairs (decimal degrees). */
+    /** 「116.481028,39.989643」这类坐标对（十进制度）。 */
     private val COORDINATE_PAIR = Regex(
         "(-?\\d{1,3}\\.\\d{3,9})\\s*[,，]\\s*(-?\\d{1,3}\\.\\d{3,9})",
     )
 
-    /** English/US style address: "1600 Amphitheatre Pkwy, Mountain View, CA 94043". */
+    /** 英文地址样式：「1600 Amphitheatre Pkwy, Mountain View, CA 94043」。 */
     private val ADDRESS_EN = Regex(
         "^\\d{1,6}\\s+[^,]{2,60},\\s*[^,]{2,40}(?:,\\s*[A-Z]{2})?\\s*\\d{5}(?:-\\d{4})?$",
     )
@@ -180,13 +180,13 @@ internal object ClipboardClassifier {
             "pkwy|parkway|ct|court|pl|place|hwy|highway|sq|square|ter|terrace)\\b",
     )
 
-    /** Line separator used by the place-card scanners (same pattern as the Java source). */
+    /** 地点卡片扫描用的行分隔符（与上游 Java 实现同一套规则）。 */
     private val LINE_BREAK = Regex("[\\r\\n]+")
 
     /**
-     * Every actionable item in the text, in priority order and without duplicates. A map place
-     * card for example yields an address, a phone number and a share link at once, and each of
-     * them deserves its own bubble.
+     * 文本里所有可执行条目，按优先级排序且不重复。
+     * 例如一张地点卡片会同时给出地址、电话与分享链接，
+     * 每一条都应各自成为一颗气泡。
      */
     fun classifyAll(text: String?): List<Result> {
         val results = mutableListOf<Result>()
@@ -195,8 +195,8 @@ internal object ClipboardClassifier {
         if (value.isEmpty() || value.length > 4096) return results
         val display = shorten(value, 140)
 
-        // Share cards mix a link with the address/phone; scan the text without URLs so those
-        // items are still found next to the link.
+        // 分享卡片把链接与地址/电话混在一起：先去掉 URL 再扫一遍，
+        // 这样链接旁边的条目也不会漏。
         val plain = HTTP_URL.replace(value, " ")
         var phone = phoneNumber(value)
         if (phone == null) phone = phoneInLines(plain)
@@ -233,7 +233,7 @@ internal object ClipboardClassifier {
         val addr = address(plain)
         if (addr != null) results.add(Result(KIND_ADDRESS, addr, display, null))
 
-        // Keep the highest priority items only, and never the same value twice.
+        // 只保留优先级最高的若干条，且同一个值不重复。
         val unique = mutableListOf<Result>()
         for (candidate in results) {
             var duplicate = false
@@ -249,9 +249,9 @@ internal object ClipboardClassifier {
         return unique
     }
 
-    // --- phone -------------------------------------------------------------------------
+    // --- 电话 -------------------------------------------------------------------------
 
-    /** Dialable number, or null when the text is not a phone number. */
+    /** 可拨号码；不是电话号码时返回 null。 */
     private fun phoneNumber(text: String?): String? {
         if (text == null) return null
         val value = javaTrim(text)
@@ -273,9 +273,9 @@ internal object ClipboardClassifier {
         return null
     }
 
-    // --- links -------------------------------------------------------------------------
+    // --- 链接 -------------------------------------------------------------------------
 
-    /** First http(s) URL inside the text (share texts wrap the link in promo copy). */
+    /** 文本里的第一个 http(s) URL（分享文案会把链接裹在推广语里）。 */
     private fun firstUrl(text: String?): String? {
         if (text == null) return null
         val value = javaTrim(text)
@@ -303,7 +303,7 @@ internal object ClipboardClassifier {
         return null
     }
 
-    /** A bare, non-web app link such as `taobao://item/123`. */
+    /** 非 http 的 app 链接，例如 `taobao://item/123`。 */
     private fun deepLink(text: String?): String? {
         if (text == null) return null
         val value = javaTrim(text)
@@ -319,7 +319,7 @@ internal object ClipboardClassifier {
         return SCHEME_APPS[match.groupValues[1].lowercase(Locale.ROOT)]
     }
 
-    /** Host of a URL, lowercased and stripped of scheme/port/path/query; null when empty. */
+    /** URL 的域名：转小写并去掉 scheme、端口、路径与查询串；为空时返回 null。 */
     internal fun hostOf(url: String?): String? {
         if (url == null) return null
         var value = javaTrim(url)
@@ -355,9 +355,9 @@ internal object ClipboardClassifier {
         return total
     }
 
-    // --- express -----------------------------------------------------------------------
+    // --- 快递 -----------------------------------------------------------------------
 
-    /** Tracking number, or null. Pure digit runs long enough to be a waybill are accepted. */
+    /** 快递单号；为 null 表示没有。纯数字且长度够的按运单号接受。 */
     private fun expressNumber(text: String?): String? {
         if (text == null) return null
         val value = javaTrim(text)
@@ -377,15 +377,15 @@ internal object ClipboardClassifier {
         return null
     }
 
-    // --- address -----------------------------------------------------------------------
+    // --- 地址 -----------------------------------------------------------------------
 
     /**
-     * Conservative Chinese address detection: needs an administrative level, a district/street
-     * level and a house number, so plain sentences that merely mention 市/区 are rejected.
+     * 保守的中文地址识别：必须有行政区划、区/街道与门牌号才算地址，
+     * 只是提到「市/区」的普通句子一律不算。
      *
-     * Address detection tuned for what map apps actually put on the clipboard: either a single
-     * "省市区街道门牌" line, or a place card with the POI name, address, phone, opening hours and
-     * a share link stacked on separate lines. The best-looking line wins, metadata is ignored.
+     * 判定按地图应用实际复制到剪贴板的内容调校：要么是一行完整地址
+     *（如「省市区街道门牌」），要么是分享链接下面的分行结构（地点名、地址、电话、营业时间）。
+     * 取最像地址的那一行，元数据行直接忽略。
      */
     private fun address(text: String?): String? {
         if (text == null) return null
@@ -403,14 +403,14 @@ internal object ClipboardClassifier {
                 best = line
             }
         }
-        // A single-line address still has to clear the same bar as one line of a place card.
+        // 单行地址也要过与地点卡片单行相同的判定门槛。
         if (best == null && !value.contains("\n")) {
             if (addressScore(value) > 0) best = value
         }
         return best
     }
 
-    /** 0 means "not an address"; higher is a more complete address. */
+    /** 0 表示不是地址；分值越高地址越完整。 */
     private fun addressScore(line: String): Int {
         if (line.length < 6 || line.length > 120) return 0
         if (!HAS_CJK.containsMatchIn(line) && !ADDRESS_EN.matches(line)) return 0
@@ -428,14 +428,14 @@ internal object ClipboardClassifier {
         val house = HOUSE_NUMBER.containsMatchIn(line) || HAS_DIGIT.containsMatchIn(line)
         if (MAP_METADATA_LINE.containsMatchIn(line)) return 0
         if (!street) return 0
-        // 省市区 + 街道/门牌, 市区 + 门牌, or 街道 + 门牌 are all plausible addresses.
+        // 省市区 + 街道/门牌、市区 + 门牌、街道 + 门牌，都算合理的地址。
         if (city && district) return if (house) 5 else 4
         if (district) return if (house) 4 else 0
         if (city) return if (house) 3 else 0
         return if (house) 2 else 0
     }
 
-    /** Leading "地址：" style label, trailing sentence punctuation and stray quotes. */
+    /** 去掉「地址：」这类前置标签、句末标点与多余的引号。 */
     private fun stripLabels(text: String): String {
         var value = text
         for (i in 0 until 3) {
@@ -448,7 +448,7 @@ internal object ClipboardClassifier {
         return javaTrim(value)
     }
 
-    /** First phone number appearing on its own line (place cards label them "电话："). */
+    /** 独立成行的第一个电话号码（地点卡片会写成「电话：xxx」）。 */
     private fun phoneInLines(text: String?): String? {
         if (text == null || !text.contains("\n")) return null
         for (rawLine in LINE_BREAK.split(text)) {
@@ -460,8 +460,8 @@ internal object ClipboardClassifier {
     }
 
     /**
-     * Coordinate pair copied from a map app, normalized to "lat,lng". Chinese map apps usually
-     * copy "lng,lat", Google copies "lat,lng"; the magnitudes disambiguate the two.
+     * 地图应用复制出来的坐标对，规整为「纬度,经度」。国内地图应用通常
+     * 复制「经度,纬度」，Google 复制「纬度,经度」；按数值量级区分这两种。
      */
     private fun coordinates(text: String?): String? {
         if (text == null) return null
@@ -483,7 +483,7 @@ internal object ClipboardClassifier {
                     lat = first
                     lng = second
                 } else if (first > 72 && first < 136 && second > 3 && second < 56) {
-                    // Typical mainland China bounds: the longitude is the larger-looking one.
+                    // 中国大陆范围：经度的数值通常更大。
                     lng = first
                     lat = second
                 } else {
@@ -508,9 +508,9 @@ internal object ClipboardClassifier {
     }
 
     /**
-     * Java `String.trim()`: only chars <= ' ' are stripped. Kotlin's trim() would also strip
-     * Unicode spaces such as the ideographic space U+3000 common in Chinese share texts, which
-     * would change what the phone/URL/address patterns see.
+     * Java `String.trim()` 只去掉 <= ' ' 的字符；Kotlin 的 trim() 还会去掉
+     * 中文分享文本里常见的全角空格 U+3000 等 Unicode 空白，
+     * 那会改变电话 / URL / 地址正则看到的内容。
      */
     private fun javaTrim(value: String): String = value.trim { it <= ' ' }
 

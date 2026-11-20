@@ -15,8 +15,8 @@ import io.github.hoerire.free.hook.OemReflection
  *
  * 在方法执行前改写这个 Bundle 即可决定窗口形态：
  *  - extra_window_mode = 100（自由窗口）
- *  - android:activity.mZoomLaunchFlags = 5
- *  - androidx.activity.LaunchScenario = 1
+ *  - 键 android:activity.mZoomLaunchFlags = 5
+ *  - 键 androidx.activity.LaunchScenario = 1
  *
  * 同时必须删掉 Bundle 里所有 remote + animation/transition 键。这些键让 SystemUI
  * 把本次启动的转场交给横幅那一层做，删掉后横幅不再参与转场，窗口直接起在自由窗层，

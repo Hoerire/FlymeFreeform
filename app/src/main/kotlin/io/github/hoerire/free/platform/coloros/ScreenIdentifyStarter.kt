@@ -8,12 +8,12 @@ import io.github.hoerire.free.log.ModuleLog
  * 小布识屏的系统侧启动。
  *
  * 侧边栏点「识屏」时，原生代码是这样起来的（`BreenoScreenIdentifyTool.handle()`）：
- * `startForegroundService(Intent("oplus.intent.action.DIRECT_SIDEBAR_SERVICE").setPackage("com.coloros.colordirectservice"))`。
+ * 调用方式是 `startForegroundService(Intent("oplus.intent.action.DIRECT_SIDEBAR_SERVICE").setPackage("com.coloros.colordirectservice"))`。
  * 侧边栏进程处于后台时，这次前台服务启动会被系统直接拒绝——
  *
  * ```
- * W ActivityManager: Background start not allowed: service Intent { act=oplus.intent.action.DIRECT_SIDEBAR_SERVICE }
- *   to com.coloros.colordirectservice/.InvokeEntranceService from pkg=com.coloros.smartsidebar startFg?=true
+ * 系统日志原文：W ActivityManager: Background start not allowed: service Intent { act=oplus.intent.action.DIRECT_SIDEBAR_SERVICE }
+ *   续：to com.coloros.colordirectservice/.InvokeEntranceService from pkg=com.coloros.smartsidebar startFg?=true
  * ```
  *
  * 所以改由 system_server（uid 1000，不受后台启动限制）代发同一个 Intent。

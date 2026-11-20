@@ -26,13 +26,13 @@ import android.view.WindowManager
 import android.view.animation.PathInterpolator
 
 /**
- * Native-Android-style bubble expansion.
+ * 系统原生气泡展开样式。
  *
- * Mirrors what the platform bubble stack does: the collapsed stack behind the main bubble
- * unfolds into a horizontal row (wrapping into a second row when needed) near the top of the
- * screen, over a dimmed background, with staggered Material motion. While it is open nothing
- * keeps animating; a tap on a bubble opens that notification/suggestion, a tap anywhere else
- * folds it back, and doing nothing for a moment folds it back into the stack.
+ * 对齐平台气泡栈的行为：主气泡后面折叠的那一叠会
+ * 在屏幕上方展开成一行（不够时折成两行），
+ * 背景压暗，动效按 Material 的错峰节奏推进。展开期间不再有
+ * 持续动画；点某一颗打开对应通知/建议，点其它地方
+ * 收回；一会儿不操作也会自动收回。
  */
 @SuppressLint("ViewConstructor")
 internal class BubbleStackOverlay(
@@ -120,7 +120,7 @@ internal class BubbleStackOverlay(
         return true
     }
 
-    /** Folds the row back into the stacked bubbles (also used when it is replaced). */
+    /** 把这一行收回气泡堆（被替换时也走这里）。 */
     fun dismiss() {
         handler.removeCallbacks(idleCollapseAction)
         if (!attached || collapsing) return
@@ -197,11 +197,11 @@ internal class BubbleStackOverlay(
     protected override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val p = smooth(progress)
-        // Dimmed background, like the platform bubble expanded view.
+        // 压暗背景，与平台的展开视图一致。
         scrim.alpha = Math.round(112f * p)
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), scrim)
 
-        // The source bubble fades away while the row takes over.
+        // 这一行接手时，源气泡淡出。
         drawSource(canvas, p)
         for (index in icons.size - 1 downTo 0) {
             drawItem(canvas, index)
@@ -330,7 +330,7 @@ internal class BubbleStackOverlay(
         return -1
     }
 
-    /** Staggered item progress: the row unfolds bubble by bubble from the source. */
+    /** 错峰的条目进度：这一行从源气泡开始，一颗一颗地展开。 */
     private fun itemProgress(index: Int): Float {
         val delay = minOf(0.42f, 0.05f + index * 0.05f)
         val value = maxOf(0f, minOf(1f, (progress - delay) / (1f - delay)))
@@ -343,7 +343,7 @@ internal class BubbleStackOverlay(
         return maxOf(1, minOf(MAX_PER_ROW, fit))
     }
 
-    /** Horizontal position of a row slot, centred like the platform bubble row. */
+    /** 单行槽位的横向位置，与平台气泡行一样居中。 */
     private fun slotX(index: Int): Float {
         val per = perRow()
         val row = index / per
@@ -359,14 +359,14 @@ internal class BubbleStackOverlay(
         val row = index / per
         val step = (dp(BUBBLE_DP) + dp(12f)).toFloat()
         val height = if (this.height > 0) this.height.toFloat() else fallbackHeight()
-        // Sit just above the navigation bar, and higher still while the keyboard is open so the
-        // row never hides behind the input method.
+        // 贴着导航栏上方；键盘弹起时整体上移，
+        // 避免被输入法挡住。
         var bottom = height - navigationBottomInset - dp(ROW_BOTTOM_DP)
         if (imeBottomInset > 0) {
             bottom = minOf(bottom, height - imeBottomInset - dp(16f))
         }
         val lastCenter = bottom - dp(BUBBLE_DP) / 2f
-        // Rows grow upwards: the last row stays closest to the bottom edge.
+        // 行从下往上叠：最后一行贴着屏幕底部。
         return lastCenter - (rows - 1 - row) * step
     }
 
@@ -414,13 +414,13 @@ internal class BubbleStackOverlay(
         private const val BUBBLE_DP = 58f
         private const val GAP_DP = 10f
 
-        /** Distance of the row from the bottom edge (above the navigation bar / keyboard). */
+        /** 这一行距屏幕底边的距离（在导航栏 / 键盘之上）。 */
         private const val ROW_BOTTOM_DP = 84f
         private const val MAX_PER_ROW = 5
         private const val ENTER_DURATION_MS = 400L
         private const val EXIT_DURATION_MS = 260L
 
-        /** No interaction for this long folds the row back into the stack. */
+        /** 这么久没有操作就把这一行收回气泡堆。 */
         private const val IDLE_COLLAPSE_MS = 4_200L
         private val MATERIAL_DECELERATE =
             PathInterpolator(0.05f, 0.70f, 0.10f, 1.00f)

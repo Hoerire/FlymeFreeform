@@ -9,7 +9,7 @@ import io.github.hoerire.free.hook.OemReflection
  *
  * 1. `FlexibleTaskController.isTaskInFlexibleState(task, state)`：系统查询任务当前形态的
  *    官方入口，`OutsideTapCloseHookInstaller` 判「普通小窗」用的就是它；
- * 2. `Task.getWrapper().getExtImpl().getFlexibleZoomState()`：`FlexibleCaptionView`
+ * 2. 路径二 `Task.getWrapper().getExtImpl().getFlexibleZoomState()`：`FlexibleCaptionView`
  *    的 `isMiniZoomState` / `isMiniOrReadyState` 读的同一个字段。
  *
  * 两个都拿不到时才退回尺寸判定——「迷你窗就是最小的可见窗口」。

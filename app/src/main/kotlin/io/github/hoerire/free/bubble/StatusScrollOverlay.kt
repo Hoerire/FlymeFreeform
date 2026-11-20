@@ -82,13 +82,12 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
         ticker.setPadding(dp(6f), 0, dp(4f), 0)
         // 文本用 WRAP_CONTENT 而非权重(0,MATCH,1)，避免在 WRAP_CONTENT 容器里塌缩成 0 宽；
         // 整体也按内容自适应宽度，随状态栏布局自动测量。
-        // ViewOverlay does not always resolve LinearLayout weights during its
-        // manual measure/layout pass. Keep a concrete text width and update it
-        // whenever the status-bar host is attached or remeasured.
+        // ViewOverlay 手工测量/布局时不一定会解析 LinearLayout 的权重，
+        // 所以这里给定一个确定的文本宽度，并在状态栏宿主挂上或重新测量时更新。
         addView(ticker, LinearLayout.LayoutParams(dp(160f), LinearLayout.LayoutParams.MATCH_PARENT))
     }
 
-    /** Plain ticker text; keep the final glyph fully opaque at the right edge. */
+    /** 纯文本滚动条：最右侧的字形保持完全不透明。 */
     private inner class FadingTickerView(context: Context) : TextView(context) {
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
@@ -99,9 +98,8 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
     fun attachTo(parent: ViewGroup) {
         var discoveredClock: View? = findClockView(parent)
         if (discoveredClock !is TextView) {
-            // The measured status_bar_contents/start-side host can be a
-            // sibling of the clock. Search the complete SystemUI decor tree
-            // so the overlay still gets the clock's real vertical position.
+            // 被测量的 status_bar_contents / start-side 宿主可能是时钟的兄弟节点，
+            // 需要遍历整个 SystemUI 装饰树才能拿到时钟真实的纵向位置。
             val root = parent.rootView
             if (root is ViewGroup && root !== parent) {
                 discoveredClock = findClockView(root)
@@ -115,8 +113,8 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
         detachOverlay()
         host = parent
         attachClockStyle(parent)
-        // Draw above the existing clock/icon children without participating in
-        // ColorOS' container measurement or child-order rules.
+        // 画在时钟与图标子视图之上，但不参与 ColorOS 容器的
+        // 测量与子视图顺序规则。
         parent.overlay.add(this)
         overlayAttached = true
         var left = clockOffsetInHost(false)
@@ -151,8 +149,8 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
             pendingText = null
             show(icon, text)
         }
-        // SystemUI may finish measuring the status-bar host one frame later.
-        // Re-layout then so the text area uses the real host bounds.
+        // SystemUI 可能晚一帧才量完状态栏宿主：
+        // 那时再布局一次，让文本区用上真实宿主边界。
         post { relayoutOverlay() }
         postDelayed({ relayoutOverlay() }, 90L)
         postDelayed({ relayoutOverlay() }, 260L)
@@ -170,13 +168,13 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
         val currentHost = host
         if (!overlayAttached || !hasText || currentHost == null) return
         try {
-            // SystemUI can clear a ViewGroupOverlay while rebuilding the
-            // notification icon row. Re-add the same view so the ticker does
-            // not disappear until the normal timeout/removal path runs.
+            // SystemUI 重建通知图标行时可能清空 ViewGroupOverlay：
+            // 把同一个视图重新加回去，滚动条就不会在
+            // 正常的超时/移除流程之前凭空消失。
             currentHost.overlay.remove(this)
             currentHost.overlay.add(this)
-            // New notification icon views can be inserted while the ticker is
-            // active; hide them on every keep-alive pass to prevent overlap.
+            // 滚动进行中可能有新的通知图标视图插入；
+            // 每次保活都把它们隐藏，避免与本条重叠。
             hideStatusBarPeers(currentHost)
             relayoutOverlay()
         } catch (ignored: Throwable) {
@@ -187,9 +185,9 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
     private fun relayoutOverlay() {
         if (!overlayAttached) return
         val currentHost = host ?: return
-        // The collapsed status-bar hierarchy can expose the host before its
-        // clock child is attached. Rebind once it appears instead of waiting
-        // for a manual status-bar refresh.
+        // 折叠状态下的状态栏层级可能先暴露宿主、后挂上它的
+        // 时钟子视图：一旦出现就重新绑定，不必等
+        // 用户手动刷新状态栏。
         val clock = clockView
         if (clock == null || clock.parent == null) {
             val found = findClockView(currentHost)
@@ -229,9 +227,9 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
     }
 
     private fun chooseClockAnchor(root: ViewGroup, clock: View): ViewGroup {
-        // Keep the host selected by BubbleNotificationHook. Promoting it to a
-        // wider clock ancestor changes the ViewOverlay coordinate space and
-        // makes the ticker jump after the first status-bar relayout.
+        // 保留 BubbleNotificationHook 选定的宿主：把它提升到更宽的时钟祖先上，
+        // 会改变 ViewOverlay 的坐标系，
+        // 让滚动条在状态栏第一次重新布局后跳位。
         return root
     }
 
@@ -275,8 +273,8 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
 
     private fun suppressClock() {
         val clock = clockView ?: return
-        // hideStatusBarPeers() owns the clock transition. Do not overwrite
-        // its original visibility after the exit animation has started.
+        // 时钟的显隐由 hideStatusBarPeers() 负责：退场动画开始后，
+        // 不要再覆盖它记录的原始可见性。
         if (hiddenPeers.contains(clock)) return
         if (clockSuppressed) return
         clockOriginalVisibility = clock.visibility
@@ -312,8 +310,8 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
 
     private fun hidePeersRecursive(view: View) {
         if (view === this) return
-        // The host may itself be named status_bar_start_side/statusIcons. Keep
-        // it visible because the ticker is drawn in that host's overlay.
+        // 宿主自己也可能叫 status_bar_start_side / statusIcons：
+        // 必须保持可见，因为滚动条画在该宿主的叠加层里。
         if (view === host) {
             if (view is ViewGroup) {
                 for (i in 0 until view.childCount) {
@@ -328,15 +326,15 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
             if (view.id != View.NO_ID) idName = view.resources.getResourceEntryName(view.id)
         } catch (ignored: Throwable) {
         }
-        // The end-side container owns signal, Wi-Fi, Bluetooth and battery.
-        // Never recurse into or hide that region.
+        // 尾侧的容器承载信号、Wi-Fi、蓝牙与电量，
+        // 永远不要递归进去、也不要隐藏这块区域。
         val rightSystemArea = idName.contains("end_side") ||
             idName.contains("system_icon_area") ||
             idName.contains("status_bar_end")
         if (rightSystemArea) return
-        // Hide individual notification icon views only. Do not hide broad
-        // containers such as statusIcons/start_side: ColorOS may place signal,
-        // battery or the ticker host inside those containers.
+        // 只隐藏单个通知图标视图，不要隐藏 statusIcons / start_side 这类
+        // 大容器：ColorOS 可能把信号、电量或滚动条宿主
+        // 放在这些容器里面。
         val notificationPeer = name.contains("StatusBarIconView") ||
             name.contains("NotificationIcon")
         if (notificationPeer && view.visibility != View.GONE) {
@@ -444,8 +442,8 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
         var hostHeight = currentHost?.height ?: 0
         if (hostHeight <= 0 && currentHost != null) hostHeight = currentHost.measuredHeight
         if (hostHeight > 0) return Math.max(0, (hostHeight - height) / 2 + dp(4f))
-        // Before the first layout, keep the row at the status-bar origin and
-        // let the delayed relayout pass recenter it once the host has height.
+        // 首次布局前先把这一行放在状态栏原点，
+        // 等宿主有了高度，再由延后的一次布局把它居中。
         return dp(4f)
     }
 
@@ -464,10 +462,9 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
     }
 
     /**
-     * Keep the ticker inside the portion of the status bar not occupied by a
-     * visible ColorOS Fluid Cloud capsule. The capsule is a separate SystemUI
-     * window on some releases, so this is resolved in screen coordinates and
-     * converted back into the overlay host's local coordinate space.
+     * 让滚动条落在状态栏里没有被可见流体云胶囊占据的那一段。
+     * 某些版本里胶囊是独立的 SystemUI 窗口，所以先在屏幕坐标里算出来，
+     * 再换回浮层宿主的本地坐标系。
      */
     private fun resolveFluidCloudAvoidance(
         parent: ViewGroup?,
@@ -493,8 +490,8 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
             val cloudRight = cloud.right - hostLocation[0]
             val leftWidth = Math.max(0, Math.min(right, cloudLeft - gap) - left)
             val rightWidth = Math.max(0, right - Math.max(left, cloudRight + gap))
-            // Prefer the larger unobstructed segment. If both are narrow, keep
-            // the wider one and let the existing text pagination handle it.
+            // 优先用更宽的无遮挡区间；两段都窄时
+            // 保留较宽的一段，交给现有的分页逻辑处理。
             if (rightWidth > leftWidth) {
                 val newLeft = Math.min(right, cloudRight + gap)
                 return intArrayOf(newLeft, right)
@@ -639,7 +636,7 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
         ticker.setTextColor(color)
         val iconDrawable = iconView.drawable
         if (iconView.visibility != View.GONE && iconDrawable != null) {
-            // Match the monochrome black/white status-bar icon appearance.
+            // 与状态栏图标的黑白单色观感保持一致。
             iconDrawable.mutate().setColorFilter(
                 PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN),
             )
@@ -745,10 +742,8 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
     fun removeImmediately() {
         val elapsed = SystemClock.uptimeMillis() - shownAt
         if (hasText && elapsed >= 0L && elapsed < 1_500L && isScreenInteractive()) {
-            // Protect against a transient SystemUI/status-bar rebuild calling
-            // the shared cleanup path during the first frame of a ticker.
-            // Real screen-off cleanup still proceeds because the display is
-            // no longer interactive.
+            // 防止滚动条首帧遇到 SystemUI/状态栏重建而误走公共清理路径；
+            // 真正息屏时的清理仍会执行，因为那时显示已经不可交互。
             handler.removeCallbacks(removeAction)
             handler.postDelayed(removeAction, 1_500L - elapsed)
             scheduleOverlayKeepAlive()
@@ -774,8 +769,8 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
         iconView.setImageDrawable(null)
         iconView.visibility = View.GONE
         shownAt = 0L
-        // Keep the transparent host attached. ColorOS otherwise rebuilds the
-        // left status-bar group and makes clock/icon visibility race with us.
+        // 保持透明宿主挂载：否则 ColorOS 会重建左侧状态栏分组，
+        // 让时钟与图标的显隐和这里抢时序。
         val callback = finishedAction
         if (callback != null) handler.post { callback() }
     }
@@ -839,7 +834,7 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
         handler.postDelayed(pageAdvanceAction, 2200L)
     }
 
-    /** Scroll only half a status-bar row so each page remains visually anchored. */
+    /** 每页只滚半行状态栏高度，让每页在视觉上仍有依托。 */
     private fun scrollDistance(): Int {
         val row = if (height > 0) height else statusBarHeight()
         return Math.max(dp(8f), Math.round(row * 0.5f))
