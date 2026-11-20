@@ -688,10 +688,14 @@ internal class ColorOsFreeformCoordinator(
 
     private fun handlePointerEvent(event: MotionEvent) {
         // 会话间隙保护：抢流后如果流被系统掐断（没有 UP/CANCEL），pilferSessionActive 会一直
-        // 停在 true，之后每一次新的按下都被当成"重复 DOWN"走 rebase，扇形再也激活不了
-        // 
+        // 停在 true，之后每一次新的按下都被当成"重复 DOWN"走 rebase，扇形再也激活不了。
+        //
+        // 只在**新的按下**时判定：手指按住不动挑选图标时，两次 MOVE 之间超过这个间隔很正常，
+        // 若在任意事件上判"间隔过长"，就会把还活着的手势当成死流复位，表现为「挑着挑着扇形失灵」。
         val now = android.os.SystemClock.uptimeMillis()
-        if (pilferSessionActive && now - lastPointerEventAt > SESSION_GAP_MS) {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN &&
+            pilferSessionActive && now - lastPointerEventAt > SESSION_GAP_MS
+        ) {
             trace("SYSTEM_GESTURE_SESSION_RESET_STALE")
             pilferSessionActive = false
             gestureEngine.cancel()
@@ -808,10 +812,18 @@ internal class ColorOsFreeformCoordinator(
                     }
                 // 多指按下不再取消主手势，只忽略新增的那根手指。
                 MotionEvent.ACTION_POINTER_DOWN -> GestureAction.Ignore
+                // 抬起的那根如果是主手指就正常提交；是误触的另一根则完全忽略，
+                // 不能落到下面的 else 分支去 cancel——那会让扇形在挑选时失去跟踪。
+                MotionEvent.ACTION_POINTER_UP -> {
+                    val lifted = event.getPointerId(event.actionIndex)
+                    if (gestureEngine.isTracking(lifted)) gestureEngine.up(lifted)
+                    else GestureAction.Ignore
+                }
                 else -> if (gestureEngine.isClaimed) gestureEngine.cancel() else GestureAction.Ignore
             }
         if (event.actionMasked == MotionEvent.ACTION_MOVE ||
-            event.actionMasked == MotionEvent.ACTION_UP
+            event.actionMasked == MotionEvent.ACTION_UP ||
+            event.actionMasked == MotionEvent.ACTION_POINTER_UP
         ) {
             cancelWatchOnActivity()
         }
@@ -2183,9 +2195,18 @@ internal class ColorOsFreeformCoordinator(
 
 
         const val MONITOR_NAME = "free-corner"
-        /** 抢流被 CANCEL 后，等这么久没有 MOVE 就按取消收场。 */
-        const val CANCEL_WATCH_MS = 150L
-        /** 两次指针事件间隔超过该值即判定上一次会话结束，避免状态滞留。 */
+        /**
+         * 抢流被 CANCEL 后，等这么久没有 MOVE 就按取消收场。
+         *
+         * 观察窗必须覆盖「按住不动挑图标」的停顿：取 150ms 时，手指停顿半秒就会被判成
+         * 死流，扇形在挑选过程中自己收起。400ms 仍能及时回收真正断掉的流。
+         */
+        const val CANCEL_WATCH_MS = 400L
+        /**
+         * 两次按下之间超过该间隔，即认为上一轮会话已经结束。
+         *
+         * 只在 ACTION_DOWN 时判定：手指按住期间不产生新 DOWN，停顿不代表流已断。
+         */
         const val SESSION_GAP_MS = 800L
 
         /**

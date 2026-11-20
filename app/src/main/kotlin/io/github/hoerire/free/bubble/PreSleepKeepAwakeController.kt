@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
@@ -13,7 +12,6 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import io.github.hoerire.free.config.ModulePreferences
@@ -56,7 +54,8 @@ internal class PreSleepKeepAwakeController(
     private val keyguardManager: KeyguardManager? =
         context.getSystemService(KeyguardManager::class.java)
 
-    private var tapOverlay: View? = null
+    /** 上一次因变暗弹出建议的时刻；同一轮变暗只弹一次。 */
+    private var lastSuggestionAt = 0L
     private var keepWindow: View? = null
     private var keepAwake = false
     private var baselineForeground: String? = null
@@ -72,7 +71,6 @@ internal class PreSleepKeepAwakeController(
                 if (intent?.action != Intent.ACTION_SCREEN_OFF) return
                 handler.post {
                     clearArmed()
-                    removeOverlay()
                     release()
                 }
             }
@@ -90,7 +88,6 @@ internal class PreSleepKeepAwakeController(
         } else {
             polling = false
             handler.removeCallbacks(pollAction)
-            removeOverlay()
             release()
             clearArmed()
             host.log("PRE_SLEEP_WATCH_STOPPED", null)
@@ -104,65 +101,31 @@ internal class PreSleepKeepAwakeController(
         runCatching {
             val interactive = powerManager?.isInteractive ?: true
             if (!interactive) {
-                removeOverlay()
                 release()
             } else if (keepAwake) {
                 checkAppSwitch()
             } else if (isArmed() && !isLocked()) {
-                showOverlay()
-            } else {
-                removeOverlay()
+                onDimDetected()
             }
         }.onFailure { host.log("PRE_SLEEP_POLL_FAILED", it) }
         handler.postDelayed(pollAction, POLL_MS)
     }
 
-    private fun showOverlay() {
-        val manager = windowManager ?: return
-        if (tapOverlay != null || keepAwake) return
-        runCatching {
-            val overlay =
-                View(appContext).apply {
-                    setBackgroundColor(Color.TRANSPARENT)
-                    setOnTouchListener { _, event ->
-                        when (event.actionMasked) {
-                            MotionEvent.ACTION_UP -> {
-                                onDimTap()
-                                true
-                            }
-                            // 半暗窗口期内接住所有触摸，避免点按同时打到下面的应用。
-                            else -> true
-                        }
-                    }
-                }
-            manager.addView(
-                overlay,
-                WindowManager.LayoutParams(
-                    WindowManager.LayoutParams.MATCH_PARENT,
-                    WindowManager.LayoutParams.MATCH_PARENT,
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                    PixelFormat.TRANSLUCENT,
-                ).apply { title = OVERLAY_TITLE },
-            )
-            tapOverlay = overlay
-            host.log("PRE_SLEEP_OVERLAY_SHOWN", null)
-        }.onFailure { host.log("PRE_SLEEP_OVERLAY_FAILED", it) }
-    }
-
-    private fun removeOverlay() {
-        val overlay = tapOverlay ?: return
-        tapOverlay = null
-        runCatching { windowManager?.removeView(overlay) }
-    }
-
-    /** 半暗中点了一下：先唤醒，再给一颗「保持常亮」气泡。 */
-    private fun onDimTap() {
+    /**
+     * 进入变暗阶段：先把屏幕点亮回去，再直接给一颗「保持常亮」气泡。
+     *
+     * 早先的实现是铺一层透明点按层、等用户点一下再弹气泡；实际使用里用户会等气泡自己出现，
+     * 反而以为功能没生效。现在改为进入变暗就弹气泡：气泡本身开着不自动消失，
+     * 用户点它才把屏幕钉住，不点就照常熄灭。
+     */
+    private fun onDimDetected() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastSuggestionAt < SUGGESTION_COOLDOWN_MS) return
+        lastSuggestionAt = now
+        // 标志只用一次：清掉之后由系统在下一轮变暗时重新置位，避免同一轮反复触发。
         clearArmed()
-        removeOverlay()
         pokeUserActivity()
+        host.log("PRE_SLEEP_DIM_DETECTED", null)
         if (!host.isEnabled()) return
         runCatching { host.showKeepAwakeSuggestion { engage() } }
             .onFailure { host.log("PRE_SLEEP_SUGGESTION_FAILED", it) }
@@ -304,8 +267,11 @@ internal class PreSleepKeepAwakeController(
     private companion object {
         const val POLL_MS = 250L
         const val APP_SWITCH_POLL_MS = 1_000L
-        const val OVERLAY_TITLE = "FreePreSleepTap"
+
         const val KEEP_WINDOW_TITLE = "FreeKeepScreenOn"
+
+        /** 同一轮变暗重复触发的最小间隔。 */
+        const val SUGGESTION_COOLDOWN_MS = 20_000L
 
         /** PowerManager.USER_ACTIVITY_EVENT_TOUCH */
         const val USER_ACTIVITY_EVENT_TOUCH = 2

@@ -185,8 +185,10 @@ internal class CornerRadialOverlayView(
     private val fingerY = mutableFloatStateOf(0f)
 
     private var selectedIndex: Int? = null
-    /** 本次手势里手指是否到过外半圈：只有到过，「往内角回拉」才按取消处理。 */
+    /** 本次手势里手指是否到过外圈：只有到过，「往内角回拉」才按取消处理。 */
     private var reachedOutward = false
+    /** 手指开始停在内圈的时刻；0 表示当前不在内圈。 */
+    private var inwardSince = 0L
     private var dismissing = false
     private var dismissNotified = false
     /** 松手当帧已把目标交给宿主（应用/快捷方式），退场动画结束后只做收尾。 */
@@ -264,6 +266,7 @@ internal class CornerRadialOverlayView(
         panelImages = catalog.panelApps.associate { entry -> entry.target to entry.icon.asImageBitmap() }
         selectedIndex = null
         reachedOutward = false
+        inwardSince = 0L
         selectedIndexState.intValue = NO_SELECTION
         handoffEntryProgress.floatValue = 0f
         handoffLayoutState.value = EMPTY_LAYOUT
@@ -1255,16 +1258,24 @@ internal class CornerRadialOverlayView(
                 keepRadius = metrics.radial.selectionKeepRadius,
             )
         val inwardDistance = kotlin.math.hypot(latestX - layout.origin.x, latestY - layout.origin.y)
-        if (inwardDistance >= layout.radius * CANCEL_INWARD_RATIO) reachedOutward = true
-        // 往内角回拉即取消：手指到过外半圈之后再退回内半圈，就收起，不依赖抬手事件。
-        // 底角是系统手势区，抢流后这条流可能被系统 CANCEL 且不再投递 UP，
-        // 那样菜单会一直定格在屏幕上；这里在判定层直接把「回拉」当成取消。
-        if (reachedOutward && inwardDistance < layout.radius * CANCEL_INWARD_RATIO) {
-            debug("SYSTEM_HIT_CANCEL_INWARD")
-            selectedIndex = null
-            selectedIndexState.intValue = NO_SELECTION
-            dismissAnimated()
-            return
+        val inwardLimit = layout.radius * CANCEL_INWARD_RATIO
+        if (inwardDistance >= layout.radius * REACHED_OUTWARD_RATIO) reachedOutward = true
+        // 往内角回拉取消：手指到过外圈之后又退进内圈，**并且在内圈停留了一小会儿**才收起。
+        // 底角是系统手势区，抢流后这条流可能被系统 CANCEL 且不再投递 UP，菜单会定格在屏幕上，
+        // 所以需要一条不依赖抬手事件的退出路径；但不能一退进内圈就收——挑图标时手指会
+        // 沿圆弧回带、拇指也会下压，瞬时越界很常见，那是「划着划着突然没了」的主要来源。
+        if (reachedOutward && inwardDistance < inwardLimit) {
+            val now = SystemClock.uptimeMillis()
+            if (inwardSince == 0L) inwardSince = now
+            if (now - inwardSince >= CANCEL_INWARD_HOLD_MS) {
+                debug("SYSTEM_HIT_CANCEL_INWARD")
+                selectedIndex = null
+                selectedIndexState.intValue = NO_SELECTION
+                dismissAnimated()
+                return
+            }
+        } else {
+            inwardSince = 0L
         }
         if (next == selectedIndex) return
         // 命中区判定细节：进了哪一格、离格心多远、当前生效的进入半径。
@@ -1568,11 +1579,20 @@ internal class CornerRadialOverlayView(
         const val TICK_INTERVAL_MS = 80L
         const val GESTURE_TIMEOUT_MS = 5_000L
 
-        /** 回拉取消：手指退回半径的这个比例以内就收起扇形。 */
-        const val CANCEL_INWARD_RATIO = 0.55f
+        /**
+         * 回拉取消：手指退回半径的这个比例以内、并持续 [CANCEL_INWARD_HOLD_MS] 才收起。
+         *
+         * 取 0.45（而不是 0.55）：内圈要退得更深才算「明确回拉」，挑图标时的回带不会触发。
+         */
+        const val CANCEL_INWARD_RATIO = 0.45f
+
+        /** 判定「到过外圈」的半径比例。 */
+        const val REACHED_OUTWARD_RATIO = 0.55f
+
+        /** 手指停在回拉区多久才认定为取消手势。 */
+        const val CANCEL_INWARD_HOLD_MS = 180L
 
         const val PANEL_TIMEOUT_MS = 15_000L
-        const val DISMISS_FALLBACK_GRACE_MS = 260L
     }
 }
 

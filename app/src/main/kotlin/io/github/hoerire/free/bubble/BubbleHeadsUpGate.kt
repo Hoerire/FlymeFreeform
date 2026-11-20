@@ -119,7 +119,7 @@ internal class BubbleHeadsUpGate(
             // 锁屏时气泡在锁屏后面，保留系统横幅作为唯一可见入口。
             if (isDeviceLocked()) return false
             // 免打扰场景下不出气泡，横幅必须继续走系统：否则这条通知会彻底没有提示。
-            environment.suppressionReason(sbn.packageName, config)?.let { return false }
+            environment.suppressionReason(sbn.packageName, sbn.userId, config)?.let { return false }
             true
         }.getOrElse {
             logger("BUBBLE_HEADSUP_DECISION_FAILED", it)

@@ -106,9 +106,9 @@ internal class CornerGestureEngine {
         config: CornerGestureConfig,
     ): GestureAction {
         val activeSide = side ?: return GestureAction.PassThrough
-        // 只跟随发起手势的那根手指：滑到图标附近时拇指侧面常会多报一根手指，
-        // 此处不得直接 cancel：会表现为扇形自行关闭（类似断触）。
-        if (pointerId != this.pointerId) return cancel()
+        // 只跟随发起手势的那根手指：滑到图标附近时拇指侧面、手掌常常会多报一根手指。
+        // 非跟踪手指的事件一律忽略，不能取消主手势——否则表现为「划着划着扇形自己没了」。
+        if (pointerId != this.pointerId) return GestureAction.Ignore
 
         val inward = if (activeSide == CornerSide.Left) x - originX else originX - x
         val upward = originY - y
@@ -169,7 +169,8 @@ internal class CornerGestureEngine {
     }
 
     fun up(pointerId: Int): GestureAction {
-        if (pointerId != this.pointerId) return cancel()
+        // 非跟踪手指抬起（多指误触的那根）不结束主手势。
+        if (pointerId != this.pointerId) return GestureAction.Ignore
         if (!claimed) {
             reset()
             return GestureAction.PassThrough
@@ -192,6 +193,9 @@ internal class CornerGestureEngine {
 
     val isClaimed: Boolean
         get() = claimed
+
+    /** 这个指针是不是当前跟踪的那根手指。 */
+    fun isTracking(pointerId: Int): Boolean = claimed && pointerId == this.pointerId
 
     private fun detectSide(x: Float, y: Float, config: CornerGestureConfig): CornerSide? {
         return CornerTriggerRegion.detectSide(

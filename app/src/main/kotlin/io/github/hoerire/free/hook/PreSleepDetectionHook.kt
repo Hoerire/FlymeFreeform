@@ -69,12 +69,50 @@ internal class PreSleepDetectionHook(
     private fun detect(service: Any?) {
         val snapshot = configuration.snapshot
         if (!snapshot.suggestionsActive || !snapshot.suggestionKeepAwake) return
-        val summary = OemReflection.readField(service, "mUserActivitySummary") as? Int ?: return
-        // BRIGHT = 1，DIMMED = 2；0 表示没有可继续的屏幕状态，即即将息屏。
-        val armed = if ((summary and DIMMED_BIT) != 0 || summary == 0) 1 else 0
+        val armed = if (isDimOrSleepImminent(service)) 1 else 0
         if (armed == lastArmed) return
         handler.post { write(armed) }
     }
+
+    /**
+     * 屏幕是否正处在「变暗 / 即将息屏」。
+     *
+     * 两个来源都要看：
+     * - Android 16 起把用户活动汇总挪进了 `PowerGroup`（PSM 上只有 `mPowerGroups`），
+     *   老版本才直接在 `PowerManagerService` 上放 `mUserActivitySummary`；
+     * - 汇总值：BRIGHT=1，DIMMED=2，0 表示没有可继续的屏幕状态（即将息屏）。
+     *   还要看该组的 wakefulness 是 AWAKE，否则息屏后汇总同样是 0，会误判。
+     */
+    private fun isDimOrSleepImminent(service: Any?): Boolean {
+        (OemReflection.readField(service, "mUserActivitySummary") as? Int)?.let { summary ->
+            return (summary and DIMMED_BIT) != 0 || summary == 0
+        }
+        for (group in powerGroupsOf(service)) {
+            val wakefulness = OemReflection.readField(group, "mWakefulness") as? Int
+            if (wakefulness != WAKEFULNESS_AWAKE) continue
+            val summary = OemReflection.readField(group, "mUserActivitySummary") as? Int ?: continue
+            if ((summary and DIMMED_BIT) != 0 || summary == 0) return true
+        }
+        return false
+    }
+
+    /** `mPowerGroups` 是 `SparseArray<PowerGroup>`，反射取一遍值。 */
+    private fun powerGroupsOf(service: Any?): List<Any?> {
+        val raw = OemReflection.readField(service, "mPowerGroups") ?: return emptyList()
+        return when (raw) {
+            is Map<*, *> -> raw.values.filterNotNull()
+            is Iterable<*> -> raw.filterNotNull()
+            is Array<*> -> raw.filterNotNull()
+            else -> sparseArrayValues(raw)
+        }
+    }
+
+    private fun sparseArrayValues(array: Any): List<Any?> =
+        runCatching {
+            val size = array.javaClass.getMethod("size").invoke(array) as Int
+            val valueAt = array.javaClass.getMethod("valueAt", Int::class.javaPrimitiveType!!)
+            (0 until size).mapNotNull { index -> valueAt.invoke(array, index) }
+        }.getOrDefault(emptyList())
 
     private fun write(armed: Int) {
         val context = systemContext() ?: return
@@ -107,7 +145,10 @@ internal class PreSleepDetectionHook(
         }.getOrNull()
 
     private companion object {
-        /** PowerManagerService 用户活动汇总里的 DIMMED 位。 */
+        /** 用户活动汇总里的 DIMMED 位。 */
         const val DIMMED_BIT = 2
+
+        /** PowerManagerInternal.WAKEFULNESS_AWAKE */
+        const val WAKEFULNESS_AWAKE = 1
     }
 }

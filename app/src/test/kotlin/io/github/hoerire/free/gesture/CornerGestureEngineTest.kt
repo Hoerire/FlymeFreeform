@@ -89,12 +89,14 @@ class CornerGestureEngineTest {
         assertTrue(engine.move(0, 2, 30f, 1980f, config) is GestureAction.Update)
         assertTrue(engine.isClaimed)
 
-        // 真正会取消的是"换了发起手指"这件事。
-        val other = CornerGestureEngine()
-        other.down(0, 5f, 1995f, config)
-        other.move(0, 1, 25f, 1985f, config)
-        assertTrue(other.move(1, 1, 35f, 1975f, config) is GestureAction.Cancel)
-        assertFalse(other.isClaimed)
+        // 误触的另一根手指：移动或抬起都只忽略，不能把主手势取消掉。
+        assertTrue(engine.move(1, 2, 35f, 1975f, config) is GestureAction.Ignore)
+        assertTrue(engine.up(1) is GestureAction.Ignore)
+        assertTrue(engine.isClaimed)
+
+        // 主手指抬起才提交。
+        assertTrue(engine.up(0) is GestureAction.Commit)
+        assertFalse(engine.isClaimed)
     }
 
     @Test

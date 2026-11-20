@@ -166,7 +166,7 @@ internal class BubbleCoordinator(
             val wantsTicker =
                 settings.statusScrollActive && settings.acceptsStatusScroll(packageName)
             if (!wantsBubble && !wantsTicker) return
-            environment.suppressionReason(packageName, settings)?.let { reason ->
+            environment.suppressionReason(packageName, sbn.userId, settings)?.let { reason ->
                 log("BUBBLE_SKIP_" + reason + "_" + packageName, null)
                 return
             }
@@ -715,6 +715,14 @@ internal class BubbleCoordinator(
     ) {
         if (!settings.suggestionsActive || !settings.suggestionClipboard) return
         val controller = suggestions ?: return
+        // 同一次复制可能先由 SystemUI 自己的监听弹过一遍：这时不能再清掉它，
+        // 否则「先弹一颗 → 广播再来一条被判重复」= 气泡凭空消失。
+        val first = kinds.firstOrNull { it > 0 } ?: return
+        val firstValue = values.getOrNull(kinds.indexOf(first)) ?: return
+        if (controller.isDuplicateClipboard(firstValue)) {
+            log("BUBBLE_CLIPBOARD_SUGGESTION_DUPLICATE", null)
+            return
+        }
         // 新的一次复制替换上一次的剪贴板建议。
         queue.prune { !(it.suggestionId?.startsWith("clipboard:") == true) }
         kinds.forEachIndexed { index, kind ->
@@ -735,7 +743,7 @@ internal class BubbleCoordinator(
     private fun enqueueSuggestion(suggestion: ImmediateSuggestionController.Suggestion) {
         if (!settings.suggestionsActive) return
         // 建议同样受免打扰约束：来源应用正在前台、游戏模式、锁屏息屏都不弹。
-        environment.suppressionReason(suggestion.sourcePackage, settings)?.let { reason ->
+        environment.suppressionReason(suggestion.sourcePackage, 0, settings)?.let { reason ->
             log("BUBBLE_SUGGESTION_SKIP_" + reason + "_" + suggestion.id, null)
             return
         }

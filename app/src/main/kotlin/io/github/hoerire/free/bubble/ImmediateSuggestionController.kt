@@ -17,6 +17,7 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
@@ -59,6 +60,9 @@ internal class ImmediateSuggestionController(
     private val packageManager: PackageManager = context.packageManager
     private val activeTorchIds = HashSet<String>()
     private var lastClipboardText: String? = null
+    /** 上一次成功展示的剪贴板内容与时刻：两条来路共用的去重窗。 */
+    private var lastClipboardValue: String? = null
+    private var lastClipboardAt = 0L
     private var pendingClipboardFallback: Runnable? = null
     private var started = false
 
@@ -314,8 +318,17 @@ internal class ImmediateSuggestionController(
             host.logSuggestion("clipboard: nothing actionable", null)
             return
         }
-        showClassifiedSuggestion(result)
+        // 与 system_server 侧广播路径共用同一套 id，避免同一次复制出两颗气泡。
+        showClassifiedSuggestion(clipboardSuggestionId(result), result)
     }
+
+    private fun clipboardSuggestionId(result: ClipboardClassifier.Result): String =
+        TYPE_CLIPBOARD + ":" + ClipboardClassifier.kindTag(result.kind)
+
+    /** 这段内容是不是刚刚已经弹过（两条来路共用同一时间窗）。 */
+    fun isDuplicateClipboard(value: String): Boolean =
+        value == lastClipboardValue &&
+            SystemClock.elapsedRealtime() - lastClipboardAt < CLIPBOARD_DEDUPE_MS
 
     /**
      * 为一条已分类的剪贴板内容构建气泡。进程内（很少送达的）剪贴板监听与
@@ -332,6 +345,14 @@ internal class ImmediateSuggestionController(
     fun showClassifiedSuggestion(suggestionId: String, result: ClipboardClassifier.Result) {
         if (result.value.isEmpty()) return
         if (!host.isSuggestionEnabled(TYPE_CLIPBOARD)) return
+        // 同一次复制会同时从两条路进来（system_server 广播 + 本进程监听），
+        // 按内容 + 时间窗去重，避免一次复制弹出两颗一样的气泡。
+        if (isDuplicateClipboard(result.value)) {
+            host.logSuggestion("clipboard: duplicate ignored", null)
+            return
+        }
+        lastClipboardValue = result.value
+        lastClipboardAt = SystemClock.elapsedRealtime()
         val id = if (suggestionId.isEmpty()) TYPE_CLIPBOARD else suggestionId
         host.logSuggestion("clipboard suggestion: " + ClipboardClassifier.kindTag(result.kind), null)
         when (result.kind) {
@@ -565,6 +586,7 @@ internal class ImmediateSuggestionController(
 
         private const val TORCH_DELAY_MS = 5_000L
         private const val NATIVE_CLIPBOARD_GRACE_MS = 1_800L
+        private const val CLIPBOARD_DEDUPE_MS = 2_500L
 
         private val MUSIC_PACKAGES = arrayOf(
             "com.heytap.music", "com.oplus.music", "com.netease.cloudmusic",
