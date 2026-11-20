@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import io.github.hoerire.free.log.ModuleLog
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.ViewConfiguration
@@ -35,7 +36,7 @@ internal class LauncherHookInstaller(
     private val gestureEngine = CornerGestureEngine()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val environmentState = ModuleEnvironmentState(configuration) { code, exception ->
-        module.log(Log.WARN, TAG, code, exception)
+        ModuleLog.warn(code, exception)
     }
     private var environmentStarted = false
     private var activeConfig: CornerGestureConfig? = null
@@ -63,7 +64,7 @@ internal class LauncherHookInstaller(
         val timeout = Runnable {
             if (finished.compareAndSet(false, true)) {
                 executor.shutdownNow()
-                module.log(Log.WARN, TAG, "LAUNCHER_DEX_RESOLUTION_TIMEOUT")
+                ModuleLog.warn("LAUNCHER_DEX_RESOLUTION_TIMEOUT")
             }
         }
         mainHandler.postDelayed(timeout, RESOLUTION_TIMEOUT_MS)
@@ -71,7 +72,7 @@ internal class LauncherHookInstaller(
         executor.execute {
             try {
                 val target = ColorOsLauncherInputTarget.resolve(classLoader, apk, cache) { code, exception ->
-                    module.log(if (exception == null) Log.INFO else Log.WARN, TAG, code, exception)
+                    ModuleLog.forward(if (exception == null) Log.INFO else Log.WARN, code, exception)
                 }
                 mainHandler.post {
                     if (finished.compareAndSet(false, true)) {
@@ -80,13 +81,13 @@ internal class LauncherHookInstaller(
                     }
                 }
             } catch (exception: ReflectiveOperationException) {
-                module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_TARGET_UNAVAILABLE", exception)
+                ModuleLog.warn("LAUNCHER_CORNER_INPUT_TARGET_UNAVAILABLE", exception)
             } catch (exception: IOException) {
-                module.log(Log.WARN, TAG, "LAUNCHER_DEX_IO_FAILED", exception)
+                ModuleLog.warn("LAUNCHER_DEX_IO_FAILED", exception)
             } catch (exception: RuntimeException) {
-                module.log(Log.WARN, TAG, "LAUNCHER_DEX_RESOLUTION_FAILED", exception)
+                ModuleLog.warn("LAUNCHER_DEX_RESOLUTION_FAILED", exception)
             } catch (exception: LinkageError) {
-                module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_TARGET_LINKAGE_FAILED", exception)
+                ModuleLog.warn("LAUNCHER_CORNER_INPUT_TARGET_LINKAGE_FAILED", exception)
             } finally {
                 mainHandler.post {
                     if (finished.compareAndSet(false, true)) mainHandler.removeCallbacks(timeout)
@@ -123,11 +124,11 @@ internal class LauncherHookInstaller(
                         chain.proceed()
                     }
                 }
-            module.log(Log.INFO, TAG, "LAUNCHER_CORNER_INPUT_HOOK_INSTALLED")
+            ModuleLog.info("LAUNCHER_CORNER_INPUT_HOOK_INSTALLED")
         } catch (exception: IllegalArgumentException) {
-            module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_HOOK_REJECTED", exception)
+            ModuleLog.warn("LAUNCHER_CORNER_INPUT_HOOK_REJECTED", exception)
         } catch (exception: LinkageError) {
-            module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_TARGET_LINKAGE_FAILED", exception)
+            ModuleLog.warn("LAUNCHER_CORNER_INPUT_TARGET_LINKAGE_FAILED", exception)
         }
     }
 
@@ -296,14 +297,14 @@ internal class LauncherHookInstaller(
         val now = SystemClock.uptimeMillis()
         if (now - lastPilferFailureAt < PILFER_FAILURE_LOG_INTERVAL_MS) return
         lastPilferFailureAt = now
-        module.log(Log.WARN, TAG, "LAUNCHER_CORNER_INPUT_PILFER_FAILED", exception)
+        ModuleLog.warn("LAUNCHER_CORNER_INPUT_PILFER_FAILED", exception)
     }
 
     private fun logClaimed() {
         val now = SystemClock.uptimeMillis()
         if (now - lastClaimLogAt < CLAIM_LOG_INTERVAL_MS) return
         lastClaimLogAt = now
-        module.log(Log.INFO, TAG, "LAUNCHER_CORNER_INPUT_CLAIMED")
+        ModuleLog.info("LAUNCHER_CORNER_INPUT_CLAIMED")
     }
 
     /** 向 system_server 索取一次权威设置快照，并接收后续推送。 */
@@ -333,8 +334,8 @@ internal class LauncherHookInstaller(
                 setPackage("android")
                 putExtra(io.github.hoerire.free.config.ModulePreferences.EXTRA_REQUESTER_PACKAGE, "com.android.launcher")
             })
-            module.log(Log.INFO, TAG, "LAUNCHER_SETTINGS_SYNC_REQUESTED", null)
-        }.onFailure { module.log(Log.WARN, TAG, "LAUNCHER_SETTINGS_SYNC_FAILED", it) }
+            ModuleLog.info("LAUNCHER_SETTINGS_SYNC_REQUESTED")
+        }.onFailure { ModuleLog.warn("LAUNCHER_SETTINGS_SYNC_FAILED", it) }
     }
 
     private companion object {

@@ -965,9 +965,10 @@ internal class BubbleCoordinator(
     }
 
     private fun log(code: String, throwable: Throwable?) {
-        module.log(
+        // 走 ModuleLog：关闭详细日志时不再逐条刷屏；安装阶段的成功项并入汇总，
+        // 失败项照常带项目名与异常输出。运行期的事件日志只在详细日志打开时出现。
+        io.github.hoerire.free.log.ModuleLog.forward(
             if (throwable == null) Log.INFO else Log.WARN,
-            "Free",
             code,
             throwable,
         )

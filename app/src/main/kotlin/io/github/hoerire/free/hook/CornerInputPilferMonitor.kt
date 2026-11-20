@@ -5,6 +5,7 @@ import android.hardware.display.DisplayManager
 import android.os.HandlerThread
 import android.util.DisplayMetrics
 import android.util.Log
+import io.github.hoerire.free.log.ModuleLog
 import android.view.Display
 import android.view.InputChannel
 import android.view.InputDevice
@@ -35,7 +36,7 @@ internal class CornerInputPilferMonitor(
     private val configuration: ProcessConfiguration,
 ) {
     private val environmentState = ModuleEnvironmentState(configuration) { code, exception ->
-        module.log(Log.WARN, TAG, code, exception)
+        ModuleLog.warn(code, exception)
     }
 
     @Volatile private var settings = ModuleSettingsSnapshot(enabled = false)
@@ -102,13 +103,13 @@ internal class CornerInputPilferMonitor(
                     try {
                         (event as? MotionEvent)?.let(::handle)
                     } catch (exception: Throwable) {
-                        module.log(Log.WARN, TAG, "CORNER_MONITOR_EVENT_FAILED", exception)
+                        ModuleLog.warn("CORNER_MONITOR_EVENT_FAILED", exception)
                     } finally {
                         finishInputEvent(event, false)
                     }
                 }
             }
-        module.log(Log.INFO, TAG, "CORNER_MONITOR_STARTED")
+        ModuleLog.info("CORNER_MONITOR_STARTED")
     }
 
     /** 诊断：这次 DOWN 为什么没被接管。限频，避免每次触摸刷一行。 */
@@ -116,7 +117,7 @@ internal class CornerInputPilferMonitor(
         val now = android.os.SystemClock.uptimeMillis()
         if (now - lastSkipLogAt < SKIP_LOG_INTERVAL_MS) return
         lastSkipLogAt = now
-        module.log(Log.INFO, TAG, "CORNER_TRACK_SKIP_" + reason)
+        ModuleLog.info("CORNER_TRACK_SKIP_" + reason)
     }
 
     /**
@@ -185,9 +186,7 @@ internal class CornerInputPilferMonitor(
                 downX = event.rawX
                 downY = event.rawY
                 tracking = true
-                module.log(
-                    Log.INFO,
-                    TAG,
+                ModuleLog.info(
                     "CORNER_TRACK_DOWN_" + detected.name + "_" +
                         event.rawX.toInt() + "_" + event.rawY.toInt() +
                         "_r" + radius.toInt() +
@@ -213,7 +212,7 @@ internal class CornerInputPilferMonitor(
                     val upward = -dy
                     if (upward > inward * VERTICAL_UPWARD_RATIO) {
                         tracking = false
-                        module.log(Log.INFO, TAG, "CORNER_PILFER_SKIP_VERTICAL")
+                        ModuleLog.info("CORNER_PILFER_SKIP_VERTICAL")
                         return
                     }
                     // 几乎纯水平的内向拖动（视频进度条、横向滑动的列表）不是角区手势，
@@ -230,10 +229,10 @@ internal class CornerInputPilferMonitor(
                     val monitorRef = monitor ?: return
                     runCatching { pilferMethod?.invoke(monitorRef) }
                         .onSuccess {
-                            module.log(Log.INFO, TAG, "CORNER_PILFER_OK_" + (side?.name ?: "?"))
+                            ModuleLog.info("CORNER_PILFER_OK_" + (side?.name ?: "?"))
                         }
                         .onFailure {
-                            module.log(Log.WARN, TAG, "CORNER_MONITOR_PILFER_FAILED", it)
+                            ModuleLog.warn("CORNER_MONITOR_PILFER_FAILED", it)
                         }
                 }
             }

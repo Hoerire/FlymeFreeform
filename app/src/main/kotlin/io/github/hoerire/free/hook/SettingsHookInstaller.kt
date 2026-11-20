@@ -2,6 +2,7 @@ package io.github.hoerire.free.hook
 
 import android.os.Bundle
 import android.util.Log
+import io.github.hoerire.free.log.ModuleLog
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import java.util.concurrent.ConcurrentHashMap
@@ -321,7 +322,7 @@ internal class SettingsHookInstaller(
 
     private fun emit(code: String) {
         if (emitted.incrementAndGet() > MAX_ENTRIES) return
-        module.log(Log.INFO, TAG, code)
+        ModuleLog.info(code)
     }
 
     private companion object {

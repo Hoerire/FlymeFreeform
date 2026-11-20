@@ -14,6 +14,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.text.TextUtils
 import android.util.Log
+import io.github.hoerire.free.log.ModuleLog
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -263,12 +264,11 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
         }
         parent.addView(this, index, lp)
         suppressClock()
-        Log.i(
-            "BubbleNotify",
-            "overlay placed: parent=" + parent.javaClass.simpleName +
+        ModuleLog.debug("BubbleNotify") {
+            "滚动浮层已挂上：parent=" + parent.javaClass.simpleName +
                 " idx=" + index + " clockFound=" + (clockView != null) +
-                " clockSuppressed=" + clockSuppressed,
-        )
+                " clockSuppressed=" + clockSuppressed
+        }
     }
 
     private fun suppressClock() {
@@ -747,7 +747,7 @@ internal class StatusScrollOverlay(context: Context) : LinearLayout(context) {
             handler.removeCallbacks(removeAction)
             handler.postDelayed(removeAction, 1_500L - elapsed)
             scheduleOverlayKeepAlive()
-            Log.i("BubbleNotify", "status ticker early remove deferred")
+            ModuleLog.debug("BubbleNotify") { "状态滚动提前移除已推迟" }
             return
         }
         handler.removeCallbacks(removeAction)

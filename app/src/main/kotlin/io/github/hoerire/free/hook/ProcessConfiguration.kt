@@ -79,12 +79,12 @@ internal class ProcessConfiguration(
         snapshot = next
         // 仅在进程启动时记录一次状态。此后每次配置变更都会进入本方法，
         // 以 INFO 级别输出会产生大量重复记录，故降为详细日志。
+        // 进程启动时只在「没启用」这种需要人看的情况下留一行；
+        // 正常启用不再单独记录——安装汇总那一行已经证明配置读到了、hook 也装上了。
         if (initial) {
-            log(
-                Log.INFO,
-                if (next.enabled && isAvailable) "MODULE_STATE_ENABLED" else "MODULE_STATE_DISABLED",
-                null,
-            )
+            if (!(next.enabled && isAvailable)) {
+                log(Log.WARN, "MODULE_STATE_DISABLED", null)
+            }
         } else if (changed) {
             ModuleLog.debug("Free") { "MODULE_STATE_CHANGED_" + (if (next.enabled && isAvailable) "ON" else "OFF") }
         }

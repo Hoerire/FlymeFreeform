@@ -375,7 +375,7 @@ internal class SidebarHookInstaller(private val module: XposedModule, private va
         io.github.hoerire.free.log.ModuleLog.debug("FFLAUNCH") { "PANEL_TOOL_ZOOM_" + target }
     }
 
-    private fun log(priority: Int, code: String, throwable: Throwable?) = module.log(priority, "Free", code, throwable)
+    private fun log(priority: Int, code: String, throwable: Throwable?) = ModuleLog.forward(priority, code, throwable)
 
     private companion object {
         /** 侧边栏的参数转交入口：Intent 与小窗参数在这里合并后交给系统 uid 发起。 */

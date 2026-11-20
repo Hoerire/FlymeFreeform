@@ -12,6 +12,7 @@ import io.github.hoerire.free.hook.SidebarHookInstaller
 import io.github.hoerire.free.platform.coloros.ColorOsSidebarTarget
 import io.github.hoerire.free.hook.SystemServerHookInstaller
 import io.github.hoerire.free.hook.SystemUiHookInstaller
+import io.github.hoerire.free.log.InstallReport
 
 /** libxposed API 102 入口；具体手势、窗口和厂商接口分别由对应职责实现。 */
 class ModuleMain : XposedModule() {
@@ -47,7 +48,9 @@ class ModuleMain : XposedModule() {
             log(priority, TAG, code, throwable)
         }
         io.github.hoerire.free.settings.ModuleRuntime.module = this
-        log(Log.INFO, TAG, "MODULE_LOG_ATTACHED_" + LogTag.of(param.processName))
+        io.github.hoerire.free.log.ModuleLog.debug("Free") {
+            "MODULE_LOG_ATTACHED_" + LogTag.of(param.processName)
+        }
 
         try {
             val processConfiguration =
@@ -70,10 +73,9 @@ class ModuleMain : XposedModule() {
             disableForConfigurationFailure("MODULE_CONFIG_FAILURE", exception)
         }
         configuration?.snapshot?.let { settings ->
-            // 配置摘要常开一条：排障时先确认各进程读到的开关状态是否一致。
-            log(
-                Log.INFO,
-                TAG,
+            // 配置摘要改为详细日志：关闭详细日志时这一行不再刷屏，
+            // 每个进程只留一条安装汇总（见 InstallReport）。
+            io.github.hoerire.free.log.ModuleLog.debug("Free") {
                 "MODULE_CONFIG_READY_" + LogTag.of(processName) +
                     "_en" + settings.enabled +
                     "_zcount" + settings.zoomMaxWindowCount +
@@ -94,14 +96,16 @@ class ModuleMain : XposedModule() {
                     "_vlog" + settings.verboseLogEnabled +
                     "_pins" + settings.pinnedTargets.size +
                     "_bl" + settings.blacklistPackages.size +
-                    // 「禁用浮窗」的条目数：常开 INFO 一行里带上，详细日志关掉也能确认配置读到了。
+                    // 「禁用浮窗」的条目数。
                     "_zx" + settings.zoomExcludedPackages.size +
-                    // 改写系统拖拽准入（解除限制）与接管面板（快速分享）的两个开关，
-                    // 常开一行便于确认配置被读到了。
+                    // 改写系统拖拽准入（解除限制）与接管面板（快速分享）的两个开关。
                     "_fd" + settings.freeDragActive +
-                        "_qs" + settings.quickShareActive,
-            )
+                    "_qs" + settings.quickShareActive
+            }
         }
+        // 从这里开始进入安装阶段：关闭详细日志时，每一步安装只累计数量，结束时汇总一行；
+        // 失败项不受开关影响，始终带项目名与异常单独输出。见 [InstallReport]。
+        InstallReport.begin(processName)
     }
 
     override fun onSystemServerStarting(param: XposedModuleInterface.SystemServerStartingParam) {
@@ -115,6 +119,7 @@ class ModuleMain : XposedModule() {
             frameworkVersion = getFrameworkVersion(),
             apiVersion = getApiVersion(),
         ).install(param.classLoader)
+        finishInstall()
     }
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
@@ -150,6 +155,28 @@ class ModuleMain : XposedModule() {
             }
 
         }
+        if (hooksInstalled) finishInstall()
+    }
+
+    /**
+     * 安装阶段收尾：**只在一个时间点汇总一次**。
+     *
+     * 同步装上的项与随后几秒异步挂上的 hook（桌面 dex 解析、气泡管线重试、
+     * system_server 的 systemReady）合并成一个数字，避免 `ok32 → ok5 → ok3`
+     * 这种前后打架的分段汇总。
+     * 汇总后立刻结束安装阶段：之后的运行期日志既不计入数量，
+     * 也不会被误当成「安装失败」写进汇总行（失败本身仍会单独打 WARN）。
+     */
+    private fun finishInstall() {
+        val settle =
+            Runnable {
+                InstallReport.flush()
+                InstallReport.end()
+            }
+        runCatching {
+            android.os.Handler(android.os.Looper.getMainLooper())
+                .postDelayed(settle, INSTALL_REPORT_SETTLE_MS)
+        }.onFailure { settle.run() }
     }
 
     override fun onHotReloading(param: XposedModuleInterface.HotReloadingParam): Boolean {
@@ -195,6 +222,9 @@ class ModuleMain : XposedModule() {
          * 入口注入与偏好树转储都挂在这个进程，不再依赖设置应用。
          */
         const val PROCESS_ZOOM_SETTINGS = "com.oplus.pscanvas"
+
+        /** 安装收尾的汇总点：等异步安装（dex 解析、systemReady 等）落定后再统计。 */
+        const val INSTALL_REPORT_SETTLE_MS = 10_000L
     }
 
     /** 进程名转成日志里可安全拼接的短标记。 */

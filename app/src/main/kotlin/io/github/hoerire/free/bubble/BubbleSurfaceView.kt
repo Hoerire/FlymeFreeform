@@ -30,6 +30,7 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
+import io.github.hoerire.free.log.ModuleLog
 
 /** 承载在通屏浮层里的通知气泡，落地动画柔和。 */
 @SuppressLint("ViewConstructor")
@@ -723,10 +724,7 @@ internal class BubbleSurfaceView(
 
     private fun dismiss(reason: String) {
         if (!attached || dismissing || bursting) return
-        android.util.Log.i(
-            "BubbleNotify",
-            "bubble dismiss: $reason; timeout=$timeoutSeconds",
-        )
+        ModuleLog.debug("BubbleNotify") { "气泡收起：$reason；超时=$timeoutSeconds" }
         dismissing = true
         mainHandler.removeCallbacks(timeoutAction)
         mainHandler.removeCallbacks(longPressAction)
@@ -1329,22 +1327,16 @@ internal class BubbleSurfaceView(
             try {
                 if (!validator()) {
                     timeoutSeconds = 0
-                    android.util.Log.i(
-                        "BubbleNotify",
-                        "ignored timeout; auto-dismiss is currently disabled",
-                    )
+                    ModuleLog.debug("BubbleNotify") { "忽略到点检查：自动收起已关闭" }
                     return
                 }
             } catch (error: Throwable) {
-                android.util.Log.w(
-                    "BubbleNotify",
-                    "unable to verify timeout policy; preserving bubble", error,
-                )
+                ModuleLog.warn("BUBBLE_TIMEOUT_POLICY_FAILED", error)
                 return
             }
         }
         if (timeoutSeconds <= 0) {
-            android.util.Log.i("BubbleNotify", "ignored stale timeout; auto-dismiss disabled")
+            ModuleLog.debug("BubbleNotify") { "忽略过期的到点检查：自动收起已关闭" }
             return
         }
         if (!dimOnTimeout) {

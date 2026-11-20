@@ -161,7 +161,7 @@ internal class SystemUiHookInstaller(
                 )
             }
         }.onFailure {
-            module.log(Log.WARN, TAG, "SYSTEMUI_SETTINGS_OBSERVER_FAILED", it as? RuntimeException)
+            ModuleLog.warn("SYSTEMUI_SETTINGS_OBSERVER_FAILED", it as? RuntimeException)
         }
     }
 

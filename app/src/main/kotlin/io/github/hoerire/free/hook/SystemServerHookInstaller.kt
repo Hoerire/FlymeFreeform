@@ -66,13 +66,13 @@ internal class SystemServerHookInstaller(
                 val snapshot = configuration.snapshot
                 snapshot.suggestionsActive && snapshot.suggestionClipboard
             },
-            logger = { priority, code, throwable -> module.log(priority, TAG, code, throwable) },
+            logger = { priority, code, throwable -> ModuleLog.forward(priority, code, throwable) },
         ).install(classLoader)
         // 常亮建议：屏幕进入半暗阶段时把状态写给 SystemUI（它的点按层在那里）。
         PreSleepDetectionHook(
             module = module,
             configuration = configuration,
-            logger = { priority, code, throwable -> module.log(priority, TAG, code, throwable) },
+            logger = { priority, code, throwable -> ModuleLog.forward(priority, code, throwable) },
         ).install(classLoader)
         installForegroundObserver(classLoader)
         try {
@@ -94,7 +94,7 @@ internal class SystemServerHookInstaller(
                             configuration = configuration,
                             environmentState = environment,
                             logger = { priority, code, throwable ->
-                                module.log(priority, TAG, code, throwable)
+                                ModuleLog.forward(priority, code, throwable)
                             },
                         ).start()
                         // 设置不再走文件/广播桥：完全按 2.2，只有 LSPosed 远程偏好 + 变更广播。
@@ -131,7 +131,7 @@ internal class SystemServerHookInstaller(
                 frameworkVersion = frameworkVersion,
                 apiVersion = apiVersion,
                 logger = { priority, code, throwable ->
-                    module.log(priority, TAG, code, throwable)
+                    ModuleLog.forward(priority, code, throwable)
                 },
             ).start()
         } catch (throwable: Throwable) {
