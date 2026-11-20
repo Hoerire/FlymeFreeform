@@ -39,7 +39,7 @@ internal class SystemUiHookInstaller(
                     val context = chain.thisObject as? Context
                     if (context != null && bound.compareAndSet(false, true)) {
                         // 通知点击小窗：改 Bundle（含剥离 remote 转场），让窗口不被横幅压住。
-                        NotifBundleHook(module, configuration).install(classLoader)
+                        NotifBundleHook(module, configuration, context).install(classLoader)
                         installSettingsObserver(context)
                         // 角区抢流（SystemUI 侧 InputMonitor + pilferPointers）**只在 ColorOS 17+ 启用**。
                         //

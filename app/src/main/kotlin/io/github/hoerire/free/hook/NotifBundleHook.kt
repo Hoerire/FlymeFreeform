@@ -1,5 +1,7 @@
 package io.github.hoerire.free.hook
 
+import android.app.KeyguardManager
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import io.github.libxposed.api.XposedInterface
@@ -23,6 +25,7 @@ import io.github.hoerire.free.hook.OemReflection
 internal class NotifBundleHook(
     private val module: XposedModule,
     private val configuration: ProcessConfiguration,
+    private val context: Context,
 ) {
     @Volatile
     private var headsUpManager: Any? = null
@@ -57,6 +60,16 @@ internal class NotifBundleHook(
     private fun rewriteBundle(starter: Any?, args: List<Any?>) {
         val settings = configuration.snapshot
         if (!settings.enabled) return
+        // 锁屏状态下不接管，通知点击保持系统默认的全屏 + 解锁流程。
+        //
+        // 与 system_server 侧抢占路径（ActivityStarterZoomInjector 的 when 第一支
+        // isDeviceUnlocked == false → 不接管）是同一口径：锁屏上开小窗必须先解锁才能看到
+        // 内容，实际表现是「小窗浮在全屏之上」。这条路径此前只查开关与名单，漏了锁屏判定，
+        // 于是锁屏下拉通知中心点通知会开成小窗。
+        if (isKeyguardLocked()) {
+            ModuleLog.info("NOTIF_BUNDLE_SKIP_KEYGUARD")
+            return
+        }
         val bundle = args.getOrNull(0) as? Bundle ?: return
         val entry = args.getOrNull(1)
         val pkg = packageOf(entry)
@@ -99,6 +112,18 @@ internal class NotifBundleHook(
                 " dropped=" + dropped +
                 " shadeCollapsed=" + collapsed }
     }
+
+    /**
+     * 当前是否处于锁屏（含息屏后的锁屏界面）。
+     *
+     * 直接查 KeyguardManager：通知点击是用户操作触发的，此刻读到的就是实时值，
+     * 不需要像环境状态那样靠广播维持缓存。查不到时按「未锁屏」处理，宁可放行也不误判。
+     */
+    private fun isKeyguardLocked(): Boolean =
+        runCatching {
+            (context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager)
+                ?.isKeyguardLocked == true
+        }.getOrDefault(false)
 
     /**
      * HeadsUpManagerImpl 的实例只在构造时拿得到，这里挂构造函数保存引用。

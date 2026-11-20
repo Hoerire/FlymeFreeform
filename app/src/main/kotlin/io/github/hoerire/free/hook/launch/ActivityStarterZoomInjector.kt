@@ -559,6 +559,16 @@ internal class ActivityStarterZoomInjector(
             ModuleLog.info("ZOOM_SCENES_ALL_OFF")
             return null
         }
+        // 锁屏与息屏状态下不改写任何启动：此时系统正在显示锁屏界面或恢复桌面，
+        // 注入的参数会让窗口创建在锁屏之下，或表现为「小窗悬浮在全屏之上」。
+        //
+        // 这条判定在 preemptWithZoomWindow（lane1）里一直有，本方法（lane2 补参数）
+        // 之前漏了，于是即使 SystemUI 侧的 NotifBundleHook 拒绝改写，这里仍会把
+        // 锁屏下拉通知中心点开的通知补成小窗。
+        if (environment?.isDeviceUnlocked(refreshKeyguard = true) == false) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_KEYGUARD" }
+            return null
+        }
         // 闸门 2（排除列表）：该应用在前台时停用模块全部增强，判定点与全局开关并列，
         // 因此通知点击、磁贴、中转页抢占、应用互跳全部一并失效。
         if (environment?.isForegroundExcluded() == true) {
