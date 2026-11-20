@@ -330,6 +330,30 @@ internal class ActivityStarterZoomInjector(
         return lastInjectTrampoline
     }
 
+    /**
+     * 链接跳转：第三方应用以 ACTION_VIEW + URI 拉起另一个第三方应用。
+     *
+     * 典型场景是浏览器点 App Link（Via → 中国电信）或应用内点深链。这类启动归官方时
+     * 通常退化成全屏：官方跨栈浮窗要求「源任务本身是浮窗」且「源包在 acrossTaskJump
+     * 白名单（sys_wms_split_app.xml，默认 80 个包）」，全屏源与普通应用两条都不满足，
+     * 于是「让给官方」实际等于「无人接手」，目标直接新起一个全屏任务。
+     *
+     * 判据保持最窄：VIEW + 带 URI + 双方第三方 + 不同包 + 目标不是用户刚离开的应用。
+     * 回传方向（目标应用反拉起发起方）由 reasonFor 里更早的 consumeIfReturning 排除，
+     * 桌面图标、文件选择、分享中转、无 action 的 SDK 回传各有更早的拦截点，都不受影响。
+     */
+    private fun isLinkJump(intent: Intent, callingPackage: String?, target: String): Boolean {
+        if (!configuration.snapshot.zoomLaunchInterAppEffective) return false
+        if (intent.action != Intent.ACTION_VIEW) return false
+        if (intent.data == null) return false
+        if (callingPackage == null || callingPackage == target) return false
+        if (callingPackage in LAUNCHER_PACKAGES) return false
+        if (target in SKIP_TARGETS) return false
+        if (!isThirdPartyApplication(callingPackage) || !isThirdPartyApplication(target)) return false
+        if (target == environment?.previousForeground()) return false
+        return true
+    }
+
     private fun startZoomWindow(intent: Intent, targetPackage: String): Boolean =
         runCatching {
             val managerClass = Class.forName(ZOOM_MANAGER_CLASS)
@@ -488,7 +512,8 @@ internal class ActivityStarterZoomInjector(
      * 2. 排除列表与返回识别，两者直接放行；
      * 3. 通知点击（发起方为 SystemUI 且携带 PendingIntent）；
      * 4. 文件选择，不改写；
-     * 5. 应用跳转（携带 resultTo 的跨包启动、双方均为第三方的跨包启动）；
+     * 5. 应用跳转（双方均为第三方的跨包启动；ACTION_VIEW 的链接跳转即使携带 resultTo
+     *    也由模块接管，其余携带 resultTo 的跨包启动仍让给官方）；
      * 6. SystemUI 自身发起的其余启动，按磁贴 / 通知栏区分。
      *
      * system_server 以 MAIN 启动的落点（系统通知、模块管理工具）不再单列场景：
@@ -658,10 +683,15 @@ internal class ActivityStarterZoomInjector(
             return null
         }
 
-        // 带 resultTo 的跨应用启动（登录、授权、选图、分享回传）交给官方处理：
+        // 带 resultTo 的跨应用启动（登录、授权、选图、分享回传）默认交给官方处理：
         // 官方自己就会把这类流程放进浮窗，模块再补参数或另起一次启动都会打断回传链路。
         // 桌面同样以 startActivityForResult 启动应用，但这批启动已在前置条件里排除。
-        if (hasResultTo) {
+        //
+        // 例外是链接跳转（见 isLinkJump）：官方对它的浮窗能力依赖「源任务本身是浮窗 +
+        // 源包在 acrossTaskJump 白名单」，全屏源与普通应用两条都不满足，放行即等于必然
+        // 全屏（日志表现为目标新起全屏任务、全程没有 AcrossTaskJump 判定）。因此这里改由
+        // 模块接管，继续走下方「应用互跳」分支注入小窗入参。
+        if (hasResultTo && !isLinkJump(intent, callingPackage, target)) {
             ModuleLog.debug(TAG) { "ZOOM_SKIP_RESULT_TO_SYSTEM_cp" + callingPackage + "_tg" + target }
             return null
         }
