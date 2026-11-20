@@ -277,6 +277,11 @@ internal class FloatKeepAliveHook(
                         ).invoke(pm, pkg, 0, 0)
                 val category = info?.javaClass?.getField("category")?.getInt(info) ?: 0
                 if (category == CATEGORY_GAME) result = true
+                // 引擎库兜底：大量小游戏既不声明 appCategory，也不在厂商云表里。
+                // Bouncemasters（com.joybits.bouncemasters）就是这种：Unity IL2CPP，
+                // appCategory=0、云表未收录，于是被判成普通应用，贴边后退化成视频类行为，
+                // 窗口被拒绝抬成可见，画面停住 —— 挂机不生效。
+                if (!result && info != null) result = hasGameEngineLibrary(info)
             }
         }
         gameCache[pkg] = result
@@ -285,6 +290,19 @@ internal class FloatKeepAliveHook(
         }
         return result
     }
+
+    /**
+     * 按 APK 自带的引擎库判定是不是游戏。
+     *
+     * Unity / UE / Cocos 的产物里必有这些 so，普通应用极少带；比 Activity 名更稳
+     * （有的游戏换了自定义启动 Activity，但引擎库躲不掉）。只读 nativeLibraryDir 目录名，
+     * 不解析 APK，代价是一次 list()，且结果进 gameCache 只算一次。
+     */
+    private fun hasGameEngineLibrary(info: Any): Boolean =
+        runCatching {
+            val dir = info.javaClass.getField("nativeLibraryDir").get(info) as? String ?: return false
+            java.io.File(dir).list()?.any { it in GAME_ENGINE_LIBS } == true
+        }.getOrDefault(false)
 
     private fun isGameRecord(record: Any?): Boolean =
         isGamePackage(OemReflection.readField(record, "packageName") as? String)
@@ -508,6 +526,7 @@ internal class FloatKeepAliveHook(
      * 首次贴边时 pause 就从这个口子漏过去，游戏当场停（第二次贴边已暂停，才显得正常）。
      * 这里按方法名把 TaskFragment 上所有带 ActivityRecord 参数的重载全挂上。
      */
+
     private fun installPauseSkip(recordClass: Class<*>, classLoader: ClassLoader) {
         val fragmentClass =
             runCatching { classLoader.loadClass(TASK_FRAGMENT_CLASS) }.getOrNull() ?: run {
@@ -1820,7 +1839,7 @@ internal class FloatKeepAliveHook(
 
     private companion object {
         const val TAG = "Free"
-        const val RECORD_CLASS = OemClasses.ACTIVITY_RECORD
+
         /** 点开/摘掉浮标后多久内，展开引起的可见性请求一律放行。 */
         const val UNFLOAT_PERMIT_MS = 3_000L
 
@@ -1889,5 +1908,23 @@ internal class FloatKeepAliveHook(
 
         /** ApplicationInfo.CATEGORY_GAME */
         const val CATEGORY_GAME = 2
+
+        /**
+         * 游戏引擎的 native 库。
+         *
+         * 云表与 appCategory 都判不出来时用它兜底：Unity（Mono / IL2CPP）、UE、Cocos
+         * 的产物必有其中之一，普通应用几乎不带。
+         */
+        val GAME_ENGINE_LIBS =
+            setOf(
+                "libunity.so",
+                "libil2cpp.so",
+                "libmonobdwgc-2.0.so",
+                "libUE4.so",
+                "libUnreal.so",
+                "libcocos2djs.so",
+                "libcocos2d.so",
+                "libcocos.so",
+            )
     }
 }
