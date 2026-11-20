@@ -61,7 +61,7 @@ internal class PreSleepKeepAwakeController(
     private var baselineForeground: String? = null
     private var lastForegroundCheck = 0L
     private var polling = false
-    /** 用户点过一次之后本进程内不再自动弹。 */
+    /** 用户点过一次之后，这一轮亮屏周期内不再自动弹（灭屏后复位）。 */
     private var consumedThisProcess = false
     private var receiverRegistered = false
 
@@ -74,6 +74,9 @@ internal class PreSleepKeepAwakeController(
                 handler.post {
                     clearArmed()
                     release()
+                    // 灭屏算这一轮使用结束：下次点亮后再变暗重新给一次建议，
+                    // 否则进程跑久了这一项就永远沉默了。
+                    consumedThisProcess = false
                 }
             }
         }
@@ -123,8 +126,8 @@ internal class PreSleepKeepAwakeController(
      * 反而以为功能没生效。现在改为进入变暗就弹气泡：气泡本身开着不自动消失，
      * 用户点它才把屏幕钉住，不点就照常熄灭。
      *
-     * 用户点过一次之后，本进程内不再自动弹：这是「用过了」而不是「每次变暗都提醒」，
-     * 要恢复需要重启 SystemUI / 系统框架，或在设置里关掉再打开这一项。
+     * 用户点过一次之后，这一轮亮屏周期内不再自动弹：这是「用过了」而不是「每次变暗都提醒」。
+     * 灭屏（[screenOffReceiver]）即视为本轮结束，下次点亮后再变暗会重新提醒一次。
      */
     private fun onDimDetected() {
         if (consumedThisProcess) return

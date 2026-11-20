@@ -168,6 +168,8 @@
     <string name="available_apps_loading">正在读取应用</string>
     <string name="available_apps_loading_summary">应用列表将在后台准备完成后显示</string>
     <string name="search_apps_placeholder">搜索工具、快捷入口或应用</string>
+    <!-- 只列应用的列表（应用范围、黑名单、分身）：不含工具与快捷入口，文案要对应。 -->
+    <string name="search_apps_only_placeholder">搜索应用</string>
     <string name="no_matching_apps">未找到匹配项</string>
     <string name="back_action">返回</string>
     <string name="cancel">取消</string>

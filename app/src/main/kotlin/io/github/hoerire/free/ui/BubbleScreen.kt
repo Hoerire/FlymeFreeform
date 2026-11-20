@@ -93,7 +93,10 @@ internal fun BubbleScreen(
     onBack: () -> Unit,
     onSettingsChange: (transform: BubbleSettingsTransform) -> Unit,
 ) {
-    var page by remember { mutableStateOf(BubblePage.Overview) }
+    // 二级页走与顶层路由同一套滑动转场：graphicsLayer 平移，不重排页面、不产生输入阻断层。
+    val transition = remember { RouteTransitionState(BubblePage.Overview) }
+    val page = transition.displayed
+    val navigateTo: (BubblePage) -> Unit = { target -> transition.switchTo(target, forward = true) }
     var pickerMode by remember { mutableIntStateOf(MODE_MAIN) }
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerQuery by remember { mutableStateOf("") }
@@ -101,17 +104,24 @@ internal fun BubbleScreen(
         onRefreshClones()
         onPauseOrDispose {}
     }
-    BackHandler(enabled = page != BubblePage.Overview) { page = BubblePage.Overview }
+    BackHandler(enabled = page != BubblePage.Overview) {
+        transition.switchTo(BubblePage.Overview, forward = false)
+    }
     val goBack: () -> Unit = {
-        if (page == BubblePage.Overview) onBack() else page = BubblePage.Overview
+        if (page == BubblePage.Overview) {
+            onBack()
+        } else {
+            transition.switchTo(BubblePage.Overview, forward = false)
+        }
     }
 
-    when (page) {
+    RouteTransition(state = transition) { current ->
+        when (current) {
         BubblePage.Overview ->
             BubbleOverview(
                 state = state,
                 onBack = onBack,
-                onNavigate = { page = it },
+                onNavigate = navigateTo,
                 onSettingsChange = onSettingsChange,
             )
         BubblePage.Apps ->
@@ -144,6 +154,7 @@ internal fun BubbleScreen(
             BubbleStatusScrollPage(state, goBack, onSettingsChange)
         BubblePage.Suggestions ->
             BubbleSuggestionsPage(state, goBack, onSettingsChange)
+        }
     }
 
     if (pickerOpen) {
@@ -1025,7 +1036,7 @@ private fun BubblePickerSheet(
                     value = query,
                     onValueChange = onQueryChange,
                     modifier = Modifier.weight(1f),
-                    label = stringResource(R.string.search_apps_placeholder),
+                    label = stringResource(R.string.search_apps_only_placeholder),
                     singleLine = true,
                 )
             }

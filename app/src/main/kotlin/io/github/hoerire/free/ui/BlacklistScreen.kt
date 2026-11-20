@@ -197,7 +197,7 @@ private fun PackagePickerScreen(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                label = stringResource(R.string.search_apps_placeholder),
+                label = stringResource(R.string.search_apps_only_placeholder),
                 singleLine = true,
             )
         }

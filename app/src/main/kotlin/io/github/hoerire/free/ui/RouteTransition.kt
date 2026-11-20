@@ -29,13 +29,13 @@ internal const val ROUTE_SLIDE_MS = 300
  * 只由导航动作（[switchTo]）写，不依赖组合期的推断，所以切页那一帧就能拿到
  * 「新页 + 旧页」的正确组合，不会先闪一下再开始动画。
  */
-internal class RouteTransitionState(initial: AppRoute) {
+internal class RouteTransitionState<T>(initial: T) {
     /** 当前显示的页。 */
     var displayed by mutableStateOf(initial)
         private set
 
     /** 正在退场的页；`null` 表示没有进行中的转场。 */
-    var leaving by mutableStateOf<AppRoute?>(null)
+    var leaving by mutableStateOf<T?>(null)
 
     /** true = 进入（新页从右侧盖上）；false = 返回（当前页整页向右滑走）。 */
     var forward by mutableStateOf(true)
@@ -45,7 +45,7 @@ internal class RouteTransitionState(initial: AppRoute) {
     var generation by mutableIntStateOf(0)
         private set
 
-    fun switchTo(target: AppRoute, forward: Boolean) {
+    fun switchTo(target: T, forward: Boolean) {
         if (target == displayed) return
         leaving = displayed
         this.forward = forward
@@ -63,10 +63,10 @@ internal class RouteTransitionState(initial: AppRoute) {
  * 动画值只在 `graphicsLayer` 的 lambda 里读，因此每帧不触发重组，只更新图层。
  */
 @Composable
-internal fun RouteTransition(
-    state: RouteTransitionState,
+internal fun <T> RouteTransition(
+    state: RouteTransitionState<T>,
     modifier: Modifier = Modifier,
-    content: @Composable (AppRoute) -> Unit,
+    content: @Composable (T) -> Unit,
 ) {
     // key 用 generation：切页当帧就换成从 0 起步的新 Animatable，
     // 不会出现「先画在终点、下一帧又跳回起点」的闪动。
