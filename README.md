@@ -8,14 +8,13 @@
   <img src="https://img.shields.io/badge/ROM-ColorOS-00A862" alt="面向 ColorOS" />
   <img src="https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android" alt="最低 Android 15" />
   <img src="https://img.shields.io/badge/libxposed-API_102-4285F4" alt="libxposed API 102" />
-  <img src="https://img.shields.io/badge/version-3.2.3-blue" alt="版本 3.2.3" />
 </p>
 
 把魅族的 Flyme 小窗交互搬到 ColorOS：从屏幕底角斜向内上滑呼出扇形菜单，滑到目标松手，当即以自由浮窗打开。
 
 这是一个 LSPosed 模块，在不改动系统分区的前提下增强 ColorOS：扇形菜单、通知与横幅小窗、侧边栏目录、更多面板、内容传送门，以及把通知收成气泡的通知气泡，都走系统自己的窗口与管理链路，设置改完即时生效。
 
-当前版本 **3.2.3**，改动记录见 [CHANGELOG.md](CHANGELOG.md)。
+改动记录见 [CHANGELOG.md](CHANGELOG.md)，版本号以仓库的 Release 为准。
 
 ## 预览
 
