@@ -133,8 +133,8 @@
 
 ## 致谢
 
-- [Mangi-11/Flyna](https://github.com/Mangi-11/Flyna)：上游来源，原作者 Mangi-11
-- [congree-ci/BubbleNotify](https://github.com/congree-ci/BubbleNotify)：气泡通知的视觉与动效参考来源，气泡、堆叠、内容浮层与状态栏滚动的绘制逻辑据此转写
+- [Flyna](https://github.com/Mangi-11/Flyna)：上游来源，原作者 Mangi-11
+- [BubbleNotify](https://github.com/congree-ci/BubbleNotify)：气泡通知的视觉与动效参考来源，气泡、堆叠、内容浮层与状态栏滚动的绘制逻辑据此转写
 - [Flyme](https://www.flyme.com/)：交互设计参考
 - [libxposed API](https://github.com/libxposed/api)：现代 Xposed API
 - [vialoyed-ctrl](https://github.com/vialoyed-ctrl)：内容传送门的分享面板与实现思路
