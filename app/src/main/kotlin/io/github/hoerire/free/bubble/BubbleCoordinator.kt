@@ -115,6 +115,7 @@ internal class BubbleCoordinator(
         // 即时建议：手电筒/耳机/应用安装由控制器自己监听；剪贴板由 system_server 广播。
         suggestions = ImmediateSuggestionController(context, suggestionHost).also { it.start() }
         registerClipboardReceiver()
+        registerForegroundReceiver()
         registerGameModeObserver()
         log(
             if (settings.active) "BUBBLE_COORDINATOR_READY" else "BUBBLE_COORDINATOR_IDLE",
@@ -668,6 +669,67 @@ internal class BubbleCoordinator(
             }
         }
 
+    /** 前台变化：用户从任何入口打开应用，都把它留在桌面上的气泡收掉。 */
+    private val foregroundReceiver =
+        object : android.content.BroadcastReceiver() {
+            override fun onReceive(receiverContext: Context?, intent: Intent?) {
+                if (intent?.action != ModulePreferences.ACTION_APP_FOREGROUND) return
+                val packageName =
+                    intent.getStringExtra(ModulePreferences.EXTRA_APP_FOREGROUND_PACKAGE) ?: return
+                handler.post { dropBubblesFor(packageName) }
+            }
+        }
+
+    private fun registerForegroundReceiver() {
+        runCatching {
+            context.registerReceiver(
+                foregroundReceiver,
+                IntentFilter(ModulePreferences.ACTION_APP_FOREGROUND),
+                Context.RECEIVER_EXPORTED,
+            )
+        }.onFailure { log("BUBBLE_FOREGROUND_RECEIVER_FAILED", it) }
+    }
+
+    /**
+     * 收掉某个应用的全部气泡。
+     *
+     * 应用已经到前台，气泡没有继续占位的意义；同应用的多条一起收。
+     * 如果收掉的正好是当前展示的那条，按「通知被移除」的同一套逻辑换下一条。
+     */
+    private fun dropBubblesFor(packageName: String) {
+        val targets = queue.snapshot().filter { it.packageName == packageName }
+        if (targets.isEmpty()) return
+        val headBefore = queue.head
+        targets.forEach { item ->
+            statusTicker?.stopFor(item.notificationKey)
+            queue.remove(item.notificationKey)
+        }
+        log("BUBBLE_APP_OPENED_" + packageName, null)
+        if (headBefore?.packageName != packageName) {
+            updateChildren()
+            return
+        }
+        dismissPreview(animated = false)
+        val next = queue.head
+        previewSuppressedFor = next?.identity
+        val current = windows.bubble
+        when {
+            current != null && current.isAttached() && transitioning == null && next != null ->
+                promoteInPlace(current, next)
+            current != null && transitioning == null -> {
+                transitioning = current
+                rememberPosition(current)
+                current.dismiss()
+                handler.postDelayed({
+                    if (transitioning === current) transitioning = null
+                    windows.forgetBubble(current)
+                    showHead()
+                }, TRANSITION_DELAY_MS)
+            }
+            current == null -> showHead()
+        }
+    }
+
     private fun registerClipboardReceiver() {
         runCatching {
             context.registerReceiver(
@@ -815,6 +877,7 @@ internal class BubbleCoordinator(
         }
         // 建议项没有 contentIntent，动作缺失时不要拿伪包名去启动系统。
         if (item.suggestionId != null) return
+        // 只负责拉起应用；通知栏里的通知保持原厂行为（不在这里清）。
         launcher.open(item)
     }
 

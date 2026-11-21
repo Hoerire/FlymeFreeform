@@ -143,6 +143,34 @@ internal class SystemServerHookInstaller(
         }
     }
 
+    /**
+     * 把「前台换成谁了」告诉 SystemUI：不管用户从哪打开应用，都该把它桌面上的气泡收掉。
+     *
+     * 只在包名真的变化时发一次；system_server 拿不到 Activity 上下文，这里取系统上下文。
+     */
+    private fun broadcastForeground(packageName: String) {
+        runCatching {
+            val thread =
+                Class.forName("android.app.ActivityThread")
+                    .getDeclaredMethod("currentActivityThread")
+                    .invoke(null) ?: return
+            val field =
+                thread.javaClass.getDeclaredField("mSystemContext").apply { isAccessible = true }
+            val context = field.get(thread) as? android.content.Context ?: return
+            val intent =
+                android.content.Intent(
+                    io.github.hoerire.free.config.ModulePreferences.ACTION_APP_FOREGROUND,
+                ).apply {
+                    setPackage("com.android.systemui")
+                    putExtra(
+                        io.github.hoerire.free.config.ModulePreferences.EXTRA_APP_FOREGROUND_PACKAGE,
+                        packageName,
+                    )
+                }
+            context.sendBroadcast(intent)
+        }
+    }
+
     private fun installForegroundObserver(classLoader: ClassLoader) {
         try {
             val recordClass = classLoader.loadClass(OemClasses.ACTIVITY_RECORD)
@@ -164,7 +192,9 @@ internal class SystemServerHookInstaller(
                         val component = OemReflection.readField(record, "mActivityComponent") as? android.content.ComponentName
                         val foregroundPackage =
                             (OemReflection.readField(record, "packageName") as? String) ?: component?.packageName
+                        val changed = foregroundPackage != null && foregroundPackage != environment.currentForeground()
                         environment.updateForeground(foregroundPackage, component?.className)
+                        if (changed) broadcastForeground(foregroundPackage)
                     }
                     chain.proceed()
                 }

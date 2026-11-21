@@ -256,6 +256,9 @@ internal object ModulePreferences {
     const val KEY_PRE_SLEEP_ARMED = "free_pre_sleep_armed"
 
     /** system_server → SystemUI：剪贴板分类结果（即时建议）。 */
+    /** 前台应用变化：system_server 通知 SystemUI 收掉该应用已弹出的气泡。 */
+    const val ACTION_APP_FOREGROUND = "io.github.hoerire.free.action.APP_FOREGROUND"
+    const val EXTRA_APP_FOREGROUND_PACKAGE = "package"
     const val ACTION_CLIPBOARD_SUGGESTION =
         "io.github.hoerire.free.action.CLIPBOARD_SUGGESTION"
     const val EXTRA_CLIP_KINDS = "clip_kinds"

@@ -218,6 +218,8 @@
     <string name="bubble_enabled_title">启用气泡通知</string>
     <string name="bubble_enabled_summary">白名单应用的通知以气泡形式出现</string>
     <string name="bubble_apps_title">应用 · %1$d</string>
+    <string name="bubble_apps_count_with_clones">应用 · %1$d（含分身 %2$d）</string>
+    <string name="bubble_clones_section">分身应用</string>
     <string name="bubble_apps_empty">还没有添加应用</string>
     <string name="bubble_apps_empty_summary">点下面的「添加应用」选择</string>
     <string name="bubble_add_app">添加应用</string>

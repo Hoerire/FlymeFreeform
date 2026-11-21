@@ -187,9 +187,6 @@ internal fun FreeNavHost(
     val navigateToZoomExcludedPicker: () -> Unit =
         remember(backStack) { { pushRoute(AppRoute.ZoomExcludedPicker) } }
 
-    // 系统返回键/返回手势由本实现接管，不依赖导航库的 NavigationEvent 接线。
-    BackHandler(enabled = backStack.size > 1, onBack = popBackStack)
-
     val route = backStack.lastOrNull() ?: AppRoute.Settings
     // 设置页可能以浮窗形式显示，此时生命周期不一定是 RESUMED：状态直接跟随组合收集，
     // 避免界面永远停在初始值。
@@ -207,7 +204,16 @@ internal fun FreeNavHost(
     }
 
     // 转场只用 graphicsLayer 平移：不走布局、不做测量，也不会产生输入阻断层。
-    RouteTransition(state = transition, modifier = Modifier.fillMaxSize()) { pageRoute ->
+    // 系统返回键/返回手势由本实现接管，切页动画统一走 RouteTransition。
+    BackHandler(enabled = backStack.size > 1, onBack = popBackStack)
+
+    PageStackHost(
+        stack = backStack,
+        state = transition,
+        modifier = Modifier.fillMaxSize(),
+        // 每一页常驻组合，按路由类名区分状态；返回时上级页的滚动位置天然保留。
+        stateKey = { route -> route.javaClass.simpleName },
+    ) { pageRoute ->
         when (pageRoute) {
             AppRoute.Settings ->
                 ControlScreen(

@@ -37,7 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -94,28 +94,38 @@ internal fun BubbleScreen(
     onSettingsChange: (transform: BubbleSettingsTransform) -> Unit,
 ) {
     // 二级页走与顶层路由同一套滑动转场：graphicsLayer 平移，不重排页面、不产生输入阻断层。
+    val pageStack = remember { mutableStateListOf(BubblePage.Overview) }
     val transition = remember { RouteTransitionState(BubblePage.Overview) }
-    val page = transition.displayed
-    val navigateTo: (BubblePage) -> Unit = { target -> transition.switchTo(target, forward = true) }
-    var pickerMode by remember { mutableIntStateOf(MODE_MAIN) }
+    val page = pageStack.last()
+    val navigateTo: (BubblePage) -> Unit = { target ->
+        if (pageStack.last() != target) {
+            pageStack.add(target)
+            transition.switchTo(target, forward = true)
+        }
+    }
+    val backToOverview: () -> Unit = {
+        if (pageStack.size > 1) {
+            pageStack.removeAt(pageStack.lastIndex)
+            transition.switchTo(pageStack.last(), forward = false)
+        }
+    }
     var pickerOpen by remember { mutableStateOf(false) }
     var pickerQuery by remember { mutableStateOf("") }
     LifecycleResumeEffect(Unit) {
         onRefreshClones()
         onPauseOrDispose {}
     }
-    BackHandler(enabled = page != BubblePage.Overview) {
-        transition.switchTo(BubblePage.Overview, forward = false)
-    }
     val goBack: () -> Unit = {
-        if (page == BubblePage.Overview) {
-            onBack()
-        } else {
-            transition.switchTo(BubblePage.Overview, forward = false)
-        }
+        if (page == BubblePage.Overview) onBack() else backToOverview()
     }
 
-    RouteTransition(state = transition) { current ->
+    BackHandler(enabled = page != BubblePage.Overview) { backToOverview() }
+
+    PageStackHost(
+        stack = pageStack,
+        state = transition,
+        stateKey = { it.name },
+    ) { current ->
         when (current) {
         BubblePage.Overview ->
             BubbleOverview(
@@ -130,13 +140,7 @@ internal fun BubbleScreen(
                 apps = apps,
                 clones = clones,
                 onBack = goBack,
-                onAddMain = {
-                    pickerMode = MODE_MAIN
-                    pickerQuery = ""
-                    pickerOpen = true
-                },
-                onAddClone = {
-                    pickerMode = MODE_CLONE
+                onAdd = {
                     pickerQuery = ""
                     pickerOpen = true
                     onRefreshClones()
@@ -159,52 +163,44 @@ internal fun BubbleScreen(
 
     if (pickerOpen) {
         BubblePickerSheet(
-            mode = pickerMode,
             apps = apps,
             clones = clones,
-            selected =
-                if (pickerMode == MODE_MAIN) {
-                    state.settings.bubbleWhitelist
-                } else {
-                    state.settings.bubbleCloneWhitelist
-                },
+            selectedMain = state.settings.bubbleWhitelist.toSet(),
+            selectedClones = state.settings.bubbleCloneWhitelist.toSet(),
             query = pickerQuery,
             onQueryChange = { pickerQuery = it },
-            onToggle = { key ->
-                when (pickerMode) {
-                    MODE_MAIN ->
-                        onSettingsChange { snapshot ->
-                            val next =
-                                if (key in snapshot.bubbleWhitelist) {
-                                    snapshot.bubbleWhitelist - key
-                                } else {
-                                    snapshot.bubbleWhitelist + key
-                                }
-                            snapshot.copy(
-                                bubbleWhitelist =
-                                    ModulePreferences.decodeBubbleKeys(
-                                        ModulePreferences.encodeBubbleKeys(next),
-                                    ),
-                            )
+            onToggleMain = { key ->
+                onSettingsChange { snapshot ->
+                    val next =
+                        if (key in snapshot.bubbleWhitelist) {
+                            snapshot.bubbleWhitelist - key
+                        } else {
+                            snapshot.bubbleWhitelist + key
                         }
-                    else ->
-                        onSettingsChange { snapshot ->
-                            val next =
-                                if (key in snapshot.bubbleCloneWhitelist) {
-                                    snapshot.bubbleCloneWhitelist - key
-                                } else {
-                                    snapshot.bubbleCloneWhitelist + key
-                                }
-                            snapshot.copy(
-                                bubbleCloneWhitelist =
-                                    ModulePreferences.decodeBubbleKeys(
-                                        ModulePreferences.encodeBubbleKeys(next),
-                                    ),
-                            )
-                        }
+                    snapshot.copy(
+                        bubbleWhitelist =
+                            ModulePreferences.decodeBubbleKeys(
+                                ModulePreferences.encodeBubbleKeys(next),
+                            ),
+                    )
                 }
             },
-            onRefreshClones = onRefreshClones,
+            onToggleClone = { key ->
+                onSettingsChange { snapshot ->
+                    val next =
+                        if (key in snapshot.bubbleCloneWhitelist) {
+                            snapshot.bubbleCloneWhitelist - key
+                        } else {
+                            snapshot.bubbleCloneWhitelist + key
+                        }
+                    snapshot.copy(
+                        bubbleCloneWhitelist =
+                            ModulePreferences.decodeBubbleKeys(
+                                ModulePreferences.encodeBubbleKeys(next),
+                            ),
+                    )
+                }
+            },
             onDismiss = { pickerOpen = false },
         )
     }
@@ -371,8 +367,7 @@ private fun BubbleAppsPage(
     apps: List<SelectableEntry>,
     clones: List<CloneApp>,
     onBack: () -> Unit,
-    onAddMain: () -> Unit,
-    onAddClone: () -> Unit,
+    onAdd: () -> Unit,
     onRefreshClones: () -> Unit,
     onSettingsChange: (transform: BubbleSettingsTransform) -> Unit,
 ) {
@@ -392,107 +387,10 @@ private fun BubbleAppsPage(
                 .toMap()
         }
     LaunchedEffect(Unit) { onRefreshClones() }
+    // 主应用与分身合成一组：数据仍分两个键，界面上按「主应用在前、分身在后」排，
+    // 分身行带角标区分。这样加应用只在页尾增长，不会把上面的开关顶走。
+    val total = settings.bubbleWhitelist.size + settings.bubbleCloneWhitelist.size
     SettingsPage(title = stringResource(R.string.bubble_group_apps), onBack = onBack) {
-        item(key = "apps_intro") {
-            Text(
-                text = stringResource(R.string.bubble_apps_title, settings.bubbleWhitelist.size),
-                modifier =
-                    Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp)
-                        .semantics { heading() },
-                color = COUITheme.colorScheme.labelSecondary,
-                style = COUITheme.textStyles.bodyS,
-            )
-        }
-        item(key = "apps") {
-            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
-                settings.bubbleWhitelist.forEach { packageName ->
-                    val app = appByPackage[packageName]
-                    BubbleAddedRow(
-                        title = app?.label ?: packageName,
-                        summary = packageName,
-                        icon = app?.icon,
-                        cloneNumber = 0,
-                        enabled = bubbleEditable,
-                        onRemove = {
-                            onSettingsChange {
-                                it.copy(bubbleWhitelist = settings.bubbleWhitelist - packageName)
-                            }
-                        },
-                    )
-                }
-                if (settings.bubbleWhitelist.isEmpty()) {
-                    BasicComponent(
-                        title = stringResource(R.string.bubble_apps_empty),
-                        summary = stringResource(R.string.bubble_apps_empty_summary),
-                        enabled = false,
-                    )
-                }
-                BasicComponent(
-                    title = stringResource(R.string.bubble_add_app),
-                    startAction = { PreferenceIcon(Icons.Rounded.Add, bubbleEditable) },
-                    onClick = onAddMain,
-                    enabled = bubbleEditable,
-                )
-            }
-        }
-        item(key = "clones_intro") {
-            Text(
-                text =
-                    stringResource(R.string.bubble_clones_title, settings.bubbleCloneWhitelist.size),
-                modifier =
-                    Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp)
-                        .semantics { heading() },
-                color = COUITheme.colorScheme.labelSecondary,
-                style = COUITheme.textStyles.bodyS,
-            )
-        }
-        item(key = "clones") {
-            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
-                settings.bubbleCloneWhitelist.forEach { key ->
-                    val clone = cloneByKey[key]
-                    BubbleAddedRow(
-                        title =
-                            clone?.label?.let { label ->
-                                stringResource(
-                                    R.string.bubble_clone_label,
-                                    label,
-                                    cloneIndexByKey[key] ?: 1,
-                                )
-                            } ?: key,
-                        summary = key,
-                        icon = clone?.icon,
-                        cloneNumber = cloneIndexByKey[key] ?: 0,
-                        enabled = bubbleEditable,
-                        onRemove = {
-                            onSettingsChange {
-                                it.copy(
-                                    bubbleCloneWhitelist = settings.bubbleCloneWhitelist - key,
-                                )
-                            }
-                        },
-                    )
-                }
-                if (settings.bubbleCloneWhitelist.isEmpty()) {
-                    BasicComponent(
-                        title = stringResource(R.string.bubble_clones_empty),
-                        summary = stringResource(R.string.bubble_clones_empty_summary),
-                        enabled = false,
-                    )
-                }
-                BasicComponent(
-                    title = stringResource(R.string.bubble_add_clone),
-                    summary =
-                        if (clones.isEmpty()) {
-                            stringResource(R.string.bubble_clones_empty_summary)
-                        } else {
-                            stringResource(R.string.bubble_clones_available, clones.size)
-                        },
-                    startAction = { PreferenceIcon(Icons.Rounded.ContentCopy, bubbleEditable) },
-                    onClick = onAddClone,
-                    enabled = bubbleEditable,
-                )
-            }
-        }
         item(key = "skip_intro") {
             Text(
                 text = stringResource(R.string.bubble_skip_title),
@@ -534,6 +432,87 @@ private fun BubbleAppsPage(
                     summary = stringResource(R.string.bubble_skip_locked_summary),
                     enabled = bubbleEditable,
                     startAction = { PreferenceIcon(Icons.Rounded.Lock, bubbleEditable) },
+                )
+            }
+        }
+        item(key = "apps_intro") {
+            Text(
+                text =
+                    if (settings.bubbleCloneWhitelist.isEmpty()) {
+                        stringResource(R.string.bubble_apps_title, total)
+                    } else {
+                        stringResource(
+                            R.string.bubble_apps_count_with_clones,
+                            total,
+                            settings.bubbleCloneWhitelist.size,
+                        )
+                    },
+                modifier =
+                    Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp)
+                        .semantics { heading() },
+                color = COUITheme.colorScheme.labelSecondary,
+                style = COUITheme.textStyles.bodyS,
+            )
+        }
+        item(key = "apps") {
+            SettingsGroup(modifier = Modifier.fillMaxWidth()) {
+                settings.bubbleWhitelist.forEach { packageName ->
+                    val app = appByPackage[packageName]
+                    BubbleAddedRow(
+                        title = app?.label ?: packageName,
+                        summary = packageName,
+                        icon = app?.icon,
+                        cloneNumber = 0,
+                        enabled = bubbleEditable,
+                        onRemove = {
+                            onSettingsChange {
+                                it.copy(bubbleWhitelist = settings.bubbleWhitelist - packageName)
+                            }
+                        },
+                    )
+                }
+                settings.bubbleCloneWhitelist.forEach { key ->
+                    val clone = cloneByKey[key]
+                    BubbleAddedRow(
+                        title =
+                            clone?.label?.let { label ->
+                                stringResource(
+                                    R.string.bubble_clone_label,
+                                    label,
+                                    cloneIndexByKey[key] ?: 1,
+                                )
+                            } ?: key,
+                        summary = key,
+                        icon = clone?.icon,
+                        cloneNumber = cloneIndexByKey[key] ?: 0,
+                        enabled = bubbleEditable,
+                        onRemove = {
+                            onSettingsChange {
+                                it.copy(
+                                    bubbleCloneWhitelist = settings.bubbleCloneWhitelist - key,
+                                )
+                            }
+                        },
+                    )
+                }
+                if (total == 0) {
+                    BasicComponent(
+                        title = stringResource(R.string.bubble_apps_empty),
+                        summary = stringResource(R.string.bubble_apps_empty_summary),
+                        enabled = false,
+                    )
+                }
+                BasicComponent(
+                    title = stringResource(R.string.bubble_add_app),
+                    summary =
+                        if (clones.isEmpty()) {
+                            null
+                        } else {
+                            stringResource(R.string.bubble_clones_available, clones.size)
+                        },
+                    startAction = { PreferenceIcon(Icons.Rounded.Add, bubbleEditable) },
+                    onClick = onAdd,
+                    enabled = bubbleEditable,
                 )
             }
         }
@@ -991,17 +970,16 @@ private fun BubbleAppIcon(icon: android.graphics.Bitmap?, cloneNumber: Int) {
 
 @Composable
 private fun BubblePickerSheet(
-    mode: Int,
     apps: List<SelectableEntry>,
     clones: List<CloneApp>,
-    selected: List<String>,
+    selectedMain: Set<String>,
+    selectedClones: Set<String>,
     query: String,
     onQueryChange: (String) -> Unit,
-    onToggle: (String) -> Unit,
-    onRefreshClones: () -> Unit,
+    onToggleMain: (String) -> Unit,
+    onToggleClone: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val selectedSet = remember(selected) { selected.toSet() }
     val cloneIndexByKey =
         remember(clones) {
             clones
@@ -1015,10 +993,7 @@ private fun BubblePickerSheet(
         }
     WindowBottomSheet(
         show = true,
-        title =
-            stringResource(
-                if (mode == MODE_MAIN) R.string.bubble_add_app else R.string.bubble_add_clone,
-            ),
+        title = stringResource(R.string.bubble_add_app),
         onDismissRequest = onDismiss,
     ) {
         Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
@@ -1040,76 +1015,69 @@ private fun BubblePickerSheet(
                     singleLine = true,
                 )
             }
-            if (mode == MODE_MAIN) {
-                val candidates =
-                    remember(apps, query) {
-                        apps
-                            .filter { it.packageName != "io.github.hoerire.free" }
-                            .filter {
-                                query.isBlank() ||
-                                    it.label.contains(query, ignoreCase = true) ||
-                                    it.packageName.contains(query, ignoreCase = true)
-                            }
-                            .sortedBy { it.label }
-                    }
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp),
-                ) {
-                    items(candidates, key = { "pick:" + it.packageName }) { entry ->
-                        val checked = entry.packageName in selectedSet
-                        BasicComponent(
-                            title = entry.label,
-                            summary = entry.packageName,
-                            startAction = {
-                                Image(
-                                    bitmap = entry.icon.asImageBitmap(),
+            // 主应用与分身列在同一张表里：主应用按名称排在前，分身带角标排在后面。
+            val mainCandidates =
+                remember(apps, query) {
+                    apps
+                        .filter { it.packageName != "io.github.hoerire.free" }
+                        .filter {
+                            query.isBlank() ||
+                                it.label.contains(query, ignoreCase = true) ||
+                                it.packageName.contains(query, ignoreCase = true)
+                        }
+                        .sortedBy { it.label }
+                }
+            val cloneCandidates =
+                remember(clones, query) {
+                    clones
+                        .filter {
+                            query.isBlank() ||
+                                it.label.contains(query, ignoreCase = true) ||
+                                it.packageName.contains(query, ignoreCase = true)
+                        }
+                        .sortedWith(compareBy({ it.label }, { it.userId }))
+                }
+            LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp)) {
+                items(mainCandidates, key = { "pick:" + it.packageName }) { entry ->
+                    val checked = entry.packageName in selectedMain
+                    BasicComponent(
+                        title = entry.label,
+                        summary = entry.packageName,
+                        startAction = {
+                            Image(
+                                bitmap = entry.icon.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)),
+                            )
+                        },
+                        endActions = if (checked) {
+                            {
+                                Icon(
+                                    imageVector = Icons.Rounded.Check,
                                     contentDescription = null,
-                                    modifier =
-                                        Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)),
+                                    modifier = Modifier.size(20.dp),
+                                    tint = COUITheme.colorScheme.primary,
                                 )
-                            },
-                            endActions =
-                                if (checked) {
-                                    {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp),
-                                            tint = COUITheme.colorScheme.primary,
-                                        )
-                                    }
-                                } else {
-                                    null
-                                },
-                            onClick = { onToggle(entry.packageName) },
+                            }
+                        } else {
+                            null
+                        },
+                        onClick = { onToggleMain(entry.packageName) },
+                    )
+                }
+                if (cloneCandidates.isNotEmpty()) {
+                    item(key = "clone-divider") {
+                        Text(
+                            text = stringResource(R.string.bubble_clones_section),
+                            modifier =
+                                Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp)
+                                    .semantics { heading() },
+                            color = COUITheme.colorScheme.labelSecondary,
+                            style = COUITheme.textStyles.bodyS,
                         )
                     }
-                }
-            } else {
-                val candidates =
-                    remember(clones, query) {
-                        clones
-                            .filter {
-                                query.isBlank() ||
-                                    it.label.contains(query, ignoreCase = true) ||
-                                    it.packageName.contains(query, ignoreCase = true)
-                            }
-                            .sortedBy { it.label }
-                    }
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp),
-                ) {
-                    if (candidates.isEmpty()) {
-                        item(key = "clone-empty") {
-                            BasicComponent(
-                                title = stringResource(R.string.bubble_clones_none_detected),
-                                summary = stringResource(R.string.bubble_clones_none_detected_summary),
-                                onClick = onRefreshClones,
-                            )
-                        }
-                    }
-                    items(candidates, key = { "clone-pick:" + it.key }) { clone ->
-                        val checked = clone.key in selectedSet
+                    items(cloneCandidates, key = { "clone-pick:" + it.key }) { clone ->
+                        val checked = clone.key in selectedClones
                         BasicComponent(
                             title =
                                 stringResource(
@@ -1124,20 +1092,28 @@ private fun BubblePickerSheet(
                                     cloneNumber = cloneIndexByKey[clone.key] ?: 1,
                                 )
                             },
-                            endActions =
-                                if (checked) {
-                                    {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp),
-                                            tint = COUITheme.colorScheme.primary,
-                                        )
-                                    }
-                                } else {
-                                    null
-                                },
-                            onClick = { onToggle(clone.key) },
+                            endActions = if (checked) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = COUITheme.colorScheme.primary,
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                            onClick = { onToggleClone(clone.key) },
+                        )
+                    }
+                } else if (query.isBlank()) {
+                    // 分身是异步扫出来的；没有就直接说明，避免看起来「加了却没出现」。
+                    item(key = "clone-empty") {
+                        BasicComponent(
+                            title = stringResource(R.string.bubble_clones_none_detected),
+                            summary = stringResource(R.string.bubble_clones_none_detected_summary),
+                            enabled = false,
                         )
                     }
                 }
@@ -1145,6 +1121,3 @@ private fun BubblePickerSheet(
         }
     }
 }
-
-private const val MODE_MAIN = 0
-private const val MODE_CLONE = 1
