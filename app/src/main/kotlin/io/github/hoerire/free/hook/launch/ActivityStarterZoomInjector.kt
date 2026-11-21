@@ -135,6 +135,15 @@ internal class ActivityStarterZoomInjector(
             return false
         }
         val pendingIntent = request?.let { OemReflection.readField(it, "originatingPendingIntent") }
+        // 闸门：发往分身的启动不要改写。
+        // 分身通知的启动请求里，ActivityStarter 的 request.userId 就是分身用户（实测 998）；
+        // 把这类启动改写成主用户小窗，通知就会落到主应用上（停用模块时系统行为是正常的）。
+        val currentUserId = userId()
+        val launchUser = (request?.let { OemReflection.readField(it, "userId") } as? Int) ?: 0
+        if (launchUser != 0 && launchUser != currentUserId) {
+            ModuleLog.debug(TAG) { "ZOOM_SKIP_OTHER_USER_" + stage + "_u" + launchUser }
+            return false
+        }
         val callingPackage =
             request?.let { OemReflection.readField(it, "callingPackage") as? String }.orEmpty()
         val callingUid = intField(starter, "mCallingUid").takeIf { it > 0 }
@@ -972,6 +981,9 @@ internal class ActivityStarterZoomInjector(
         const val OPLUS_LIST_MANAGER = "com.android.server.OplusListManagerImpl"
         const val ZOOM_MANAGER_CLASS = "com.oplus.zoomwindow.OplusZoomWindowManager"
         const val LAUNCH_AT_RIGHT = 14
+
+        /** 每个 Android 用户占用的 uid 区间，用来把 uid 还原成 userId。 */
+        const val PER_USER_RANGE = 100000
 
         /** 中转页二次启动的时间窗：超过这个时间就不再视为同一次点击的后续启动。 */
         const val TRAMPOLINE_WINDOW_MS = 3000L
