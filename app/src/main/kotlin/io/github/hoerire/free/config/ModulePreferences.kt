@@ -53,6 +53,17 @@ internal object ModulePreferences {
     const val KEY_RADIAL_HIT_RANGE_DP = "radial_hit_range_dp"
 
     /**
+     * 扇形展开 / 收回的动画时长（毫秒），由用户自己调。
+     *
+     * 默认值就是原先写死的那两个数（展开 380、收回 500）。上限 1000 是「再长就等得难受」
+     * 的经验值；下限 100 保证动画仍然可读——再短等于没有动画。
+     *
+     * 这两个时长同时驱动入场/退场的图标动画与背景效果（压暗的淡入淡出、模糊的渐变量）。
+     */
+    const val KEY_RADIAL_EXPAND_DURATION_MS = "radial_expand_duration_ms_v1"
+    const val KEY_RADIAL_RETRACT_DURATION_MS = "radial_retract_duration_ms_v1"
+
+    /**
      * 扇形背景的合并滑条：负值为黑色遮罩浓度，正值为系统模糊，0 为不处理背景。
      *
      * 两个方向共用同一条滑块：往左压暗，往右模糊，中间即原样透出背后内容。
@@ -374,6 +385,13 @@ internal object ModulePreferences {
     const val DEFAULT_RADIAL_ICON_SIZE_DP = 44
     const val MIN_RADIAL_ICON_SIZE_DP = 32
     const val MAX_RADIAL_ICON_SIZE_DP = 56
+
+    /** 扇形展开/收回时长：默认与引入设置之前的固定值一致，升级后观感不变。 */
+    const val DEFAULT_RADIAL_EXPAND_DURATION_MS = 380
+    const val DEFAULT_RADIAL_RETRACT_DURATION_MS = 500
+    const val MIN_RADIAL_DURATION_MS = 100
+    const val MAX_RADIAL_DURATION_MS = 1000
+
     val DEFAULT_OUTSIDE_TAP_CLOSE_MODE = OutsideTapCloseMode.Disabled
     const val DEFAULT_HANDLE_SWIPE_UP_TO_MINI_ENABLED = false
     const val DEFAULT_PAUSE_IN_LANDSCAPE = true
@@ -435,6 +453,12 @@ internal object ModulePreferences {
 
     fun coerceRadialIconSizeDp(value: Int): Int =
         value.coerceIn(MIN_RADIAL_ICON_SIZE_DP, MAX_RADIAL_ICON_SIZE_DP)
+
+    fun coerceRadialExpandDurationMs(value: Int): Int =
+        value.coerceIn(MIN_RADIAL_DURATION_MS, MAX_RADIAL_DURATION_MS)
+
+    fun coerceRadialRetractDurationMs(value: Int): Int =
+        value.coerceIn(MIN_RADIAL_DURATION_MS, MAX_RADIAL_DURATION_MS)
 
     fun coerceFloatHandleMaxCount(value: Int): Int =
         value.coerceIn(MIN_FLOAT_HANDLE_MAX_COUNT, MAX_FLOAT_HANDLE_MAX_COUNT)

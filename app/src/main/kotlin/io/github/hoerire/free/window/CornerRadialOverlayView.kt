@@ -118,6 +118,14 @@ internal class CornerRadialOverlayView(
     interface Listener {
         fun onEntryCommitted(entry: RadialEntry)
 
+        /**
+         * 取消/超时的收起动画开始。
+         *
+         * 窗口级效果（背景模糊）跟着浮层一起淡出要用它：模糊挂在窗口上，宿主必须在退场
+         * 动画的同一段时间里把它收掉，窗口移除时就不会出现"啪"一下的突变。
+         */
+        fun onBackdropExitStarted()
+
         fun onMorePanelRequested()
 
         fun onDismissRequested()
@@ -160,6 +168,10 @@ internal class CornerRadialOverlayView(
 
     /** 扇形半径百分比：左右两侧共用，随每次呼出由设置注入。 */
     private var radialRadiusPercent = ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT
+
+    /** 展开/收回时长（毫秒）：用户在设置里调，默认值等于原先写死的数。 */
+    private var expandDurationMs = ModulePreferences.DEFAULT_RADIAL_EXPAND_DURATION_MS
+    private var retractDurationMs = ModulePreferences.DEFAULT_RADIAL_RETRACT_DURATION_MS
 
     /** 选中光圈：滑选条目时是否在图标外沿画细白边与投影（静态）。 */
 
@@ -205,8 +217,6 @@ internal class CornerRadialOverlayView(
     /** 系统动画开关的缓存（组合里算一次），供非组合上下文的 dismissAnimated 读取。 */
     private var exitAnimationsEnabled = true
 
-    /** 本次缩回是否用"选中后"的短时长。 */
-    private var retractQuick = false
     private var disposed = false
     private var lastTickUptime = 0L
     private val timeout = Runnable(::requestDismiss)
@@ -242,6 +252,9 @@ internal class CornerRadialOverlayView(
         hitRangeDp: Int = ModulePreferences.DEFAULT_RADIAL_HIT_RANGE_DP,
         iconSizeDp: Int = ModulePreferences.DEFAULT_RADIAL_ICON_SIZE_DP,
         radiusPercent: Int = ModulePreferences.DEFAULT_RADIAL_RADIUS_PERCENT,
+        /** 展开/收回的动画时长（毫秒），由设置传入；背景效果的渐变也按它走。 */
+        expandDurationMs: Int = ModulePreferences.DEFAULT_RADIAL_EXPAND_DURATION_MS,
+        retractDurationMs: Int = ModulePreferences.DEFAULT_RADIAL_RETRACT_DURATION_MS,
         keepOpen: Boolean = false,
         shimmerEnabled: Boolean = ModulePreferences.DEFAULT_RADIAL_SHIMMER_ENABLED,
         shimmer: RadialShimmer = RadialShimmer(),
@@ -255,6 +268,8 @@ internal class CornerRadialOverlayView(
         this.radialHitRangeDp = ModulePreferences.coerceRadialHitRangeDp(hitRangeDp)
         this.radialIconSizeDp = ModulePreferences.coerceRadialIconSizeDp(iconSizeDp)
         this.radialRadiusPercent = ModulePreferences.coerceRadialRadiusPercent(radiusPercent)
+        this.expandDurationMs = ModulePreferences.coerceRadialExpandDurationMs(expandDurationMs)
+        this.retractDurationMs = ModulePreferences.coerceRadialRetractDurationMs(retractDurationMs)
         shownAtUptime = android.os.SystemClock.uptimeMillis()
         entrySettled = false
         this.catalog = catalog
@@ -289,12 +304,12 @@ internal class CornerRadialOverlayView(
     /**
      * 选中目标后的收拢动画：应用启动不等它，窗口移除推迟到动画播完。
      *
+     * 时长取设置里的「收回时长」，取消路径也一样（两条路径的节奏本来就一致）。
      * 取屏类工具要求屏幕立刻干净，协调器不会调用本方法（仍走立即移除）。
      */
-    fun retractAnimated(quick: Boolean) {
+    fun retractAnimated() {
         if (disposed || retracting.value) return
         if (!exitAnimationsEnabled) return
-        retractQuick = quick
         retracting.value = true
     }
 
@@ -446,7 +461,7 @@ internal class CornerRadialOverlayView(
                 // 首帧补偿：动画是在组合完成、第一帧画出来才开始跑的，
                 // 而用户是从按下那一刻开始计时的。把 begin() 到现在已经过去的时间
                 // 从总预算里扣掉，展开完成的时刻就固定在 begin() + 预算上。
-                val total = SystemMotion.scaledMillis(RadialEntryMotion.DURATION_MILLIS, motionScale)
+                val total = SystemMotion.scaledMillis(expandDurationMs.toLong(), motionScale)
                 val elapsed =
                     (android.os.SystemClock.uptimeMillis() - shownAtUptime)
                         .toInt()
@@ -487,12 +502,8 @@ internal class CornerRadialOverlayView(
         LaunchedEffect(retracting.value) {
             if (!retracting.value) return@LaunchedEffect
             if (animationsEnabled) {
-                val durationMillis =
-                    if (retractQuick) {
-                        RadialExitMotion.COMMIT_RETRACT_DURATION_MILLIS
-                    } else {
-                        RadialExitMotion.RETRACT_DURATION_MILLIS
-                    }
+                // 取消与选中后收起共用设置里那一个「收回时长」：两条路径的节奏本来就一致。
+                val durationMillis = retractDurationMs.toLong()
                 entryProgress.animateTo(
                     targetValue = 0f,
                     animationSpec =
@@ -710,10 +721,10 @@ internal class CornerRadialOverlayView(
                 panelProgress = panel,
             )
             val visual = entrySample
-            // 遮罩由这里画（窗口不用 FLAG_DIM_BEHIND）：随内容透明度一起淡入淡出，
-            // 比系统 dim 更贴合入场/收回的节奏。背景模糊不在这里：是否模糊由
-            // Coordinator 按「系统模糊」开关挂到窗口表面上，这一层只负责纯色。
-            val backdropAlpha = backdropAlphaState.value * visual.contentAlpha
+            // 遮罩由这里画（窗口不用 FLAG_DIM_BEHIND）：按**整段**展开/收起时长淡入淡出。
+            // 不能乘 visual.contentAlpha：那条曲线是给图标用的，前 1/6 就拉满（图标在飞行
+            // 途中必须实心，否则叠出残影），乘上去遮罩会在几十毫秒内全暗，读起来是"瞬间闪屏"。
+            val backdropAlpha = backdropAlphaState.value * smoothStep(entryProgress.value)
             if (backdropAlpha > 0f) {
                 drawRect(Color.Black, alpha = backdropAlpha)
             }
@@ -1381,7 +1392,8 @@ internal class CornerRadialOverlayView(
         }
         if (exitAnimationsEnabled) {
             // 取消：播一段"原路缩回"的动画，播完在 LaunchedEffect 里通知宿主移除窗口。
-            retractQuick = false
+            // 先让宿主把窗口级效果（背景模糊）挂到同一条时间线上。
+            listener.onBackdropExitStarted()
             retracting.value = true
             return
         }
@@ -1408,6 +1420,17 @@ internal class CornerRadialOverlayView(
         dismissNotified = true
         removeCallbacks(timeout)
         listener.onDismissRequested()
+    }
+
+    /**
+     * 三次平滑：两端都平缓，用作遮罩淡入淡出。
+     *
+     * 与展开/收回共用同一条进度（[entryProgress]），所以遮罩的淡入正好铺满 380ms 的展开、
+     * 淡出铺满 500ms 的收回，不额外引入第三套时间轴。
+     */
+    private fun smoothStep(value: Float): Float {
+        val t = value.coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
     }
 
     private fun mergeCleanupFailure(

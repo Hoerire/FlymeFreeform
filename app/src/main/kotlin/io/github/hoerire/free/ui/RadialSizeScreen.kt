@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.BlurCircular
-import androidx.compose.material.icons.rounded.CenterFocusStrong
-import androidx.compose.material.icons.rounded.ZoomOutMap
 import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.BlurCircular
+import androidx.compose.material.icons.rounded.UnfoldLess
+import androidx.compose.material.icons.rounded.UnfoldMore
+import androidx.compose.material.icons.rounded.ZoomOutMap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +35,8 @@ import io.github.hoerire.free.R
 import io.github.hoerire.free.config.ModulePreferences
 import io.github.hoerire.free.framework.FrameworkConnectionState
 import io.github.hoerire.free.gesture.RadialGeometry
+import io.github.hoerire.free.ui.component.ArrowPreference
+import io.github.hoerire.free.ui.component.PreferenceIcon
 import io.github.hoerire.free.ui.component.SettingsGroup
 import io.github.hoerire.free.window.RadialIconGeometry
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -41,22 +45,24 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * 外观参数页：命中范围、图标大小、扇形大小、背景遮罩。
+ * 外观参数页：图标大小、扇形大小、背景遮罩、展开/收回时长，以及「选中特效」入口。
  *
- * 一级页只保留入口行，四条滑杆集中在此页；页顶是实时示意图，
+ * 命中范围属于判定参数，放在一级页与「触发范围」相邻，不在这里。
+ * 页顶是实时示意图（命中圈按当前命中范围画），
  * 拖动时用预览值重画，因此每行只写一行说明即可。
  */
 @Composable
 internal fun RadialSizeScreen(
     state: FrameworkConnectionState,
     onBack: () -> Unit,
-    onRadialHitRangeChange: (Int) -> Unit,
     onRadialIconSizeChange: (Int) -> Unit,
     onRadialRadiusPercentChange: (Int) -> Unit,
     onBackdropLevelChange: (Int) -> Unit,
+    onRadialExpandDurationChange: (Int) -> Unit,
+    onRadialRetractDurationChange: (Int) -> Unit,
+    onNavigateToRadialEffect: () -> Unit,
 ) {
     val enabled = state.settingsEditable && state.settings.enabled
-    var previewHitRangeDp by remember { mutableStateOf<Int?>(null) }
     var previewIconSizeDp by remember { mutableStateOf<Int?>(null) }
     var previewRadiusPercent by remember { mutableStateOf<Int?>(null) }
     var previewBackdropLevel by remember { mutableStateOf<Int?>(null) }
@@ -67,7 +73,7 @@ internal fun RadialSizeScreen(
     ) {
         item(key = "sizePreview") {
             RadialSizePreview(
-                hitRangeDp = previewHitRangeDp ?: state.settings.radialHitRangeDp,
+                hitRangeDp = state.settings.radialHitRangeDp,
                 iconSizeDp = previewIconSizeDp ?: state.settings.radialIconSizeDp,
                 radiusPercent = previewRadiusPercent ?: state.settings.radialRadiusPercent,
                 backdropLevel = previewBackdropLevel ?: state.settings.backdropLevel,
@@ -75,19 +81,6 @@ internal fun RadialSizeScreen(
         }
         item(key = "sizeGroup") {
             SettingsGroup(modifier = Modifier.fillMaxWidth()) {
-                RemoteDpSliderPreference(
-                    icon = Icons.Rounded.CenterFocusStrong,
-                    confirmedValue = state.settings.radialHitRangeDp,
-                    isUpdating = state.isUpdating,
-                    enabled = enabled,
-                    title = stringResource(R.string.radial_hit_range_title),
-                    summary = stringResource(R.string.radial_hit_range_summary),
-                    minDp = ModulePreferences.MIN_RADIAL_HIT_RANGE_DP,
-                    maxDp = ModulePreferences.MAX_RADIAL_HIT_RANGE_DP,
-                    coerceDp = ModulePreferences::coerceRadialHitRangeDp,
-                    onPreviewChange = { previewHitRangeDp = it },
-                    onCommit = onRadialHitRangeChange,
-                )
                 RemoteDpSliderPreference(
                     icon = Icons.Rounded.Apps,
                     confirmedValue = state.settings.radialIconSizeDp,
@@ -128,6 +121,42 @@ internal fun RadialSizeScreen(
                     onPreviewChange = { previewBackdropLevel = it },
                     onCommit = onBackdropLevelChange,
                     showDpUnit = false,
+                )
+                RemoteDpSliderPreference(
+                    icon = Icons.Rounded.UnfoldMore,
+                    confirmedValue = state.settings.radialExpandDurationMs,
+                    isUpdating = state.isUpdating,
+                    enabled = enabled,
+                    title = stringResource(R.string.radial_expand_duration_title),
+                    summary = stringResource(R.string.radial_expand_duration_summary),
+                    minDp = ModulePreferences.MIN_RADIAL_DURATION_MS,
+                    maxDp = ModulePreferences.MAX_RADIAL_DURATION_MS,
+                    coerceDp = ModulePreferences::coerceRadialExpandDurationMs,
+                    valueUnitRes = R.string.ms_value,
+                    // 时长没有屏幕叠加预览，回调只为满足滑条接口。
+                    onPreviewChange = {},
+                    onCommit = onRadialExpandDurationChange,
+                )
+                RemoteDpSliderPreference(
+                    icon = Icons.Rounded.UnfoldLess,
+                    confirmedValue = state.settings.radialRetractDurationMs,
+                    isUpdating = state.isUpdating,
+                    enabled = enabled,
+                    title = stringResource(R.string.radial_retract_duration_title),
+                    summary = stringResource(R.string.radial_retract_duration_summary),
+                    minDp = ModulePreferences.MIN_RADIAL_DURATION_MS,
+                    maxDp = ModulePreferences.MAX_RADIAL_DURATION_MS,
+                    coerceDp = ModulePreferences::coerceRadialRetractDurationMs,
+                    valueUnitRes = R.string.ms_value,
+                    onPreviewChange = {},
+                    onCommit = onRadialRetractDurationChange,
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.radial_effect_group_title),
+                    summary = stringResource(R.string.radial_effect_entry_summary),
+                    onClick = onNavigateToRadialEffect,
+                    enabled = enabled,
+                    startAction = { PreferenceIcon(Icons.Rounded.AutoAwesome, enabled) },
                 )
             }
         }

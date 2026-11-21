@@ -89,6 +89,22 @@ internal class FrameworkConnectionRepository(private val context: Context) {
             )
         }
 
+    fun setRadialExpandDurationMs(durationMs: Int) =
+        updateSettings {
+            it.copy(
+                radialExpandDurationMs =
+                    ModulePreferences.coerceRadialExpandDurationMs(durationMs),
+            )
+        }
+
+    fun setRadialRetractDurationMs(durationMs: Int) =
+        updateSettings {
+            it.copy(
+                radialRetractDurationMs =
+                    ModulePreferences.coerceRadialRetractDurationMs(durationMs),
+            )
+        }
+
     fun setBackdropLevel(level: Int) =
         updateSettings {
             it.copy(backdropLevel = ModulePreferences.coerceBackdropLevel(level))

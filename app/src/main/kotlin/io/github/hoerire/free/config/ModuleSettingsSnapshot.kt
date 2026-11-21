@@ -10,6 +10,10 @@ internal data class ModuleSettingsSnapshot(
     val radialHitRangeDp: Int = ModulePreferences.DEFAULT_RADIAL_HIT_RANGE_DP,
     /** 扇形图标基准直径（dp）：应用图标、「更多」圆盘与面板图标都按它缩放。 */
     val radialIconSizeDp: Int = ModulePreferences.DEFAULT_RADIAL_ICON_SIZE_DP,
+
+    /** 扇形展开/收回的动画时长（毫秒）；同时驱动背景压暗与模糊的渐变量。 */
+    val radialExpandDurationMs: Int = ModulePreferences.DEFAULT_RADIAL_EXPAND_DURATION_MS,
+    val radialRetractDurationMs: Int = ModulePreferences.DEFAULT_RADIAL_RETRACT_DURATION_MS,
     val pinsSaved: Boolean = false,
     val pinnedTargets: List<PinnedTarget> = emptyList(),
     /**
@@ -382,6 +386,14 @@ internal data class ModuleSettingsSnapshot(
                 ModulePreferences.coerceRadialIconSizeDp(radialIconSizeDp),
             )
             .putInt(
+                ModulePreferences.KEY_RADIAL_EXPAND_DURATION_MS,
+                ModulePreferences.coerceRadialExpandDurationMs(radialExpandDurationMs),
+            )
+            .putInt(
+                ModulePreferences.KEY_RADIAL_RETRACT_DURATION_MS,
+                ModulePreferences.coerceRadialRetractDurationMs(radialRetractDurationMs),
+            )
+            .putInt(
                 ModulePreferences.KEY_OUTSIDE_TAP_CLOSE_MODE,
                 outsideTapCloseMode.storedValue,
             )
@@ -437,6 +449,20 @@ internal data class ModuleSettingsSnapshot(
                     preferences.getInt(
                         ModulePreferences.KEY_RADIAL_HIT_RANGE_DP,
                         ModulePreferences.DEFAULT_RADIAL_HIT_RANGE_DP,
+                    ),
+                )
+            val radialExpandDurationMs =
+                ModulePreferences.coerceRadialExpandDurationMs(
+                    preferences.getInt(
+                        ModulePreferences.KEY_RADIAL_EXPAND_DURATION_MS,
+                        ModulePreferences.DEFAULT_RADIAL_EXPAND_DURATION_MS,
+                    ),
+                )
+            val radialRetractDurationMs =
+                ModulePreferences.coerceRadialRetractDurationMs(
+                    preferences.getInt(
+                        ModulePreferences.KEY_RADIAL_RETRACT_DURATION_MS,
+                        ModulePreferences.DEFAULT_RADIAL_RETRACT_DURATION_MS,
                     ),
                 )
             val outsideTapCloseMode =
@@ -503,6 +529,8 @@ internal data class ModuleSettingsSnapshot(
                 rightCornerEnabled = if (bothCornersDisabled) true else rightEnabled,
                 cornerTriggerRangeDp = cornerTriggerRangeDp,
                 radialHitRangeDp = radialHitRangeDp,
+                radialExpandDurationMs = radialExpandDurationMs,
+                radialRetractDurationMs = radialRetractDurationMs,
                 backdropLevel =
                     ModulePreferences.coerceBackdropLevel(
                         preferences.getInt(

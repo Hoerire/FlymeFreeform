@@ -248,6 +248,13 @@ private fun RuntimeCard(
     }
 }
 
+/**
+ * 带确认时机的整数滑条行。
+ *
+ * 名字里的 Dp 是历史原因：参数是「整数 + 区间 + 钳位函数」，单位由调用方决定——
+ * 尺寸项用默认的 `dp` 文案，时长项传 [valueUnitRes]（如 `%1$d ms`），数量类传
+ * `showDpUnit = false`。拖动只走 [onPreviewChange]，抬手才 [onCommit]。
+ */
 @Composable
 internal fun RemoteDpSliderPreference(
     icon: ImageVector,
@@ -256,6 +263,7 @@ internal fun RemoteDpSliderPreference(
     enabled: Boolean,
     title: String,
     summary: String,
+    /** 数值区间与钳位：单位由调用方约定，见函数注释。 */
     minDp: Int,
     maxDp: Int,
     coerceDp: (Int) -> Int,
@@ -263,6 +271,8 @@ internal fun RemoteDpSliderPreference(
     onCommit: (Int) -> Unit,
     /** false 时只显示数值，不带 dp 单位（用于「个数」这类非尺寸项）。 */
     showDpUnit: Boolean = true,
+    /** 单位文案资源（如 `%1$d ms`）：给定时优先于 [showDpUnit]，用于非 dp 的数值项。 */
+    valueUnitRes: Int? = null,
 ) {
     var draftValue by remember { mutableFloatStateOf(coerceDp(confirmedValue).toFloat()) }
     var pressed by remember { mutableStateOf(false) }
@@ -314,10 +324,12 @@ internal fun RemoteDpSliderPreference(
             },
             onValueChangeFinished = {},
             valueText =
-                if (showDpUnit) {
-                    stringResource(R.string.dp_value, coerceDp(draftValue.roundToInt()))
-                } else {
-                    coerceDp(draftValue.roundToInt()).toString()
+                when {
+                    valueUnitRes != null ->
+                        stringResource(valueUnitRes, coerceDp(draftValue.roundToInt()))
+                    showDpUnit ->
+                        stringResource(R.string.dp_value, coerceDp(draftValue.roundToInt()))
+                    else -> coerceDp(draftValue.roundToInt()).toString()
                 },
             icon = { PreferenceIcon(icon, enabled) },
             enabled = enabled,

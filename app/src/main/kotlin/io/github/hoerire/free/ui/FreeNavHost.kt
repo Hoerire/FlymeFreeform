@@ -96,6 +96,8 @@ internal fun FreeNavHost(
     onCornerTriggerRangeChange: (Int) -> Unit,
     onRadialHitRangeChange: (Int) -> Unit,
     onRadialIconSizeChange: (Int) -> Unit,
+    onRadialExpandDurationChange: (Int) -> Unit,
+    onRadialRetractDurationChange: (Int) -> Unit,
     onBackdropLevelChange: (Int) -> Unit,
     onOutsideTapCloseModeChange: (OutsideTapCloseMode) -> Unit,
     onHandleSwipeUpToMiniEnabledChange: (Boolean) -> Unit,
@@ -261,13 +263,13 @@ internal fun FreeNavHost(
                     onBack = popBackStack,
                     onCornerSidesChange = onCornerSidesChange,
                     onCornerTriggerRangeChange = onCornerTriggerRangeChange,
+                    onRadialHitRangeChange = onRadialHitRangeChange,
                     onRadialInteractionEnabledChange = onRadialInteractionEnabledChange,
                     onRadialKeepOpenChange = onRadialKeepOpenChange,
                     onPauseInLandscapeChange = onPauseInLandscapeChange,
                     onPauseInGameModeChange = onPauseInGameModeChange,
                     onPauseInKeyboardChange = onPauseInKeyboardChange,
                     onNavigateToPinnedApps = navigateToPinnedApps,
-                    onNavigateToRadialEffect = navigateToRadialEffect,
                     onNavigateToRadialSize = navigateToRadialSize,
                 )
             AppRoute.ZoomGesture ->
@@ -311,10 +313,12 @@ internal fun FreeNavHost(
                 RadialSizeScreen(
                     state = state,
                     onBack = popBackStack,
-                    onRadialHitRangeChange = onRadialHitRangeChange,
                     onRadialIconSizeChange = onRadialIconSizeChange,
                     onRadialRadiusPercentChange = onRadialRadiusPercentChange,
                     onBackdropLevelChange = onBackdropLevelChange,
+                    onRadialExpandDurationChange = onRadialExpandDurationChange,
+                    onRadialRetractDurationChange = onRadialRetractDurationChange,
+                    onNavigateToRadialEffect = navigateToRadialEffect,
                 )
             AppRoute.ZoomOptions ->
                 ZoomOptionsScreen(

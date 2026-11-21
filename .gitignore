@@ -48,6 +48,8 @@ Thumbs.db
 /CONSTRAINTS.md
 /FLOW_JUMP_HANDOFF.md
 /CLONE_HANDOFF.md
+/FEATURE_SUMMARY.md
+/RELEASE_NOTES_NEXT.md
 /PUSH_TOKEN.txt
 # 气泡子系统的工作文档（模块地图、待办、设计、开关速查）：本地维护用，不进公开仓库。
 # 对外说明只保留 README 与 THIRD_PARTY_NOTICES.md。

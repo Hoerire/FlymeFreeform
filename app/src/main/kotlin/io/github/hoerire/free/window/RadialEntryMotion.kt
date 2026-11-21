@@ -11,13 +11,8 @@ internal data class RadialEntryVisuals(
 
 /** 扇形进场：半径从角落铺开到满值，图标一路放大并轻微回弹。 */
 internal object RadialEntryMotion {
-    /**
-     * 进场总时长（毫秒），从"手指按下、浮层开始创建"那一刻算起。
-     *
-     * 注意这是**整段时间预算**，不是 tween 的时长：窗口 addView 到出第一帧之间的
-     * 延迟由 CornerRadialOverlayView 从这里面扣掉，因此展开完成时刻是固定的。
-     */
-    const val DURATION_MILLIS = 380L
+    // 进场时长不在这里：它由设置项「展开时长」决定（ModulePreferences.DEFAULT_RADIAL_EXPAND_DURATION_MS
+    // 是默认值），浮层按「抬手时刻 + 该时长」倒推首帧起点，见 CornerRadialOverlayView 的入场补偿。
     const val SELECTION_DURATION_MILLIS = 200L
     const val HORIZONTAL_OVERSHOOT_DP = 6f
 

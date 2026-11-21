@@ -46,10 +46,27 @@ class ModuleSettingsSnapshotTest {
     }
 
     @Test
+    fun radialAnimationDurationsRoundTripAndClampToRange() {
+        val preferences =
+            InMemoryPreferences(
+                ModulePreferences.KEY_RADIAL_EXPAND_DURATION_MS to 5000,
+                ModulePreferences.KEY_RADIAL_RETRACT_DURATION_MS to 20,
+            )
+        val snapshot = ModuleSettingsSnapshot.readFrom(preferences)
+        // 越界值读进来就被钳到区间：上限 1000，下限 100。
+        assertEquals(ModulePreferences.MAX_RADIAL_DURATION_MS, snapshot.radialExpandDurationMs)
+        assertEquals(ModulePreferences.MIN_RADIAL_DURATION_MS, snapshot.radialRetractDurationMs)
+        snapshot.writeTo(preferences.edit()).commit()
+        assertEquals(snapshot, ModuleSettingsSnapshot.readFrom(preferences))
+    }
+
+    @Test
     fun missingKeysUseProductDefaults() {
         val snapshot = ModuleSettingsSnapshot.readFrom(InMemoryPreferences())
 
         assertEquals(84, snapshot.cornerTriggerRangeDp)
+        assertEquals(ModulePreferences.DEFAULT_RADIAL_EXPAND_DURATION_MS, snapshot.radialExpandDurationMs)
+        assertEquals(ModulePreferences.DEFAULT_RADIAL_RETRACT_DURATION_MS, snapshot.radialRetractDurationMs)
         assertEquals(OutsideTapCloseMode.Disabled, snapshot.outsideTapCloseMode)
         assertFalse(snapshot.handleSwipeUpToMiniEnabled)
         assertTrue(snapshot.pauseInLandscape)

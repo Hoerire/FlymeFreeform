@@ -1,5 +1,6 @@
 package io.github.hoerire.free.platform.coloros
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -15,6 +16,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.view.animation.AccelerateDecelerateInterpolator
 import io.github.hoerire.free.config.ModulePreferences
 import io.github.hoerire.free.config.SettingsBridge
 import io.github.hoerire.free.config.ModuleSettingsSnapshot
@@ -33,6 +35,7 @@ import io.github.hoerire.free.logic.WindowForm
 import io.github.hoerire.free.hook.ProcessConfiguration
 import io.github.hoerire.free.window.CornerRadialOverlayView
 import io.github.hoerire.free.window.CornerTouchRegionView
+import io.github.hoerire.free.window.SystemMotion
 import java.lang.reflect.Proxy
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
@@ -202,8 +205,12 @@ internal class ColorOsFreeformCoordinator(
     private var lastOverlayFailureLogAt = -OVERLAY_FAILURE_LOG_INTERVAL_MS
     /** 模糊接口取不到只记一次：每次呼出都记会把日志刷满。 */
     private var blurUnavailableLogged = false
-    /** 本次浮层窗口是否真的挂上了背景模糊；启动前据此决定要不要摘。 */
-    private var overlayBlurApplied = false
+    /** 当前正在生效的模糊半径：淡入淡出都从它接着走，中途反向也不会跳。 */
+    private var overlayBlurRadiusPx = 0
+    /** 模糊渐变：每帧改一次窗口半径。 */
+    private var overlayBlurAnimator: ValueAnimator? = null
+    /** 浮层窗口当前的 LayoutParams；模糊渐变直接改它再交给 WindowManager。 */
+    private var overlayParams: WindowManager.LayoutParams? = null
     /** 输入法服务实例与解析状态：「屏蔽键盘」判定要用它的窗口可见标志。 */
     private var inputMethodServiceCache: Any? = null
     private var imeAccessCache: ColorOsDisplayContentImeAccess? = null
@@ -252,6 +259,8 @@ internal class ColorOsFreeformCoordinator(
                 hitRangeDp = lastSettings.radialHitRangeDp,
                 iconSizeDp = lastSettings.radialIconSizeDp,
                 radiusPercent = lastSettings.radialRadiusPercent,
+                expandDurationMs = lastSettings.radialExpandDurationMs,
+                retractDurationMs = lastSettings.radialRetractDurationMs,
                 keepOpen = false,
                 shimmerEnabled = lastSettings.radialShimmerEnabled,
                 shimmer = lastSettings.radialShimmer,
@@ -974,9 +983,14 @@ internal class ColorOsFreeformCoordinator(
         // 保持挂起只影响「抬手后是否收起」，与窗口是否可触摸无关：
         // 触摸统一由 attachTouchRegion() 那块小窗口接住。
         val keepOpen = lastSettings.radialKeepOpen
-        val blurRadiusPx = overlayBlurRadiusPx(lastSettings.backdropLevel)
-        overlayBlurApplied = false
-        val params = createOverlayParams(blurRadiusPx = blurRadiusPx)
+        val blurTargetPx = overlayBlurRadiusPx(lastSettings.backdropLevel)
+        overlayBlurRadiusPx = 0
+        overlayBlurAnimator?.cancel()
+        overlayBlurAnimator = null
+        // 模糊从 0 半径起步，随扇形展开逐帧拉开：窗口创建时就把标记挂上（半径 0 不可见），
+        // 否则第一帧会是"整屏突然糊掉"。
+        val initialBlurPx = if (blurTargetPx > 0) 0 else NO_OVERLAY_BLUR
+        val params = createOverlayParams(blurRadiusPx = initialBlurPx)
         var view: CornerRadialOverlayView? = null
         try {
             view = CornerRadialOverlayView(context, this, ::debug)
@@ -991,6 +1005,8 @@ internal class ColorOsFreeformCoordinator(
                 hitRangeDp = hitRangeDp,
                 iconSizeDp = lastSettings.radialIconSizeDp,
                 radiusPercent = lastSettings.radialRadiusPercent,
+                expandDurationMs = lastSettings.radialExpandDurationMs,
+                retractDurationMs = lastSettings.radialRetractDurationMs,
                 keepOpen = keepOpen,
                 shimmerEnabled = lastSettings.radialShimmerEnabled,
                 shimmer = lastSettings.radialShimmer,
@@ -1000,19 +1016,30 @@ internal class ColorOsFreeformCoordinator(
             if (hasSidebarPins(lastSettings)) entryCatalog.refresh()
             try {
                 windowManager.addView(view, params)
+                overlayParams = params
                 overlayWindowType = OVERLAY_WINDOW_TYPE
                 trace("SYSTEM_OVERLAY_SHOWN_" + overlayWindowType)
                 trace("SYSTEM_OVERLAY_TYPE_" + OVERLAY_WINDOW_TYPE)
             } catch (exception: RuntimeException) {
                 // 输入法层的窗口类型被系统拒绝时，退回普通悬浮窗，至少保证扇形可用。
                 val fallback =
-                    createOverlayParams(type = FALLBACK_OVERLAY_TYPE, blurRadiusPx = blurRadiusPx)
+                    createOverlayParams(type = FALLBACK_OVERLAY_TYPE, blurRadiusPx = initialBlurPx)
                 windowManager.addView(view, fallback)
+                overlayParams = fallback
                 overlayWindowType = FALLBACK_OVERLAY_TYPE
                 logger(Log.WARN, "SYSTEM_OVERLAY_TYPE_FALLBACK_" + FALLBACK_OVERLAY_TYPE, exception)
             }
             // 主窗口只是画；点选必须另有人接。
             attachTouchRegion()
+            if (blurTargetPx > 0) {
+                // 第一帧之后再拉开：此时窗口已经挂上、扇形动画也已经开始，
+                // 模糊与遮罩同步淡入。
+                view.post {
+                    if (overlay === view) {
+                        rampOverlayBlur(blurTargetPx, overlayEntryDurationMillis())
+                    }
+                }
+            }
         } catch (exception: RuntimeException) {
             handleOverlayFailure(view, "SYSTEM_OVERLAY_ADD_FAILED", exception)
         } catch (error: LinkageError) {
@@ -1087,14 +1114,19 @@ internal class ColorOsFreeformCoordinator(
         if (requiresHiddenOverlay) {
             removeOverlay(immediate = true)
         } else {
-            // 选中应用/快捷方式：先摘掉背景模糊，再播缩回动画。启动是并行发起的，
-            // 新窗口最早在这一帧之后就会出现，模糊留到动画结束（500ms）会把小窗一起糊住。
-            dropOverlayBlurForLaunch()
-            overlay?.retractAnimated(quick = true) ?: removeOverlay(immediate = true)
+            // 选中应用/快捷方式：模糊在 200ms 内淡出，不跟满缩回动画。
+            // 启动是并行发起的，小窗一出现就该是清晰的；但也不要"啪"一下跳过去。
+            rampOverlayBlur(0, overlayCommitBlurFadeMillis())
+            overlay?.retractAnimated() ?: removeOverlay(immediate = true)
         }
         handler.post {
             if (generation == pointerGeneration) launchCommittedEntry(entry)
         }
+    }
+
+    override fun onBackdropExitStarted() {
+        // 取消/超时：模糊跟着同一条收起动画（设置里的收回时长）淡出，窗口移除时已归零。
+        rampOverlayBlur(0, overlayRetractDurationMillis())
     }
 
     private fun launchCommittedEntry(entry: RadialEntry) {
@@ -1269,8 +1301,13 @@ internal class ColorOsFreeformCoordinator(
     private fun showBuiltInMorePanel(view: CornerRadialOverlayView) {
         val params = createPanelParams()
         detachTouchRegion()
+        // 面板模式不参与模糊渐变：先停掉，再把当前参数换成面板那一份。
+        overlayBlurAnimator?.cancel()
+        overlayBlurAnimator = null
+        overlayBlurRadiusPx = 0
         try {
             windowManager.updateViewLayout(view, params)
+            overlayParams = params
             view.showBuiltInMorePanel()
             view.requestFocus()
             debug("SYSTEM_BUILTIN_PANEL_SHOWN_f" + params.flags)
@@ -1290,10 +1327,15 @@ internal class ColorOsFreeformCoordinator(
      *   面板与工具的点击（现象：面板无法点击）。
      */
     private fun applyBackdropPassThrough(view: CornerRadialOverlayView) {
+        // 面板接管背景：停掉模糊渐变，参数整体换成不带模糊的那一份。
+        overlayBlurAnimator?.cancel()
+        overlayBlurAnimator = null
+        overlayBlurRadiusPx = 0
         try {
             // 不带模糊重建参数：「更多」面板自己负责背景，这一层退成完全透明。
             val params = createOverlayParams()
             windowManager.updateViewLayout(view, params)
+            overlayParams = params
             detachTouchRegion()
             debug("SYSTEM_BACKDROP_PASS_THROUGH_OK")
         } catch (exception: RuntimeException) {
@@ -1301,26 +1343,78 @@ internal class ColorOsFreeformCoordinator(
         }
     }
 
+    /** 展开时长：设置值 × 系统「动画时长缩放」，与浮层里的图标动画同一口径。 */
+    private fun overlayEntryDurationMillis(): Long =
+        SystemMotion.scaledMillis(
+            lastSettings.radialExpandDurationMs.toLong(),
+            SystemMotion.durationScale(),
+        ).toLong()
+
+    /** 收回时长：取消与选中后收起共用设置里的那一个值。 */
+    private fun overlayRetractDurationMillis(): Long =
+        SystemMotion.scaledMillis(
+            lastSettings.radialRetractDurationMs.toLong(),
+            SystemMotion.durationScale(),
+        ).toLong()
+
     /**
-     * 启动前摘掉浮层窗口自己的背景模糊。
+     * 启动后的模糊淡出时长。
      *
-     * 模糊挂在**窗口**上（[FLAG_BLUR_BEHIND] + 半径，由 SurfaceFlinger 在合成时模糊窗口下方），
-     * 而浮层要等退场动画播完才移除（`COMMIT_RETRACT_DURATION_MILLIS` = 500ms）。选中的应用
-     * 却是在提交的当帧就启动的，于是这半秒里新出现的窗口也被一起糊掉：
-     * 「前台全屏 → 就地切小窗」不建新窗口、当帧可见，糊得最明显。
-     *
-     * 只重建窗口参数、不动绘制内容：调暗（scrim）仍随退场动画淡出，扇形本身照常缩回。
+     * 固定 200ms（不跟满收回动画：小窗已经起来，不该长期蒙着糊），但不超过收回时长——
+     * 用户把收回调到 100ms 时，窗口早没了，模糊没有理由拖得更长。
      */
-    private fun dropOverlayBlurForLaunch() {
-        if (!overlayBlurApplied) return
+    private fun overlayCommitBlurFadeMillis(): Long =
+        minOf(COMMIT_BLUR_FADE_MILLIS, overlayRetractDurationMillis())
+
+    /**
+     * 浮层的背景模糊按给定时长淡入/淡出。
+     *
+     * 模糊是窗口级效果（[FLAG_BLUR_BEHIND] + 半径），Compose 碰不到它，也没有逐帧的原生
+     * 通道；这里每帧改一次半径再交给 WindowManager。窗口本身每一帧都在重绘（扇形动画），
+     * 这次 relayout 会搭在同一轮 traversal 上，不会额外触发一轮绘制。
+     *
+     * 时长与扇形一致（取设置里的展开/收回时长，同样跟随系统动画缩放）。
+     * 中途反向时从当前半径接着走，不会跳变。
+     */
+    private fun rampOverlayBlur(toPx: Int, durationMillis: Long) {
+        val params = overlayParams ?: return
+        overlayBlurAnimator?.cancel()
+        overlayBlurAnimator = null
+        if (!ValueAnimator.areAnimatorsEnabled() || durationMillis <= 0L) {
+            applyOverlayBlurRadius(params, toPx)
+            return
+        }
+        val fromPx = overlayBlurRadiusPx
+        if (fromPx == toPx) return
+        overlayBlurAnimator =
+            ValueAnimator.ofInt(fromPx, toPx).apply {
+                duration = durationMillis
+                interpolator = AccelerateDecelerateInterpolator()
+                addUpdateListener { animation ->
+                    applyOverlayBlurRadius(params, animation.animatedValue as Int)
+                }
+                start()
+            }
+        trace("SYSTEM_OVERLAY_BLUR_RAMP_" + fromPx + "_" + toPx + "_" + durationMillis)
+    }
+
+    /** 把当前半径写进窗口参数并交给 WindowManager；接口取不到时保持原样。 */
+    private fun applyOverlayBlurRadius(params: WindowManager.LayoutParams, radiusPx: Int) {
         val view = overlay ?: return
-        overlayBlurApplied = false
+        if (overlayBlurRadiusPx == radiusPx) return
+        if (!params.applyBlurRadius(radiusPx)) return
+        overlayBlurRadiusPx = radiusPx
+        // 半径归零时把标记一起摘掉，不留下一个空的模糊层；再拉开时重新挂上。
+        params.flags =
+            if (radiusPx > 0) {
+                params.flags or FLAG_BLUR_BEHIND
+            } else {
+                params.flags and FLAG_BLUR_BEHIND.inv()
+            }
         try {
-            // 不带模糊重建参数：默认 blurRadiusPx = 0 就不会挂 [FLAG_BLUR_BEHIND]。
-            windowManager.updateViewLayout(view, createOverlayParams())
-            trace("SYSTEM_OVERLAY_BLUR_DROPPED_LAUNCH")
+            windowManager.updateViewLayout(view, params)
         } catch (exception: RuntimeException) {
-            logger(Log.WARN, "SYSTEM_OVERLAY_BLUR_DROP_FAILED", exception)
+            logger(Log.WARN, "SYSTEM_OVERLAY_BLUR_RAMP_FAILED", exception)
         }
     }
 
@@ -1507,7 +1601,7 @@ internal class ColorOsFreeformCoordinator(
      */
     private fun createOverlayParams(
         type: Int = overlayWindowType,
-        blurRadiusPx: Int = 0,
+        blurRadiusPx: Int = NO_OVERLAY_BLUR,
     ): WindowManager.LayoutParams {
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -1529,7 +1623,9 @@ internal class ColorOsFreeformCoordinator(
             // 压暗由 Compose 那一层绘制（遮罩浓度可调），窗口本身不参与调暗。
             // 模糊是另一档开关：只有开启「系统模糊」才把半径交给系统合成，
             // 关闭时窗口表面完全透明，行为与引入该开关之前一致。
-            if (blurRadiusPx > 0) applyBlurBehind(blurRadiusPx)
+            // 允许以 0 半径挂上标记：模糊要随扇形淡入，窗口创建时先不给半径，
+            // 由 [rampOverlayBlur] 逐帧拉开。
+            if (blurRadiusPx >= 0) applyBlurBehind(blurRadiusPx)
         }
     }
 
@@ -1539,27 +1635,28 @@ internal class ColorOsFreeformCoordinator(
      * 走窗口自带的那一档（[FLAG_BLUR_BEHIND] + LayoutParams#setBlurBehindRadius）：
      * WindowManagerService 把半径写进窗口表面的 SurfaceControl，由 SurfaceFlinger 合成时
      * 模糊窗口下方的内容，和系统面板同一套实现，模块不自己画近似磨砂。
-     * 两个入口都是隐藏 API，取不到就保持透明窗口，不影响扇形本身。
      */
     private fun WindowManager.LayoutParams.applyBlurBehind(radiusPx: Int) {
-        val setter =
-            OemReflection.findMethod(
-                javaClass,
-                "setBlurBehindRadius",
-                java.lang.Integer.TYPE,
-            )
+        if (!applyBlurRadius(radiusPx)) return
+        flags = flags or FLAG_BLUR_BEHIND
+    }
+
+    /**
+     * 反射设置窗口的模糊半径；接口缺失时只提示一次并返回 false。
+     *
+     * `setBlurBehindRadius` 是隐藏 API，两处调用（创建窗口、逐帧渐变）共用这一份查找，
+     * 避免同一接口在两处写法不一致。
+     */
+    private fun WindowManager.LayoutParams.applyBlurRadius(radiusPx: Int): Boolean {
+        val setter = OemReflection.findMethod(javaClass, "setBlurBehindRadius", Integer.TYPE)
         if (setter == null) {
             if (!blurUnavailableLogged) {
                 blurUnavailableLogged = true
                 logger(Log.WARN, "SYSTEM_OVERLAY_BLUR_UNAVAILABLE", null)
             }
-            return
+            return false
         }
-        val applied = runCatching { setter.invoke(this, radiusPx) }.isSuccess
-        if (applied) {
-            flags = flags or FLAG_BLUR_BEHIND
-            overlayBlurApplied = true
-        }
+        return runCatching { setter.invoke(this, radiusPx) }.isSuccess
     }
 
     /** 模糊半径按 dp 折算：与系统面板的模糊在同一量级，不同密度下观感一致。 */
@@ -1612,6 +1709,11 @@ internal class ColorOsFreeformCoordinator(
         // 一块看不见的板子盖在菜单区域上。
         detachTouchRegion()
         overlay = null
+        // 窗口即将移除：模糊渐变和它引用的参数一并收掉，避免下一帧还去改一个已经没了的窗口。
+        overlayBlurAnimator?.cancel()
+        overlayBlurAnimator = null
+        overlayBlurRadiusPx = 0
+        overlayParams = null
         if (sidebar.isPending) sidebar.cancel()
         morePanelActive = false
         trace("SYSTEM_OVERLAY_REMOVE")
@@ -2284,6 +2386,17 @@ internal class ColorOsFreeformCoordinator(
 
         /** `WindowManager.LayoutParams.FLAG_BLUR_BEHIND`；隐藏常量，值为 0x4。 */
         const val FLAG_BLUR_BEHIND = 0x00000004
+
+        /** [createOverlayParams] 的「不挂模糊」取值：>= 0 表示要挂，0 表示先挂标记但不给半径。 */
+        const val NO_OVERLAY_BLUR = -1
+
+        /**
+         * 选中目标后模糊淡出的时长。
+         *
+         * 比缩回动画（500ms）短：应用是并行启动的，小窗出现后不该长时间蒙着一层糊。
+         * 200ms 既消除了「啪一下」，又不会盖住已经起来的窗口。
+         */
+        const val COMMIT_BLUR_FADE_MILLIS = 200L
         const val OVERLAY_FAILURE_LOG_INTERVAL_MS = 10_000L
 
         /** 浮层窗口申请的刷新率：165Hz 屏上直接跑满，其它屏由系统取最接近的一档。 */

@@ -34,6 +34,10 @@
     <string name="corner_trigger_side_right">仅右下角</string>
     <string name="corner_trigger_range_title">触发范围</string>
     <string name="corner_trigger_range_summary">调整底部两角的手势识别区域大小</string>
+    <string name="radial_expand_duration_title">展开时长</string>
+    <string name="radial_expand_duration_summary">扇形铺开的动画时长，背景压暗与模糊也按它渐变</string>
+    <string name="radial_retract_duration_title">收回时长</string>
+    <string name="radial_retract_duration_summary">松手或选中目标后收起的动画时长</string>
     <string name="radial_icon_size_title">图标大小</string>
     <string name="radial_radius_title">扇形大小</string>
     <string name="radial_radius_summary">同时放大或缩小左右两侧扇形半径（100 为默认）</string>
@@ -41,6 +45,7 @@
     <string name="radial_hit_range_title">命中范围</string>
     <string name="radial_hit_range_summary">调整扇形菜单中手指与图标的命中半径</string>
     <string name="dp_value">%1$d dp</string>
+    <string name="ms_value">%1$d ms</string>
     <string name="radial_settings_title">扇形相关</string>
     <string name="radial_settings_summary">呼出位置与命中判定</string>
     <string name="radial_apps_title">扇形应用</string>
@@ -97,7 +102,7 @@
   <string name="radial_effect_group_title">选中特效</string>
   <string name="radial_effect_entry_summary">流光特效 · 选中放大 · 选中外顶</string>
   <string name="radial_size_page_title">外观细节</string>
-  <string name="radial_size_entry_summary">命中范围 · 图标大小 · 扇形大小 · 背景遮罩</string>
+  <string name="radial_size_entry_summary">图标大小 · 扇形大小 · 背景遮罩 · 时长 · 选中特效</string>
   <string name="radial_size_preview_hint">拖动滑杆时，这张示意图会跟着变</string>
   <string name="radial_shimmer_enabled_title">流光特效</string>
   <string name="radial_shimmer_enabled_summary">选中项外沿的常亮光圈、星头与运动轨迹</string>

@@ -4,8 +4,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Adjust
 import androidx.compose.material.icons.rounded.Apps
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.PushPin
@@ -33,11 +33,11 @@ import io.github.hoerire.free.ui.component.PreferenceIcon
 /**
  * 扇形相关的二级页面。
  *
- * 条目按作用分三段：呼出方式（触发位置）、呼出后的行为（保持挂起、应用入口）、
- * 判定数值（触发范围、命中范围、数量上限）。应用条目的增删与排序在「扇形应用」页内维护。
+ * 只放「怎么呼出、呼出后怎么用」：触发位置、保持挂起、应用入口、触发范围与各页入口。
+ * 尺寸 / 时长 / 背景这类外观参数集中在「外观细节」页，「选中特效」也从那里进——
+ * 这里不再重复列，避免同一组参数出现在两个层级。
  *
- * 拖动触发范围与命中范围的滑条时，通过 [CornerRangePreview] 与 [HitRangePreview]
- * 叠加显示当前取值，两者只在拖动期间存在。
+ * 拖动触发范围的滑条时，通过 [CornerRangePreview] 叠加显示当前取值，只在拖动期间存在。
  */
 @Composable
 internal fun RadialSettingsScreen(
@@ -45,6 +45,7 @@ internal fun RadialSettingsScreen(
     onBack: () -> Unit,
     onCornerSidesChange: (Boolean, Boolean) -> Unit,
     onCornerTriggerRangeChange: (Int) -> Unit,
+    onRadialHitRangeChange: (Int) -> Unit,
 
     onRadialInteractionEnabledChange: (Boolean) -> Unit,
     onRadialKeepOpenChange: (Boolean) -> Unit,
@@ -52,7 +53,6 @@ internal fun RadialSettingsScreen(
     onPauseInGameModeChange: (Boolean) -> Unit,
     onPauseInKeyboardChange: (Boolean) -> Unit,
     onNavigateToPinnedApps: () -> Unit,
-    onNavigateToRadialEffect: () -> Unit,
     onNavigateToRadialSize: () -> Unit,
 ) {
     val enabled = state.settingsEditable && state.settings.enabled
@@ -142,12 +142,20 @@ internal fun RadialSettingsScreen(
                     onPreviewChange = { cornerRangePreviewDp = it },
                     onCommit = onCornerTriggerRangeChange,
                 )
-                ArrowPreference(
-                    title = stringResource(R.string.radial_effect_group_title),
-                    summary = stringResource(R.string.radial_effect_entry_summary),
-                    onClick = onNavigateToRadialEffect,
+                // 命中范围是判定参数，与触发范围是同一类：两者一起决定"能不能碰到、碰到了算不算"。
+                RemoteDpSliderPreference(
+                    icon = Icons.Rounded.Adjust,
+                    confirmedValue = state.settings.radialHitRangeDp,
+                    isUpdating = state.isUpdating,
                     enabled = rowEnabled,
-                    startAction = { PreferenceIcon(Icons.Rounded.AutoAwesome, rowEnabled) },
+                    title = stringResource(R.string.radial_hit_range_title),
+                    summary = stringResource(R.string.radial_hit_range_summary),
+                    minDp = ModulePreferences.MIN_RADIAL_HIT_RANGE_DP,
+                    maxDp = ModulePreferences.MAX_RADIAL_HIT_RANGE_DP,
+                    coerceDp = ModulePreferences::coerceRadialHitRangeDp,
+                    // 没有屏幕叠加预览：命中圈的可视化在外观页顶的示意图里。
+                    onPreviewChange = {},
+                    onCommit = onRadialHitRangeChange,
                 )
                 ArrowPreference(
                     title = stringResource(R.string.radial_size_page_title),
