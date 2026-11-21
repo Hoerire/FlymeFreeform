@@ -202,6 +202,8 @@ internal class ColorOsFreeformCoordinator(
     private var lastOverlayFailureLogAt = -OVERLAY_FAILURE_LOG_INTERVAL_MS
     /** 模糊接口取不到只记一次：每次呼出都记会把日志刷满。 */
     private var blurUnavailableLogged = false
+    /** 本次浮层窗口是否真的挂上了背景模糊；启动前据此决定要不要摘。 */
+    private var overlayBlurApplied = false
     /** 输入法服务实例与解析状态：「屏蔽键盘」判定要用它的窗口可见标志。 */
     private var inputMethodServiceCache: Any? = null
     private var imeAccessCache: ColorOsDisplayContentImeAccess? = null
@@ -973,6 +975,7 @@ internal class ColorOsFreeformCoordinator(
         // 触摸统一由 attachTouchRegion() 那块小窗口接住。
         val keepOpen = lastSettings.radialKeepOpen
         val blurRadiusPx = overlayBlurRadiusPx(lastSettings.backdropLevel)
+        overlayBlurApplied = false
         val params = createOverlayParams(blurRadiusPx = blurRadiusPx)
         var view: CornerRadialOverlayView? = null
         try {
@@ -1084,6 +1087,9 @@ internal class ColorOsFreeformCoordinator(
         if (requiresHiddenOverlay) {
             removeOverlay(immediate = true)
         } else {
+            // 选中应用/快捷方式：先摘掉背景模糊，再播缩回动画。启动是并行发起的，
+            // 新窗口最早在这一帧之后就会出现，模糊留到动画结束（500ms）会把小窗一起糊住。
+            dropOverlayBlurForLaunch()
             overlay?.retractAnimated(quick = true) ?: removeOverlay(immediate = true)
         }
         handler.post {
@@ -1292,6 +1298,29 @@ internal class ColorOsFreeformCoordinator(
             debug("SYSTEM_BACKDROP_PASS_THROUGH_OK")
         } catch (exception: RuntimeException) {
             logger(Log.WARN, "SYSTEM_BACKDROP_PASS_THROUGH_FAILED", exception)
+        }
+    }
+
+    /**
+     * 启动前摘掉浮层窗口自己的背景模糊。
+     *
+     * 模糊挂在**窗口**上（[FLAG_BLUR_BEHIND] + 半径，由 SurfaceFlinger 在合成时模糊窗口下方），
+     * 而浮层要等退场动画播完才移除（`COMMIT_RETRACT_DURATION_MILLIS` = 500ms）。选中的应用
+     * 却是在提交的当帧就启动的，于是这半秒里新出现的窗口也被一起糊掉：
+     * 「前台全屏 → 就地切小窗」不建新窗口、当帧可见，糊得最明显。
+     *
+     * 只重建窗口参数、不动绘制内容：调暗（scrim）仍随退场动画淡出，扇形本身照常缩回。
+     */
+    private fun dropOverlayBlurForLaunch() {
+        if (!overlayBlurApplied) return
+        val view = overlay ?: return
+        overlayBlurApplied = false
+        try {
+            // 不带模糊重建参数：默认 blurRadiusPx = 0 就不会挂 [FLAG_BLUR_BEHIND]。
+            windowManager.updateViewLayout(view, createOverlayParams())
+            trace("SYSTEM_OVERLAY_BLUR_DROPPED_LAUNCH")
+        } catch (exception: RuntimeException) {
+            logger(Log.WARN, "SYSTEM_OVERLAY_BLUR_DROP_FAILED", exception)
         }
     }
 
@@ -1529,6 +1558,7 @@ internal class ColorOsFreeformCoordinator(
         val applied = runCatching { setter.invoke(this, radiusPx) }.isSuccess
         if (applied) {
             flags = flags or FLAG_BLUR_BEHIND
+            overlayBlurApplied = true
         }
     }
 
