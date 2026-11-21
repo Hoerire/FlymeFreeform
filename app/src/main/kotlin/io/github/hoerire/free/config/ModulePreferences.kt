@@ -255,6 +255,16 @@ internal object ModulePreferences {
      */
     const val KEY_PRE_SLEEP_ARMED = "free_pre_sleep_armed"
 
+    /**
+     * system_server → SystemUI：分身通知的深链 Intent 短命缓存。
+     *
+     * 分身通知的 `contentIntent` 是不透明的 PendingIntent，直接发送只会按它的签发用户
+     * 落到主应用；要进分身的聊天页，必须拿到原始 Intent 后在目标用户上下文里重建再发送。
+     * 记录由 system_server 在通知入库时捕获、SystemUI 在点气泡时读取，
+     * 格式见 `bubble/CloneDeepLinkStore.kt`。
+     */
+    const val KEY_CLONE_DEEP_LINK = "free_bubble_clone_deep_link"
+
     /** system_server → SystemUI：剪贴板分类结果（即时建议）。 */
     /** 前台应用变化：system_server 通知 SystemUI 收掉该应用已弹出的气泡。 */
     const val ACTION_APP_FOREGROUND = "io.github.hoerire.free.action.APP_FOREGROUND"

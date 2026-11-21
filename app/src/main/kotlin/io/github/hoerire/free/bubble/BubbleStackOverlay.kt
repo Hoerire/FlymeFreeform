@@ -19,6 +19,7 @@ import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
@@ -303,6 +304,8 @@ internal class BubbleStackOverlay(
                 pressedIndex = -1
                 invalidate()
                 if (sameTarget) {
+                    // 与主气泡一致：点中一颗就给系统的点按反馈，强度与开关跟随系统触感设置。
+                    performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                     clickListener(hit)
                 }
                 dismiss()

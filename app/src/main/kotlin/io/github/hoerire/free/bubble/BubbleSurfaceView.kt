@@ -842,6 +842,9 @@ internal class BubbleSurfaceView(
 
     override fun performClick(): Boolean {
         super.performClick()
+        // 点按反馈交给系统：`VIRTUAL_KEY` 的强度与开关都由系统的触感设置决定，
+        // 用户关了「点按震动」这里就不会响，模块不另外加开关。
+        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
         val action = clickAction
         if (action != null && !dismissing) action.invoke()
         return true

@@ -8,6 +8,7 @@ import android.content.pm.LauncherApps
 import android.os.Bundle
 import android.os.Process
 import android.os.UserHandle
+import android.provider.Settings
 import io.github.hoerire.free.config.ModulePreferences
 
 /**
@@ -31,7 +32,11 @@ internal class BubbleLauncher(
     fun open(item: BubbleItem): Boolean {
         val identity = item.identity
         if (identity.isClone) {
-            // 分身：先把启动请求包成「目标用户 = 分身」的 PendingIntent，并带上
+            // 分身：优先用「通知自己那条深链」。system_server 在通知入库时把原始 Intent 捕获到
+            // Settings.Global（[CloneDeepLinkStore]），这里取回后在分身用户上下文里重建并发送，
+            // 于是点气泡与在通知中心点同一条通知落到同一个聊天页。
+            if (openCloneDeepLink(item)) return true
+            // 退路：把启动请求包成「目标用户 = 分身」的 PendingIntent，并带上
             // cached_userId / SKIP_CHOOSER / EXTRA_SKIP_ZOOM 三个标记。这样 ActivityStarter
             // 直接落在分身上，也不会被本模块的 ActivityStarterZoomInjector 改写成主用户小窗。
             if (startAsUserViaPendingIntent(identity)) return true
@@ -47,6 +52,58 @@ internal class BubbleLauncher(
         }
         logger("BUBBLE_OPEN_FAILED_" + identity.whitelistKey, null)
         return false
+    }
+
+    /**
+     * 分身深链：用通知里那个原始 Intent，在分身用户上下文里重建 PendingIntent 再发送。
+     *
+     * 分身通知的 `contentIntent` 由分身实例签发，但 SystemUI 手里只有不透明的 PendingIntent，
+     * 直接 `send()` 会按它的签发用户落到主应用，会话参数也拿不到。原始 Intent 由 system_server
+     * 在通知入库时捕获（见 `hook/NotificationCloneCaptureHook.kt`），这里只做「取回 + 以目标用户
+     * 重建 + 发送」，与通知中心点击那条已经跑通的系统路径同构。
+     *
+     * 取不到就返回 false，由调用方退回原有启动方式：这是纯增益分支，失败不改变现状。
+     */
+    private fun openCloneDeepLink(item: BubbleItem): Boolean {
+        val identity = item.identity
+        val notificationKey = item.notificationKey
+        if (notificationKey.isNullOrEmpty()) return false
+        val raw =
+            runCatching {
+                Settings.Global.getString(
+                    context.contentResolver,
+                    ModulePreferences.KEY_CLONE_DEEP_LINK,
+                )
+            }.getOrNull()
+        val link =
+            CloneDeepLinkStore.lookup(
+                raw,
+                notificationKey,
+                identity.userId,
+                System.currentTimeMillis(),
+            )
+        val entry = link.entry
+        if (entry == null) {
+            logger("BUBBLE_DEEPLINK_MISS_" + link.reason + "_" + identity.whitelistKey, null)
+            return false
+        }
+        return runCatching {
+            val intent = entry.intent
+            // 与分身的其他启动入口用同一套多应用标记：钉住实例、跳过「选择打开的应用」。
+            applyMultiAppHint(intent, entry.userId)
+            val pending = activityPendingAsUser(intent, entry.userId) ?: return false
+            pending.send()
+            logger("BUBBLE_OPEN_CLONE_DEEPLINK_" + identity.whitelistKey, null)
+            true
+        }.getOrElse {
+            val cause = it.cause ?: it
+            logger(
+                "BUBBLE_OPEN_CLONE_DEEPLINK_FAILED_" + identity.whitelistKey + "_" +
+                    cause.javaClass.simpleName + "_" + cause.message,
+                cause,
+            )
+            false
+        }
     }
 
     /**
@@ -75,29 +132,10 @@ internal class BubbleLauncher(
             // 打上「模块代发、保持原样」标记，让注入器放行这条启动。
             intent.putExtra(ModulePreferences.EXTRA_SKIP_ZOOM, true)
             applyMultiAppHint(intent, identity.userId)
-            val method =
-                PendingIntent::class.java.getMethod(
-                    "getActivityAsUser",
-                    Context::class.java,
-                    Int::class.javaPrimitiveType,
-                    Intent::class.java,
-                    Int::class.javaPrimitiveType,
-                    Bundle::class.java,
-                    UserHandle::class.java,
-                )
-            val pending =
-                method.invoke(
-                    null,
-                    context,
-                    0,
-                    intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                    // 创建 PendingIntent 时不能再带 pendingIntentBackgroundActivityStartMode
-                    // （系统会抛 IllegalArgumentException）；SystemUI 本身有
-                    // START_ACTIVITIES_FROM_BACKGROUND，发送时不需要这个 mode。
-                    null,
-                    user,
-                ) as? PendingIntent ?: return false
+            // 创建 PendingIntent 时不能再带 pendingIntentBackgroundActivityStartMode
+            // （系统会抛 IllegalArgumentException）；SystemUI 本身有
+            // START_ACTIVITIES_FROM_BACKGROUND，发送时不需要这个 mode。
+            val pending = activityPendingAsUser(intent, identity.userId) ?: return false
             pending.send()
             logger("BUBBLE_OPEN_PENDING_USER_" + identity.whitelistKey, null)
             true
@@ -111,6 +149,30 @@ internal class BubbleLauncher(
             false
         }
     }
+
+    /** 以目标用户身份构造一个 activity PendingIntent；反射不可用时返回 null。 */
+    private fun activityPendingAsUser(intent: Intent, userId: Int): PendingIntent? =
+        runCatching {
+            val method =
+                PendingIntent::class.java.getMethod(
+                    "getActivityAsUser",
+                    Context::class.java,
+                    Int::class.javaPrimitiveType,
+                    Intent::class.java,
+                    Int::class.javaPrimitiveType,
+                    Bundle::class.java,
+                    UserHandle::class.java,
+                )
+            method.invoke(
+                null,
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                null,
+                userOf(userId),
+            ) as? PendingIntent
+        }.getOrNull()
 
     /**
      * 厂商小窗入口：与侧边栏/自由窗同一条路径，第三参数就是目标 userId。
