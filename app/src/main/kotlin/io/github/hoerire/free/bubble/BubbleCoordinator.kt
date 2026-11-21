@@ -115,7 +115,6 @@ internal class BubbleCoordinator(
         // 即时建议：手电筒/耳机/应用安装由控制器自己监听；剪贴板由 system_server 广播。
         suggestions = ImmediateSuggestionController(context, suggestionHost).also { it.start() }
         registerClipboardReceiver()
-        registerForegroundReceiver()
         registerGameModeObserver()
         log(
             if (settings.active) "BUBBLE_COORDINATOR_READY" else "BUBBLE_COORDINATOR_IDLE",
@@ -178,6 +177,7 @@ internal class BubbleCoordinator(
             if (!wantsBubble) return
             val item = BubbleItem(identity, payload, notification.contentIntent)
             queue.add(item)
+            syncForegroundPolling()
             if (windows.bubble == null && transitioning == null) {
                 showHead()
             } else {
@@ -313,8 +313,10 @@ internal class BubbleCoordinator(
             if (screenSuspended || !isScreenInteractive()) return
             if (item.notificationKey != null) {
                 queue.remove(item.notificationKey)
+                syncForegroundPolling()
             } else {
                 queue.removeHead()
+                syncForegroundPolling()
             }
             handler.post { showHead() }
             return
@@ -372,6 +374,7 @@ internal class BubbleCoordinator(
         transitioning = bubble
         rememberPosition(bubble)
         queue.removeHead()
+        syncForegroundPolling()
         dismissPreview(animated = true)
         val completion = {
             if (transitioning === bubble) transitioning = null
@@ -401,6 +404,7 @@ internal class BubbleCoordinator(
         transitioning = bubble
         rememberPosition(bubble)
         queue.removeHead()
+        syncForegroundPolling()
         dismissPreview(animated = true)
         windows.dismissStack()
         bubble.dismiss()
@@ -430,6 +434,7 @@ internal class BubbleCoordinator(
         windows.forgetBubble(bubble)
         shownItem = null
         queue.removeHead()
+        syncForegroundPolling()
         dismissPreview(animated = false)
         previewSuppressedFor = queue.head?.identity
         phase = Phase.Idle
@@ -438,6 +443,7 @@ internal class BubbleCoordinator(
 
     private fun dismissForBottomDrop() {
         queue.clear()
+        syncForegroundPolling()
         shownItem = null
         dismissPreview(animated = false)
         windows.dismissStack()
@@ -446,6 +452,7 @@ internal class BubbleCoordinator(
 
     private fun dismissAll() {
         queue.clear()
+        syncForegroundPolling()
         shownItem = null
         previewSuppressedFor = null
         dismissPreview(animated = false)
@@ -484,6 +491,7 @@ internal class BubbleCoordinator(
     private fun openStackItem(items: List<BubbleItem>, index: Int) {
         val item = items.getOrNull(index) ?: return
         queue.remove(item.notificationKey)
+        syncForegroundPolling()
         windows.dismissStack()
         windows.bubble?.let { bubble ->
             bubble.setStackExpanded(false)
@@ -571,6 +579,7 @@ internal class BubbleCoordinator(
                 activateHead(burst = false)
             } else {
                 queue.remove(item.notificationKey)
+                syncForegroundPolling()
                 updateChildren()
                 runItemAction(item)
             }
@@ -669,44 +678,56 @@ internal class BubbleCoordinator(
             }
         }
 
-    /** 前台变化：用户从任何入口打开应用，都把它留在桌面上的气泡收掉。 */
-    private val foregroundReceiver =
-        object : android.content.BroadcastReceiver() {
-            override fun onReceive(receiverContext: Context?, intent: Intent?) {
-                if (intent?.action != ModulePreferences.ACTION_APP_FOREGROUND) return
-                val packageName =
-                    intent.getStringExtra(ModulePreferences.EXTRA_APP_FOREGROUND_PACKAGE) ?: return
-                handler.post { dropBubblesFor(packageName) }
+    /** 前台轮询：应用一到前台就收掉它的气泡；只在队列里有气泡通知时运行。 */
+    private var foregroundPolling = false
+    private var lastForeground: String? = null
+
+    private val foregroundPollAction: Runnable =
+        Runnable {
+            runCatching {
+                val current = foregroundPackage()
+                if (current != null && current != lastForeground) {
+                    lastForeground = current
+                    dropBubblesFor(current)
+                }
             }
+            if (foregroundPolling) handler.postDelayed(foregroundPollAction, FOREGROUND_POLL_MS)
         }
 
-    private fun registerForegroundReceiver() {
-        runCatching {
-            context.registerReceiver(
-                foregroundReceiver,
-                IntentFilter(ModulePreferences.ACTION_APP_FOREGROUND),
-                Context.RECEIVER_EXPORTED,
-            )
-        }.onFailure { log("BUBBLE_FOREGROUND_RECEIVER_FAILED", it) }
+    private fun syncForegroundPolling(): Unit {
+        val needed = queue.snapshot().any { item -> item.suggestionId == null }
+        if (needed && !foregroundPolling) {
+            foregroundPolling = true
+            // 先记下当前前台：开始轮询这一刻不应该把它当成「刚打开」。
+            lastForeground = foregroundPackage()
+            handler.post(foregroundPollAction)
+        } else if (!needed && foregroundPolling) {
+            foregroundPolling = false
+            handler.removeCallbacks(foregroundPollAction)
+            lastForeground = null
+        }
     }
 
     /**
      * 收掉某个应用的全部气泡。
      *
      * 应用已经到前台，气泡没有继续占位的意义；同应用的多条一起收。
-     * 如果收掉的正好是当前展示的那条，按「通知被移除」的同一套逻辑换下一条。
+     * 只收通知气泡，即时建议（手电筒、保持常亮等）与前台无关，不动。
      */
-    private fun dropBubblesFor(packageName: String) {
-        val targets = queue.snapshot().filter { it.packageName == packageName }
+    private fun dropBubblesFor(packageName: String): Unit {
+        val targets =
+            queue.snapshot().filter { it.suggestionId == null && it.packageName == packageName }
         if (targets.isEmpty()) return
         val headBefore = queue.head
         targets.forEach { item ->
             statusTicker?.stopFor(item.notificationKey)
             queue.remove(item.notificationKey)
+            syncForegroundPolling()
         }
         log("BUBBLE_APP_OPENED_" + packageName, null)
-        if (headBefore?.packageName != packageName) {
+        if (headBefore?.let { it.suggestionId == null && it.packageName == packageName } != true) {
             updateChildren()
+            syncForegroundPolling()
             return
         }
         dismissPreview(animated = false)
@@ -728,6 +749,7 @@ internal class BubbleCoordinator(
             }
             current == null -> showHead()
         }
+        syncForegroundPolling()
     }
 
     private fun registerClipboardReceiver() {
@@ -833,6 +855,7 @@ internal class BubbleCoordinator(
         // 建议到达时收起已展开的扇环，下一次展开才是新队列。
         windows.dismissStack()
         queue.add(item)
+        syncForegroundPolling()
         if (windows.bubble == null && transitioning == null) {
             showHead()
         } else {
@@ -1043,6 +1066,8 @@ internal class BubbleCoordinator(
         const val MAX_STACK_ITEMS = 6
         const val MAX_CHILD_ICONS = 3
         const val DUPLICATE_WINDOW_MS = 1_200L
+        /** 前台轮询间隔：只在有气泡通知时运行。 */
+        const val FOREGROUND_POLL_MS = 700L
         const val TRANSITION_DELAY_MS = 240L
         const val INITIAL_PREVIEW_DELAY_MS = 40L
         const val ROTATE_PREVIEW_DELAY_MS = 110L

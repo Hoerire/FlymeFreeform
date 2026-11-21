@@ -172,9 +172,6 @@ internal class ModuleEnvironmentState(
     }
 
     /** 记录当前前台应用，供排除列表判定使用。仅在 system_server 内更新。 */
-    /** 当前前台包名；用于判断前台是否真的变化了（避免重复广播）。 */
-    fun currentForeground(): String? = foregroundPackage
-
     fun updateForeground(packageName: String?, activityName: String? = null) {
         val previous = foregroundPackage
         if (packageName != null && previous != null && previous != packageName) {
